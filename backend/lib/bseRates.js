@@ -55,6 +55,8 @@ async function fetchOne(instance, code) {
     const high      = _num(h.High  || h.DayHigh);
     const low       = _num(h.Low   || h.DayLow);
     const open      = _num(h.Open  || h.DayOpen);
+    const volume    = _num(h.TotalTradedQuantity || h.Volume || h.VOLUME);
+    const turnover  = _num(h.TotalTradedValue || h.Turnover || h.TURNOVER);
 
     let change    = _num(h.Change || h.Chg || h.NetChg || h.CHANGE);
     let pctChange = _num(h.PerChange || h.Perchng || h.PerChng || h.PCHANGE || h.PChange);
@@ -64,9 +66,9 @@ async function fetchOne(instance, code) {
     if (pctChange === null && ltp !== null && prevClose !== null && prevClose !== 0)
       pctChange = Math.round(((ltp - prevClose) / prevClose) * 10000) / 100;
 
-    return { ltp, prevClose, high, low, open, change, pctChange, updatedAt: new Date().toISOString(), error: null };
+    return { ltp, prevClose, high, low, open, volume, turnover, change, pctChange, updatedAt: new Date().toISOString(), error: null };
   } catch (e) {
-    return { ltp: null, prevClose: null, high: null, low: null, open: null, change: null, pctChange: null, updatedAt: new Date().toISOString(), error: e.message };
+    return { ltp: null, prevClose: null, high: null, low: null, open: null, volume: null, turnover: null, change: null, pctChange: null, updatedAt: new Date().toISOString(), error: e.message };
   }
 }
 

@@ -36,8 +36,8 @@ const DEFAULT_RATES = {
 };
 
 // ── Slim transform ────────────────────────────────────────────────────────────
-// Input:  { code: { ltp, prevClose, high, low, open, change, pctChange, ... } }
-// Output: { code: { ltp, change, pctChange } }
+// Input:  { code: { ltp, prevClose, high, low, open, change, pctChange, volume, turnover... } }
+// Output: { code: { ltp, change, pctChange, open, high, low, prevClose, volume, turnover } }
 function slimRates(rates) {
   const slim = {};
   for (const [code, r] of Object.entries(rates || {})) {
@@ -46,6 +46,12 @@ function slimRates(rates) {
       ltp:       r.ltp,
       change:    r.change    ?? null,
       pctChange: r.pctChange ?? null,
+      open:      r.open      ?? null,
+      high:      r.high      ?? null,
+      low:       r.low       ?? null,
+      prevClose: r.prevClose ?? null,
+      volume:    r.volume    ?? null,
+      turnover:  r.turnover  ?? null,
     };
   }
   return slim;

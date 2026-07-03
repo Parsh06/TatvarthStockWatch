@@ -144,12 +144,14 @@ export default function ScriptDrawer({ script, onClose }) {
                       </div>
                     )}
                   </div>
-                  {(quote.open || quote.high || quote.low || quote.prevClose) && (
-                    <div className="flex items-center gap-4 mt-2 text-xs text-textMuted flex-wrap">
-                      {quote.prevClose && <span>Prev <span className="text-textPrimary font-medium">₹{fmtN(quote.prevClose)}</span></span>}
-                      {quote.open      && <span>O <span className="text-textPrimary font-medium">₹{fmtN(quote.open)}</span></span>}
-                      {quote.high      && <span>H <span className="text-emerald-400 font-medium">₹{fmtN(quote.high)}</span></span>}
-                      {quote.low       && <span>L <span className="text-red-400 font-medium">₹{fmtN(quote.low)}</span></span>}
+                  {(quote.open || quote.high || quote.low || quote.prevClose || quote.volume || quote.turnover) && (
+                    <div className="flex items-center gap-3 mt-3 text-xs text-textMuted flex-wrap border-t border-border/50 pt-2">
+                      {quote.prevClose && <span className="bg-background px-2 py-1 rounded">Prev <span className="text-textPrimary font-medium">₹{fmtN(quote.prevClose)}</span></span>}
+                      {quote.open      && <span className="bg-background px-2 py-1 rounded">O <span className="text-textPrimary font-medium">₹{fmtN(quote.open)}</span></span>}
+                      {quote.high      && <span className="bg-background px-2 py-1 rounded">H <span className="text-emerald-400 font-medium">₹{fmtN(quote.high)}</span></span>}
+                      {quote.low       && <span className="bg-background px-2 py-1 rounded">L <span className="text-red-400 font-medium">₹{fmtN(quote.low)}</span></span>}
+                      {quote.volume    && <span className="bg-background px-2 py-1 rounded">Vol <span className="text-textPrimary font-medium">{fmtN(quote.volume)}</span></span>}
+                      {quote.turnover  && <span className="bg-background px-2 py-1 rounded">Turnover <span className="text-textPrimary font-medium">₹{fmtN(quote.turnover)}</span></span>}
                     </div>
                   )}
                 </div>

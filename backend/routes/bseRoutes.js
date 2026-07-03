@@ -741,6 +741,7 @@ router.get('/quote', async (req, res) => {
           high:       _f(h.High  || h.HIGH),
           low:        _f(h.Low   || h.LOW),
           volume:     _f(h.TotalTradedQuantity || h.Volume || h.VOLUME),
+          turnover:   _f(h.TotalTradedValue || h.Turnover || h.TURNOVER),
           change:     ltp && prev ? +((ltp - prev).toFixed(2))              : null,
           pctChange:  ltp && prev ? +(((ltp - prev) / prev * 100).toFixed(2)) : null,
         };
