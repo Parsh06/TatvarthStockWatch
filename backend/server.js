@@ -112,6 +112,10 @@ app.get('/api/health', async (req, res) => {
 // Clients poll this every 5s during active fetch, 60s otherwise.
 
 app.get('/api/rates', async (req, res) => {
+  // Tell Vercel CDN to cache this response for 15 seconds.
+  // This drastically reduces Upstash Redis GETs even if 1000 users are polling.
+  res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
+
   if (_ratesFetchInProgress) {
     return res.json({ ..._ratesInMemory, fetching: true });
   }

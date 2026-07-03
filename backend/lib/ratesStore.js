@@ -53,17 +53,33 @@ function slimRates(rates) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+// In-memory cache for Vercel warm instances
+let _memCache = null;
+let _memCacheTime = 0;
+const MEM_CACHE_TTL = 15000; // 15 seconds
+
 /**
  * Read latest completed rates (slim format) from Upstash Redis.
  * Returns DEFAULT_RATES if nothing stored yet or if UPSTASH is disabled.
  */
 async function readRates() {
   if (!UPSTASH_ENABLED || !redis) return { ...DEFAULT_RATES };
+  
+  // Use memory cache if fresh (saves Redis GETs on warm Vercel instances)
+  if (_memCache && (Date.now() - _memCacheTime < MEM_CACHE_TTL)) {
+    return _memCache;
+  }
+
   try {
     const raw = await redis.get(REDIS_KEY);
     if (!raw) return { ...DEFAULT_RATES };
     // @upstash/redis automatically parses JSON if it is returned as such
     const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    
+    // Update memory cache
+    _memCache = parsed;
+    _memCacheTime = Date.now();
+    
     return parsed;
   } catch (e) {
     console.error('[ratesStore] Redis GET failed:', e.message);
