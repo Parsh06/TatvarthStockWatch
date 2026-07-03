@@ -775,13 +775,15 @@ app.all('/api/cron/trigger', async (req, res) => {
     const matched    = [...bseMatched, ...nseMatched];
 
     if (matched.length > 0) {
-      const existing    = readAnnouncements();
-      const existingIds = new Set(existing.map((a) => String(a.id)));
-      const fresh       = matched.filter((a) => !existingIds.has(String(a.id)));
+      const { saveAnnouncements } = require('./lib/announcementStore');
+      const { saved, newAnnouncements } = await saveAnnouncements(matched);
+      const fresh = newAnnouncements || [];
+      
+      const existing = readAnnouncements();
       writeAnnouncements([...fresh, ...existing].slice(0, 1000), {
         lastTriggeredAt: new Date().toISOString(),
       });
-      console.log('[Global Cron] Saved ' + fresh.length + ' new announcements');
+      console.log('[Global Cron] Saved ' + fresh.length + ' new announcements to Firestore');
       
       if (fresh.length > 0) {
         const admin = require('firebase-admin');
