@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Force Authentication: Users must be logged in to access anything
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // 2. Data Isolation: Users can only access documents where document ID == their UID
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Secure the core users collection and all its subcollections (watchlist, priceAlerts, portfolio)
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+      
+      // Cascade the rule to any nested document/collection under their UID
+      match /{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Global Announcements (Read-only for clients, written by backend admin SDK)
+    match /announcements/{announcementId} {
+      allow read: if isAuthenticated();
+      allow write: if false; 
+    }
+
+    // Default deny all (blocks accidental exposure of other collections)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
