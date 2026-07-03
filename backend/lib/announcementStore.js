@@ -41,6 +41,9 @@ async function getExistingIds(db, ids) {
   const existing = new Set();
   if (!ids.length) return existing;
 
+  const { admin } = getFirebase();
+  const FieldPath = admin.firestore.FieldPath;
+
   // Firestore `in` operator supports max 30 values per query
   const CHUNK = 30;
   for (let i = 0; i < ids.length; i += CHUNK) {
@@ -48,7 +51,7 @@ async function getExistingIds(db, ids) {
     try {
       const snap = await db
         .collection('announcements')
-        .where('__name__', 'in', chunk)
+        .where(FieldPath.documentId(), 'in', chunk)
         .select() // fetch no fields — just doc existence
         .get();
       snap.forEach((doc) => existing.add(doc.id));
