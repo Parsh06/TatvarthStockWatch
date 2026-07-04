@@ -1,70 +1,19 @@
 'use strict';
 
+const { getDb } = require('./mongoClient');
+
 /**
- * announcementStore.js
+ * announcementStore.js (MongoDB Version)
  *
- * Handles reading/writing announcements to the global Firestore
+ * Handles reading/writing announcements to the MongoDB
  * `announcements` collection. The collection is keyed by the
- * announcement's `id` (set as the document ID) so writes are
- * naturally idempotent — writing the same announcement twice
- * simply overwrites with identical data.
- *
- * Collection schema: announcements/{announcementId}
- *   id              string   (= doc ID)
- *   exchange        string   BSE | NSE
- *   scriptName      string
- *   scriptCode      string
- *   category        string
- *   subject         string
- *   description     string
- *   announcementDate string  ISO date string
- *   pdfUrl          string | null
- *   sourceUrl       string
- *   savedAt         Timestamp  (server timestamp, only set on first write)
+ * announcement's `id` (set as the document `_id`) so writes are
+ * naturally idempotent.
  */
 
-function getFirebase() {
-  return require('./firebaseAdmin');
-}
-
-const BATCH_SIZE = 400; // Firestore max is 500; keep headroom
-
 /**
- * Check which of the given announcement IDs already exist in Firestore.
- * Returns a Set of existing IDs.
- *
- * @param {FirebaseFirestore.Firestore} db
- * @param {string[]} ids
- * @returns {Promise<Set<string>>}
- */
-async function getExistingIds(db, ids) {
-  const existing = new Set();
-  if (!ids.length) return existing;
-
-  const { admin } = getFirebase();
-  const FieldPath = admin.firestore.FieldPath;
-
-  // Firestore `in` operator supports max 30 values per query
-  const CHUNK = 30;
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const chunk = ids.slice(i, i + CHUNK);
-    try {
-      const snap = await db
-        .collection('announcements')
-        .where(FieldPath.documentId(), 'in', chunk)
-        .select() // fetch no fields — just doc existence
-        .get();
-      snap.forEach((doc) => existing.add(doc.id));
-    } catch (err) {
-      console.error('[AnnouncementStore] getExistingIds error:', err.message);
-    }
-  }
-  return existing;
-}
-
-/**
- * Save an array of normalized announcements to Firestore.
- * Only writes documents that do not already exist (checked in bulk).
+ * Save an array of normalized announcements to MongoDB.
+ * Only returns documents that did not already exist.
  *
  * @param {object[]} announcements  - Normalized announcement objects (must have `.id`)
  * @returns {Promise<{ saved: number, skipped: number, newAnnouncements: object[] }>}
@@ -74,12 +23,13 @@ async function saveAnnouncements(announcements) {
     return { saved: 0, skipped: 0, newAnnouncements: [] };
   }
 
-  const { db, admin } = getFirebase();
-  const serverTs = admin.firestore.FieldValue.serverTimestamp();
+  const db = await getDb();
+  const collection = db.collection('announcements');
 
-  // 1. Collect all IDs and find which already exist
+  // 1. Find which IDs already exist
   const ids = announcements.map((a) => String(a.id));
-  const existingIds = await getExistingIds(db, ids);
+  const existingDocs = await collection.find({ _id: { $in: ids } }, { projection: { _id: 1 } }).toArray();
+  const existingIds = new Set(existingDocs.map(d => String(d._id)));
 
   // 2. Filter to only the truly new ones
   const newAnnouncements = announcements.filter((a) => !existingIds.has(String(a.id)));
@@ -88,60 +38,75 @@ async function saveAnnouncements(announcements) {
     return { saved: 0, skipped: announcements.length, newAnnouncements: [] };
   }
 
-  // 3. Batch write new announcements
-  let saved = 0;
-  for (let i = 0; i < newAnnouncements.length; i += BATCH_SIZE) {
-    const chunk = newAnnouncements.slice(i, i + BATCH_SIZE);
-    const batch = db.batch();
-    for (const ann of chunk) {
-      const ref = db.collection('announcements').doc(String(ann.id));
-      batch.set(ref, { ...ann, savedAt: serverTs });
-      saved++;
-    }
-    try {
-      await batch.commit();
-    } catch (err) {
-      console.error('[AnnouncementStore] batch write error:', err.message);
-    }
-  }
+  // 3. Bulk write new announcements
+  const operations = newAnnouncements.map(ann => {
+    // Clone object to avoid mutating the original
+    const doc = { ...ann };
+    const docId = String(doc.id);
+    delete doc.id;
+    return {
+      updateOne: {
+        filter: { _id: docId },
+        update: { 
+          $set: { 
+            ...doc,
+            _id: docId,
+            savedAt: new Date()
+          } 
+        },
+        upsert: true
+      }
+    };
+  });
 
-  console.log(`[AnnouncementStore] Saved ${saved} new, skipped ${existingIds.size} existing`);
-  return { saved, skipped: existingIds.size, newAnnouncements };
+  try {
+    await collection.bulkWrite(operations, { ordered: false });
+    console.log(`[AnnouncementStore] Saved ${newAnnouncements.length} new, skipped ${existingIds.size} existing`);
+    return { saved: newAnnouncements.length, skipped: existingIds.size, newAnnouncements };
+  } catch (err) {
+    console.error('[AnnouncementStore] batch write error:', err.message);
+    return { saved: 0, skipped: existingIds.size, newAnnouncements: [] };
+  }
 }
 
 /**
- * Get the most recent announcements from Firestore.
+ * Get the most recent announcements from MongoDB.
  *
  * @param {object} opts
  * @param {string} [opts.exchange]    Filter by exchange (BSE|NSE)
- * @param {string} [opts.scriptCode]  Filter by scriptCode
+ * @param {string} [opts.scriptCode]  Filter by scriptCode or nseSymbol
+ * @param {string} [opts.nseSymbol]   Filter by nseSymbol
  * @param {number} [opts.limitCount]  Max documents to return (default 100)
+ * @param {string} [opts.sinceDate]   ISO date string
  * @returns {Promise<object[]>}
  */
-async function getAnnouncements({ exchange, scriptCode, limitCount = 100 } = {}) {
-  const { db } = getFirebase();
+async function getAnnouncements({ exchange, scriptCode, nseSymbol, limitCount = 100, sinceDate } = {}) {
+  const db = await getDb();
+  const collection = db.collection('announcements');
+
+  const query = {};
+  
+  if (exchange && exchange !== 'ALL') {
+    query.exchange = exchange;
+  }
+
+  if (scriptCode || nseSymbol) {
+    query.$or = [];
+    if (scriptCode) query.$or.push({ scriptCode: String(scriptCode) }, { nseSymbol: String(scriptCode) });
+    if (nseSymbol)  query.$or.push({ nseSymbol: String(nseSymbol).toUpperCase() });
+  }
+
+  if (sinceDate) {
+    query.announcementDate = { $gt: sinceDate };
+  }
 
   try {
-    let q = db.collection('announcements').orderBy('announcementDate', 'desc').limit(limitCount);
-
-    if (exchange && exchange !== 'ALL') {
-      q = db.collection('announcements')
-        .where('exchange', '==', exchange)
-        .orderBy('announcementDate', 'desc')
-        .limit(limitCount);
-    }
-
-    if (scriptCode) {
-      q = db.collection('announcements')
-        .where('scriptCode', '==', String(scriptCode))
-        .orderBy('announcementDate', 'desc')
-        .limit(limitCount);
-    }
-
-    const snap = await q.get();
-    const results = [];
-    snap.forEach((doc) => results.push(doc.data()));
-    return results;
+    const docs = await collection.find(query)
+      .sort({ announcementDate: -1 })
+      .limit(Number(limitCount) || 100)
+      .toArray();
+      
+    return docs.map(d => ({ ...d, id: String(d._id), _id: undefined }));
   } catch (err) {
     console.error('[AnnouncementStore] getAnnouncements error:', err.message);
     return [];
@@ -150,37 +115,31 @@ async function getAnnouncements({ exchange, scriptCode, limitCount = 100 } = {})
 
 /**
  * Get announcements for a specific list of script codes.
- * Used by the cron to match announcements against a user's watchlist.
  *
  * @param {string[]} scriptCodes
- * @param {string} [sinceDate]  ISO date string — only return announcements after this date
+ * @param {string} [sinceDate]
  * @returns {Promise<object[]>}
  */
 async function getAnnouncementsForScripts(scriptCodes, sinceDate) {
   if (!scriptCodes || scriptCodes.length === 0) return [];
+  
+  const db = await getDb();
+  const collection = db.collection('announcements');
 
-  const { db } = getFirebase();
-  const results = [];
-
-  // Firestore `in` max 30 values
-  const CHUNK = 30;
-  for (let i = 0; i < scriptCodes.length; i += CHUNK) {
-    const chunk = scriptCodes.slice(i, i + CHUNK).filter(Boolean);
-    if (!chunk.length) continue;
-
-    try {
-      let q = db.collection('announcements').where('scriptCode', 'in', chunk);
-      if (sinceDate) {
-        q = q.where('announcementDate', '>', sinceDate);
-      }
-      const snap = await q.get();
-      snap.forEach((doc) => results.push(doc.data()));
-    } catch (err) {
-      console.error('[AnnouncementStore] getAnnouncementsForScripts error:', err.message);
-    }
+  const cleanCodes = scriptCodes.filter(Boolean).map(String);
+  const query = { scriptCode: { $in: cleanCodes } };
+  
+  if (sinceDate) {
+    query.announcementDate = { $gt: sinceDate };
   }
 
-  return results;
+  try {
+    const docs = await collection.find(query).toArray();
+    return docs.map(d => ({ ...d, id: String(d._id), _id: undefined }));
+  } catch (err) {
+    console.error('[AnnouncementStore] getAnnouncementsForScripts error:', err.message);
+    return [];
+  }
 }
 
 module.exports = { saveAnnouncements, getAnnouncements, getAnnouncementsForScripts };

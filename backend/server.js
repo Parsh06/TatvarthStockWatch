@@ -186,20 +186,21 @@ app.get('/api/email-preview', verifyToken, (req, res) => {
 });
 
 // ── PROTECTED: Announcements ──────────────────────────────────────────────────
-app.get('/api/announcements', verifyToken, (req, res) => {
-  const all = readAnnouncements();
+app.get('/api/announcements', verifyToken, async (req, res) => {
   const { exchange, scriptCode, nseSymbol, limit: lim, since } = req.query;
-  let list = all;
-  if (exchange && exchange !== 'ALL') list = list.filter((a) => a.exchange === exchange);
-  if (scriptCode) list = list.filter((a) => a.scriptCode === scriptCode || a.nseSymbol === scriptCode);
-  if (nseSymbol)  list = list.filter((a) => a.nseSymbol  === nseSymbol.toUpperCase());
-  // `since` = ISO timestamp — count/return only announcements newer than this
-  if (since) {
-    const sinceTs = new Date(since).getTime();
-    if (!isNaN(sinceTs)) list = list.filter((a) => new Date(a.announcementDate || a.date || 0).getTime() > sinceTs);
+  const { getAnnouncements } = require('./lib/announcementStore');
+  try {
+    const list = await getAnnouncements({
+      exchange,
+      scriptCode,
+      nseSymbol,
+      limitCount: lim,
+      sinceDate: since
+    });
+    res.json({ data: list, total: list.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-  if (lim) list = list.slice(0, Number(lim));
-  res.json({ data: list, total: list.length });
 });
 
 // ── PROTECTED: Alert history ──────────────────────────────────────────────────
@@ -269,20 +270,15 @@ app.post('/api/watchlist', verifyToken, async (req, res) => {
 
     if (!ltdCode && !symbol) return res.status(400).json({ error: 'ltdCode or symbol is required' });
 
-    const scripts  = await watchlistStore.getWatchlist(req.uid);
-    const existing = scripts.find((s) =>
-      (ltdCode && s.ltdCode === ltdCode) || (symbol && s.symbol === symbol)
-    );
-    if (existing) return res.json({ ...existing, alreadyExists: true });
+    const result = await watchlistStore.addScript(req.uid, {
+      ltdCode, symbol, scriptName, exchange, notes, group, isin
+    });
+    
+    if (result.alreadyExists) {
+      return res.json({ ...result, alreadyExists: true });
+    }
 
-    const script = {
-      id: `local-${Date.now()}`,
-      ltdCode, symbol, scriptName, exchange, notes, group, isin,
-      addedAt: new Date().toISOString(),
-    };
-    scripts.push(script);
-    await watchlistStore.saveWatchlist(req.uid, scripts);
-    res.json(script);
+    res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -296,6 +292,7 @@ app.post('/api/watchlist/bulk', verifyToken, async (req, res) => {
   const existingCodes = new Set(existing.map((s) => s.ltdCode));
   let added = 0, skipped = 0;
 
+  const toAdd = [];
   for (const item of incoming) {
     const ltdCode    = String(item.ltdCode || item.bseCode || item.scripCode || '').trim();
     const symbol     = String(item.symbol  || item.nseSymbol || '').trim().toUpperCase();
@@ -305,18 +302,25 @@ app.post('/api/watchlist/bulk', verifyToken, async (req, res) => {
     const key = ltdCode || symbol;
     if (existingCodes.has(key)) { skipped++; continue; }
     existingCodes.add(key);
-    existing.push({
-      id:       `local-${Date.now()}-${added}`,
+    
+    toAdd.push({
       ltdCode, symbol, scriptName,
       exchange: 'BOTH',
       notes:    item.notes || '',
       group:    String(item.group || '').trim(),
-      addedAt:  new Date().toISOString(),
+      addedAt:  new Date()
     });
     added++;
   }
 
-  await watchlistStore.saveWatchlist(req.uid, existing);
+  if (toAdd.length > 0) {
+    const { getDb } = require('./lib/mongoClient');
+    const db = await getDb();
+    const docs = toAdd.map(s => ({ ...s, userId: req.uid }));
+    await db.collection('watchlists').insertMany(docs);
+    watchlistStore.invalidateWatchlistCache();
+  }
+
   res.json({ added, skipped });
 });
 
@@ -465,34 +469,24 @@ app.delete('/api/watchlist/all', verifyToken, async (req, res) => {
 });
 
 app.delete('/api/watchlist/:id', verifyToken, async (req, res) => {
-  const scripts = await watchlistStore.getWatchlist(req.uid);
-  const filtered = scripts.filter((s) => s.id !== req.params.id);
-  await watchlistStore.saveWatchlist(req.uid, filtered);
+  await watchlistStore.removeScript(req.uid, req.params.id);
   res.json({ success: true });
 });
 
 app.patch('/api/watchlist/:id', verifyToken, async (req, res) => {
-  const scripts = await watchlistStore.getWatchlist(req.uid);
-  const idx     = scripts.findIndex((s) => s.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'not found' });
-  scripts[idx]  = { ...scripts[idx], ...req.body };
-  await watchlistStore.saveWatchlist(req.uid, scripts);
-  res.json(scripts[idx]);
+  await watchlistStore.updateScript(req.uid, req.params.id, req.body);
+  res.json({ success: true });
 });
 
 app.patch('/api/watchlist/:id/alert', verifyToken, async (req, res) => {
-  const scripts = await watchlistStore.getWatchlist(req.uid);
-  const idx     = scripts.findIndex((s) => s.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'not found' });
   const { alertAbove, alertBelow, alertEnabled } = req.body;
-  scripts[idx] = {
-    ...scripts[idx],
+  const updates = {
     alertAbove:   alertAbove   != null ? Number(alertAbove)    : null,
     alertBelow:   alertBelow   != null ? Number(alertBelow)    : null,
     alertEnabled: alertEnabled != null ? Boolean(alertEnabled) : true,
   };
-  await watchlistStore.saveWatchlist(req.uid, scripts);
-  res.json(scripts[idx]);
+  await watchlistStore.updateScript(req.uid, req.params.id, updates);
+  res.json({ success: true });
 });
 
 // ── PROTECTED: Rates refresh (cron-safe — skips if already running) ───────────

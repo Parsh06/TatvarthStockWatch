@@ -207,39 +207,29 @@ async function runCron() {
     const lastClearedDate = stateDoc.exists ? stateDoc.data().lastClearedDate : null;
 
     if (lastClearedDate !== todayStr) {
-      console.log(`[Cron] New day detected (${todayStr}). Wiping old global announcements...`);
-      const annsSnap = await db.collection('announcements').select().get();
-      const BATCH_LIMIT = 400;
+      console.log(`[Cron] New day detected (${todayStr}). Wiping old global dailyEmailState...`);
       let batch = db.batch();
-      let count = 0;
-      for (const doc of annsSnap.docs) {
-        batch.delete(doc.ref);
-        count++;
-        if (count % BATCH_LIMIT === 0) {
-          await batch.commit();
-          batch = db.batch();
-        }
-      }
       
-      // Also wipe dailyEmailState for all users
+      // We ONLY wipe dailyEmailState now, we DO NOT wipe announcements since they live in MongoDB.
       const emailStateSnap = await db.collectionGroup('dailyEmailState').select().get();
       let stateCount = 0;
+      const BATCH_LIMIT = 400;
       for (const doc of emailStateSnap.docs) {
         batch.delete(doc.ref);
         stateCount++;
-        if ((count + stateCount) % BATCH_LIMIT === 0) {
+        if (stateCount % BATCH_LIMIT === 0) {
           await batch.commit();
           batch = db.batch();
         }
       }
       
-      if ((count + stateCount) % BATCH_LIMIT !== 0) {
+      if (stateCount % BATCH_LIMIT !== 0) {
         await batch.commit();
       }
       
       await stateRef.set({ lastClearedDate: todayStr }, { merge: true });
       summary.wipedOldData = true;
-      console.log(`[Cron] Successfully wiped ${count} old announcements and ${stateCount} user states.`);
+      console.log(`[Cron] Successfully wiped ${stateCount} user states.`);
     }
   } catch (err) {
     console.error(`[Cron] Failed to wipe old data: ${err.message}`);

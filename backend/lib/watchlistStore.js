@@ -1,44 +1,124 @@
 'use strict';
 
-const { db } = require('./firebaseAdmin');
-
-async function getWatchlist(uid) {
-  if (!uid) return [];
-  const snap = await db.collection('users').doc(uid).collection('watchlist').get();
-  if (snap.empty) return [];
-  const scripts = [];
-  snap.forEach(doc => scripts.push(doc.data()));
-  return scripts;
-}
-
-async function saveWatchlist(uid, scripts) {
-  // Not heavily used in the new frontend, but left for compatibility
-  // In the new schema, scripts are saved individually, not as an array
-}
+const { getDb } = require('./mongoClient');
+const { ObjectId } = require('mongodb');
 
 let globalWatchlistCache = null;
 let lastCacheTime = 0;
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
-// Global aggregation for background cron jobs
-// The cron needs to know which scripts to fetch live rates and announcements for.
-// We pull all watchlists via a Collection Group query on 'watchlist'.
+/**
+ * Get the watchlist for a specific user.
+ * @param {string} uid
+ * @returns {Promise<object[]>}
+ */
+async function getWatchlist(uid) {
+  if (!uid) return [];
+  const db = await getDb();
+  try {
+    const docs = await db.collection('watchlists').find({ userId: uid }).sort({ addedAt: -1 }).toArray();
+    return docs.map(d => ({ ...d, id: String(d._id), _id: undefined }));
+  } catch (e) {
+    console.error('[WatchlistStore] getWatchlist error:', e);
+    return [];
+  }
+}
+
+/**
+ * Save an array of scripts to the user's watchlist in bulk.
+ * Used for bulk updates/exports where the entire list is provided.
+ * @param {string} uid
+ * @param {object[]} scripts
+ */
+async function saveWatchlist(uid, scripts) {
+  if (!uid) return;
+  const db = await getDb();
+  const collection = db.collection('watchlists');
+
+  try {
+    // We do a "replace all" for this user since this function is historically used to sync
+    await collection.deleteMany({ userId: uid });
+    
+    if (scripts.length > 0) {
+      const docs = scripts.map(s => {
+        const doc = { ...s, userId: uid };
+        delete doc.id; // remove frontend ID
+        return doc;
+      });
+      await collection.insertMany(docs);
+    }
+    invalidateWatchlistCache();
+  } catch (e) {
+    console.error('[WatchlistStore] saveWatchlist error:', e);
+  }
+}
+
+/**
+ * Add a single script to the watchlist.
+ */
+async function addScript(uid, scriptData) {
+  const db = await getDb();
+  const collection = db.collection('watchlists');
+  const doc = { ...scriptData, userId: uid, addedAt: new Date() };
+  
+  // Prevent exact duplicates by ltdCode
+  if (doc.ltdCode) {
+    const exists = await collection.findOne({ userId: uid, ltdCode: doc.ltdCode });
+    if (exists) return { id: String(exists._id), alreadyExists: true };
+  }
+
+  const result = await collection.insertOne(doc);
+  invalidateWatchlistCache();
+  return { id: String(result.insertedId), ...doc };
+}
+
+/**
+ * Remove a single script by document ID.
+ */
+async function removeScript(uid, docId) {
+  const db = await getDb();
+  try {
+    await db.collection('watchlists').deleteOne({ _id: new ObjectId(docId), userId: uid });
+    invalidateWatchlistCache();
+  } catch (e) {
+    console.error('[WatchlistStore] removeScript error:', e);
+  }
+}
+
+/**
+ * Update a specific script.
+ */
+async function updateScript(uid, docId, updates) {
+  const db = await getDb();
+  try {
+    await db.collection('watchlists').updateOne(
+      { _id: new ObjectId(docId), userId: uid },
+      { $set: updates }
+    );
+    invalidateWatchlistCache();
+  } catch (e) {
+    console.error('[WatchlistStore] updateScript error:', e);
+  }
+}
+
+/**
+ * Global aggregation for background cron jobs.
+ * @returns {Promise<object[]>}
+ */
 async function getAllTrackedScripts() {
   const now = Date.now();
   if (globalWatchlistCache && (now - lastCacheTime < CACHE_TTL)) {
     return globalWatchlistCache;
   }
 
-  const snap = await db.collectionGroup('watchlist').get();
-  const allScripts = [];
-  
-  snap.forEach(doc => {
-    const data = doc.data();
-    // Extract UID from the path: users/{uid}/watchlist/{docId}
-    const uid = doc.ref.parent.parent ? doc.ref.parent.parent.id : null;
-    if (uid) data._uid = uid;
-    allScripts.push(data);
-  });
+  const db = await getDb();
+  let allScripts = [];
+  try {
+    allScripts = await db.collection('watchlists').find({}).toArray();
+  } catch (e) {
+    console.error('[WatchlistStore] getAllTrackedScripts error:', e);
+    return [];
+  }
   
   // Deduplicate by bseCode/nseSymbol while accumulating UIDs
   const unique = new Map();
@@ -48,8 +128,8 @@ async function getAllTrackedScripts() {
       if (!unique.has(key)) {
         unique.set(key, { ...s, uids: new Set() });
       }
-      if (s._uid) {
-        unique.get(key).uids.add(s._uid);
+      if (s.userId) {
+        unique.get(key).uids.add(s.userId);
       }
     }
   }
@@ -73,6 +153,9 @@ function invalidateWatchlistCache() {
 module.exports = {
   getWatchlist,
   saveWatchlist,
+  addScript,
+  removeScript,
+  updateScript,
   getAllTrackedScripts,
   invalidateWatchlistCache
 };
