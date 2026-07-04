@@ -163,7 +163,7 @@ router.get('/historical-table', async (req, res) => {
 // ── OPEN: BSE Indices (GetSensexDatanew/w) ─────────────────────────────────
 router.get('/indices', async (req, res) => {
   try {
-    let raw = await bseGet('/GetSensexDatanew/w', {}, 10000, {}, 'https://api.bseindia.com/RealTimeBseIndiaAPI/api');
+    let raw = await bseGet('https://api.bseindia.com/RealTimeBseIndiaAPI/api/GetSensexDatanew/w');
     if (typeof raw === 'string') {
       try { raw = JSON.parse(raw); } catch (e) { raw = []; }
     }

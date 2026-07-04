@@ -75,7 +75,7 @@ export default function GainersLosersPage() {
       fetchData()
     }, 60000)
     return () => clearInterval(interval)
-  }, [type, bseIndxGrp, bseOrderBy]) // Re-bind on state change
+  }, [type]) // Re-bind on state change
 
   const renderBseTable = () => (
     <div className="bg-surface border border-border rounded-xl overflow-hidden flex flex-col h-[500px]">

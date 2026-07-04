@@ -68,9 +68,6 @@ export default function DashboardPage() {
   const [scriptsWithAlerts, setScriptsWithAlerts] = useState(0)
   const [market, setMarket]               = useState(null)
   const [marketLoading, setMarketLoading] = useState(true)
-  const [movers, setMovers]               = useState(null)
-  const [moversLoading, setMoversLoading] = useState(true)
-  const [moversTab, setMoversTab]         = useState('gainers')
   const [indices, setIndices]             = useState(null)
   const [indicesLoading, setIndicesLoading] = useState(true)
 
@@ -86,14 +83,6 @@ export default function DashboardPage() {
       .finally(() => setMarketLoading(false))
   }
 
-  function loadMovers() {
-    setMoversLoading(true)
-    apiClient('/api/bse/movers?limit=7')
-      .then((d) => setMovers(d))
-      .catch(() => {})
-      .finally(() => setMoversLoading(false))
-  }
-
   function loadIndices() {
     setIndicesLoading(true)
     apiClient('/api/bse/indices')
@@ -102,7 +91,7 @@ export default function DashboardPage() {
       .finally(() => setIndicesLoading(false))
   }
 
-  useEffect(() => { loadMarket(); loadMovers(); loadIndices() }, [])
+  useEffect(() => { loadMarket(); loadIndices() }, [])
 
   useEffect(() => {
     setScriptsWithAlerts(watchlist.filter((s) => s.alertEnabled && (s.alertAbove != null || s.alertBelow != null)).length)
@@ -511,95 +500,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Top Gainers / Losers */}
-      <div className="bg-surface border border-border rounded-xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-1 bg-background rounded-lg p-0.5 border border-border">
-            {['gainers', 'losers'].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setMoversTab(tab)}
-                className={clsx(
-                  'px-4 py-1.5 rounded-md text-xs font-semibold transition capitalize',
-                  moversTab === tab
-                    ? tab === 'gainers'
-                      ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
-                      : 'bg-red-500/20 text-red-400 shadow-sm'
-                    : 'text-textMuted hover:text-textPrimary'
-                )}
-              >
-                {tab === 'gainers' ? '▲ Top Gainers' : '▼ Top Losers'}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={loadMovers} disabled={moversLoading}
-            className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 disabled:opacity-60 transition"
-          >
-            <RefreshCw className={clsx('w-3 h-3', moversLoading && 'animate-spin')} />
-            Refresh
-          </button>
-        </div>
-
-        {moversLoading ? (
-          <div className="space-y-2 animate-pulse">
-            {[1,2,3,4,5].map((i) => (
-              <div key={i} className="flex items-center gap-3 py-2">
-                <div className="w-4 h-3 bg-border rounded" />
-                <div className="flex-1 h-3 bg-border rounded" />
-                <div className="w-16 h-3 bg-border rounded" />
-                <div className="w-14 h-3 bg-border rounded" />
-              </div>
-            ))}
-          </div>
-        ) : !movers || (moversTab === 'gainers' ? movers.gainers : movers.losers)?.length === 0 ? (
-          <div className="text-center py-6 text-sm text-textMuted">
-            Market data currently unavailable
-            <br /><button onClick={loadMovers} className="text-xs text-primary mt-2 block mx-auto hover:text-primary/80 transition">Try again</button>
-          </div>
-        ) : (
-          <>
-            <div className="space-y-1">
-              {(moversTab === 'gainers' ? movers.gainers : movers.losers).map((m, i) => {
-                const up = (m.pctChange ?? 0) >= 0
-                return (
-                  <button
-                    key={m.bseCode}
-                    onClick={() => m.bseCode && navigate('/company-data', { state: { script: { bseCode: m.bseCode, scripName: m.company, symbol: m.symbol } } })}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.03] transition text-left group"
-                  >
-                    <span className="text-xs font-bold text-textMuted/40 w-4 text-center flex-shrink-0">{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-textPrimary truncate group-hover:text-primary transition">{m.company}</p>
-                      <p className="text-[11px] font-mono text-textMuted/50">{m.bseCode}{m.symbol ? ` · ${m.symbol}` : ''}</p>
-                    </div>
-                    {m.ltp != null && (
-                      <p className="text-sm font-bold text-textPrimary tabular-nums flex-shrink-0">
-                        ₹{m.ltp.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                      </p>
-                    )}
-                    {m.pctChange != null && (
-                      <span className={clsx(
-                        'flex items-center gap-0.5 text-xs font-semibold px-2 py-1 rounded-lg flex-shrink-0',
-                        up ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'
-                      )}>
-                        {up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                        {up ? '+' : ''}{m.pctChange.toFixed(2)}%
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-            {movers.fetchedAt && (
-              <p className="text-[11px] text-textMuted/40 mt-3 text-right">
-                BSE data · {new Date(movers.fetchedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                {movers.cached ? ' (cached)' : ''}
-              </p>
-            )}
-          </>
-        )}
-      </div>
+      {/* Removed Top Gainers / Losers section as requested */}
 
       {/* Quick add */}
       <div className="bg-surface border border-border rounded-xl p-5">
