@@ -747,6 +747,35 @@ app.all('/api/cron/trigger', async (req, res) => {
   }
 
   try {
+    // ── Step 0: Daily Midnight Cleanup ──────────────────────────────────────────
+    const admin = require('firebase-admin');
+    const db = admin.firestore();
+    const todayStr = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0]; // IST Date
+    const stateRef = db.collection('system').doc('announcements-state');
+    const stateDoc = await stateRef.get();
+    const lastClearedDate = stateDoc.exists ? stateDoc.data().lastClearedDate : null;
+
+    if (lastClearedDate !== todayStr) {
+      console.log(`[Global Cron] New day detected (${todayStr}). Wiping old global announcements...`);
+      const annsSnap = await db.collection('announcements').select().get();
+      const BATCH_LIMIT = 400;
+      let batch = db.batch();
+      let count = 0;
+      for (const doc of annsSnap.docs) {
+        batch.delete(doc.ref);
+        count++;
+        if (count % BATCH_LIMIT === 0) {
+          await batch.commit();
+          batch = db.batch();
+        }
+      }
+      if (count % BATCH_LIMIT !== 0) {
+        await batch.commit();
+      }
+      await stateRef.set({ lastClearedDate: todayStr }, { merge: true });
+      console.log(`[Global Cron] Successfully wiped ${count} old announcements.`);
+    }
+
     const watchlistStore = require('./lib/watchlistStore');
     const scripts = await watchlistStore.getAllTrackedScripts();
     if (!scripts.length) return res.json({ started: false, reason: 'no_scripts_tracked_globally' });
@@ -770,24 +799,39 @@ app.all('/api/cron/trigger', async (req, res) => {
     // 2. Fetch Announcements
     const nseWatchedMap = new Map([...nseSet].map((c) => [c.toUpperCase(), metaMap.get(c) || {}]));
     const [bseAll, nseAll] = await Promise.all([
-      bseSet.size > 0 ? fetchAllBSEAnnouncements() : Promise.resolve([]),
+      fetchAllBSEAnnouncements(), // Fetch ALL BSE announcements unconditionally
       nseSet.size > 0 ? fetchAllNSEAnnouncements(nseWatchedMap) : Promise.resolve([]),
     ]);
 
+    const allFetched = [];
+    const seenFetched = new Set();
+    for (const a of [...bseAll, ...nseAll]) {
+      const id = String(a.id);
+      if (!seenFetched.has(id)) {
+        seenFetched.add(id);
+        allFetched.push(a);
+      }
+    }
+
+    // Match against watchlists for notifications
     const bseMatched = bseAll.filter((a) => bseSet.has(a.scriptCode));
     const nseMatched = nseAll.filter((a) => nseSet.has((a.scriptCode || '').toUpperCase()));
     const matched    = [...bseMatched, ...nseMatched];
 
-    if (matched.length > 0) {
+    if (allFetched.length > 0) {
       const { saveAnnouncements } = require('./lib/announcementStore');
-      const { saved, newAnnouncements } = await saveAnnouncements(matched);
-      const fresh = newAnnouncements || [];
+      // Save ALL announcements to global DB
+      const { saved, newAnnouncements } = await saveAnnouncements(allFetched);
+      const freshAll = newAnnouncements || [];
       
       const existing = readAnnouncements();
-      writeAnnouncements([...fresh, ...existing].slice(0, 1000), {
+      writeAnnouncements([...freshAll, ...existing].slice(0, 1000), {
         lastTriggeredAt: new Date().toISOString(),
       });
-      console.log('[Global Cron] Saved ' + fresh.length + ' new announcements to Firestore');
+      console.log('[Global Cron] Saved ' + freshAll.length + ' new announcements to Firestore');
+      
+      // Filter fresh announcements for just the matched ones to send emails
+      const fresh = freshAll.filter((a) => bseSet.has(a.scriptCode) || nseSet.has((a.scriptCode || '').toUpperCase()));
       
       if (fresh.length > 0) {
         const admin = require('firebase-admin');
