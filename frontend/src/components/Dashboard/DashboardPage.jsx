@@ -71,6 +71,8 @@ export default function DashboardPage() {
   const [movers, setMovers]               = useState(null)
   const [moversLoading, setMoversLoading] = useState(true)
   const [moversTab, setMoversTab]         = useState('gainers')
+  const [indices, setIndices]             = useState(null)
+  const [indicesLoading, setIndicesLoading] = useState(true)
 
   useEffect(() => {
     getAlerts(currentUser?.uid, 200).then((a) => setAlertCount(a.length)).catch(() => {})
@@ -92,7 +94,15 @@ export default function DashboardPage() {
       .finally(() => setMoversLoading(false))
   }
 
-  useEffect(() => { loadMarket(); loadMovers() }, [])
+  function loadIndices() {
+    setIndicesLoading(true)
+    apiClient('/api/bse/indices')
+      .then((d) => setIndices(d))
+      .catch(() => {})
+      .finally(() => setIndicesLoading(false))
+  }
+
+  useEffect(() => { loadMarket(); loadMovers(); loadIndices() }, [])
 
   useEffect(() => {
     setScriptsWithAlerts(watchlist.filter((s) => s.alertEnabled && (s.alertAbove != null || s.alertBelow != null)).length)
@@ -334,6 +344,48 @@ export default function DashboardPage() {
           </div>
         ) : (
           <p className="text-sm text-textMuted text-center py-4">Could not load market data</p>
+        )}
+      </div>
+
+      {/* BSE Indices */}
+      <div className="bg-surface border border-border rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-textPrimary flex items-center gap-2">
+            <BarChart2 className="w-4 h-4 text-primary" />
+            BSE Indices
+          </h2>
+          <button onClick={loadIndices} disabled={indicesLoading}
+            className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition disabled:opacity-60">
+            <RefreshCw className={clsx('w-3 h-3', indicesLoading && 'animate-spin')} />
+            {indicesLoading ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
+
+        {indicesLoading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 animate-pulse">
+            {[1,2,3,4,5,6].map((i) => <div key={i} className="h-[88px] bg-border rounded-xl" />)}
+          </div>
+        ) : indices?.length > 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+            {indices.map((idx, i) => {
+              const pchg = parseFloat((idx.perchg || '').replace(/,/g, ''));
+              const isUp = pchg >= 0;
+              return (
+                <div key={i} className="bg-background border border-border rounded-xl p-3.5 hover:border-primary/30 transition-colors">
+                  <p className="text-xs text-textMuted mb-1 truncate" title={idx.indxnm}>{idx.indxnm}</p>
+                  <p className="text-sm font-bold text-textPrimary tabular-nums">
+                    {idx.ltp}
+                  </p>
+                  <p className={clsx('text-[11px] font-medium mt-1 flex items-center gap-1', isUp ? 'text-emerald-400' : 'text-red-400')}>
+                    {isUp ? <TrendingUp className="w-3 h-3 flex-shrink-0" /> : <TrendingDown className="w-3 h-3 flex-shrink-0" />}
+                    <span className="truncate">{idx.chg} ({idx.perchg}%)</span>
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-textMuted text-center py-4">Could not load indices data</p>
         )}
       </div>
 

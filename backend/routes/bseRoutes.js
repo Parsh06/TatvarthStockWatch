@@ -160,6 +160,17 @@ router.get('/historical-table', async (req, res) => {
   }
 });
 
+// ── OPEN: BSE Indices (GetSensexDatanew/w) ─────────────────────────────────
+router.get('/indices', async (req, res) => {
+  try {
+    const raw = await bseGet('/GetSensexDatanew/w', {}, 10000, {}, 'https://api.bseindia.com/RealTimeBseIndiaAPI/api');
+    res.json(raw);
+  } catch (e) {
+    console.error('[Indices Error]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── OPEN: BSE company data (quote + details + financials + shareholding + bulk deals) ──
 router.get('/company', async (req, res) => {
   const code   = sanitizeCode(req.query.code);
