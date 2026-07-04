@@ -140,6 +140,26 @@ router.get('/history', async (req, res) => {
   }
 });
 
+// ── OPEN: BSE historical table (StockpricesearchData/w) ────────────────────
+router.get('/historical-table', async (req, res) => {
+  const code = sanitizeCode(req.query.code);
+  const from = req.query.from; // DD/MM/YYYY
+  const to = req.query.to; // DD/MM/YYYY
+  if (!code || !from || !to) return res.status(400).json({ error: 'code, from, to required' });
+
+  try {
+    const raw = await bseGet(
+      '/StockpricesearchData/w',
+      { MonthDate: from, YearDate: to, pageType: 0, Scode: code, Seg: 'C', rbType: 'D', SortOrder: true },
+      15000
+    );
+    res.json(raw);
+  } catch (e) {
+    console.error(`[Historical Table Error ${code}]`, e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── OPEN: BSE company data (quote + details + financials + shareholding + bulk deals) ──
 router.get('/company', async (req, res) => {
   const code   = sanitizeCode(req.query.code);

@@ -263,6 +263,8 @@ export default function CompanyDataPage() {
   const [histRange,   setHistRange]   = useState('1M')
   const [histData,    setHistData]    = useState(null)
   const [histLoading, setHistLoading] = useState(false)
+  const [histTableData, setHistTableData] = useState([])
+  const [histTableLoading, setHistTableLoading] = useState(false)
   const [showPortfolioHint, setShowPortfolioHint] = useState(false)
 
   const { watchlist, addScript } = useWatchlist()
@@ -277,7 +279,7 @@ export default function CompanyDataPage() {
   async function fetchData(item) {
     if (!item) return
     setSelected(item)
-    setLoading(true); setError(null); setData(null); setChart(null); setHistData(null)
+    setLoading(true); setError(null); setData(null); setChart(null); setHistData(null); setHistTableData([])
     try {
       const params = new URLSearchParams({ code: item.bseCode })
       if (item.symbol) params.set('symbol', item.symbol)
@@ -296,13 +298,31 @@ export default function CompanyDataPage() {
   async function fetchHistory(scriptItem, range) {
     if (!scriptItem?.bseCode) return
     setHistLoading(true)
+    setHistTableLoading(true)
     try {
       const params = new URLSearchParams({ code: scriptItem.bseCode, range })
       if (scriptItem.symbol) params.set('symbol', scriptItem.symbol)
       const d = await apiClient(`/api/bse/history?${params.toString()}`)
       setHistData(d)
+
+      const today = new Date();
+      const fromD = new Date(today);
+      if (range === '1W') fromD.setDate(today.getDate() - 7);
+      else if (range === '3M') fromD.setMonth(today.getMonth() - 3);
+      else if (range === '6M') fromD.setMonth(today.getMonth() - 6);
+      else if (range === '1Y') fromD.setFullYear(today.getFullYear() - 1);
+      else if (range === '5Y') fromD.setFullYear(today.getFullYear() - 5);
+      else fromD.setMonth(today.getMonth() - 1);
+      
+      const fmtD = (dt) => `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${dt.getFullYear()}`;
+      
+      const tableData = await apiClient(`/api/bse/historical-table?code=${scriptItem.bseCode}&from=${fmtD(fromD)}&to=${fmtD(today)}`)
+      setHistTableData(tableData?.StockData || [])
     } catch {}
-    finally { setHistLoading(false) }
+    finally { 
+      setHistLoading(false)
+      setHistTableLoading(false)
+    }
   }
 
   function handleRangeChange(range) {
@@ -628,6 +648,45 @@ export default function CompanyDataPage() {
               <div className="h-48 bg-border/20 rounded-xl animate-pulse" />
             )}
           </Section>
+
+          {/* ── Historical Data Table ── */}
+          {(histTableData?.length > 0 || histTableLoading) && (
+            <Section title="Historical Data Table" icon={Calendar} defaultOpen={false}>
+              {histTableLoading ? (
+                <div className="h-48 flex items-center justify-center">
+                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        {['Date', 'Open', 'High', 'Low', 'Close', 'WAP', 'Shares', 'Trades', 'Turnover', 'Del %'].map((h) => (
+                          <th key={h} className="text-right px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap first:text-left">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {histTableData.map((row, i) => (
+                        <tr key={i} className="border-b border-border/40 hover:bg-white/3 transition">
+                          <td className="px-3 py-2.5 text-textPrimary font-medium whitespace-nowrap">{row.Dates}</td>
+                          <td className="px-3 py-2.5 text-textPrimary tabular-nums text-right">{row.qe_open}</td>
+                          <td className="px-3 py-2.5 text-emerald-400 tabular-nums text-right">{row.qe_high}</td>
+                          <td className="px-3 py-2.5 text-red-400 tabular-nums text-right">{row.qe_low}</td>
+                          <td className="px-3 py-2.5 text-textPrimary font-semibold tabular-nums text-right">{row.qe_close}</td>
+                          <td className="px-3 py-2.5 text-textMuted tabular-nums text-right">{row.WeightedPrice}</td>
+                          <td className="px-3 py-2.5 text-textMuted tabular-nums text-right">{row.no_of_shrs}</td>
+                          <td className="px-3 py-2.5 text-textMuted tabular-nums text-right">{row.no_trades}</td>
+                          <td className="px-3 py-2.5 text-textMuted tabular-nums text-right">{row.net_turnov}</td>
+                          <td className="px-3 py-2.5 text-primary tabular-nums text-right font-medium">{row.Perc_Del_Qty}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Section>
+          )}
 
           {/* ── Fundamentals ── */}
           {quote && (
