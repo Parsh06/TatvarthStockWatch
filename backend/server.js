@@ -539,11 +539,25 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
     const { saveAnnouncements } = require('./lib/announcementStore');
     
     let freshAnnouncements = [];
-    if (matched.length > 0) {
-      // 1. Save to Firestore (only writes if genuinely new)
-      const { saved, newAnnouncements } = await saveAnnouncements(matched);
-      freshAnnouncements = newAnnouncements || [];
-      console.log(`[Trigger] Saved ${saved} new announcements to Firestore`);
+    if (bseAll.length > 0 || nseAll.length > 0) {
+      const allFetched = [];
+      const seenFetched = new Set();
+      for (const a of [...bseAll, ...nseAll]) {
+        const id = String(a.id);
+        if (!seenFetched.has(id)) {
+          seenFetched.add(id);
+          allFetched.push(a);
+        }
+      }
+
+      // 1. Save ALL to MongoDB (only writes if genuinely new)
+      const { saved, newAnnouncements } = await saveAnnouncements(allFetched);
+      
+      // But only alert for the ones in the watchlist!
+      const freshAll = newAnnouncements || [];
+      freshAnnouncements = freshAll.filter((a) => bseSet.has(a.scriptCode) || nseSet.has((a.scriptCode || '').toUpperCase()));
+      
+      console.log(`[Trigger] Saved ${saved} new announcements to MongoDB`);
       
       // 2. Also keep memory cache updated (for email preview, etc)
       const existing = readAnnouncements();
