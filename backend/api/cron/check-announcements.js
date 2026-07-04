@@ -52,66 +52,41 @@ const CORS_HEADERS = {
 
 // ─── User index helpers ───────────────────────────────────────────────────────
 
-/**
- * Read all user docs. Each doc contains:
- *   bseCodesIndex: string[]   all watched BSE codes for this user
- *   nseCodesIndex: string[]   all watched NSE symbols for this user
- *   email:         string     (may be empty — fall back to Auth)
- *   displayName:   string
- *
- * Returns:
- *   users[]            — raw user records for email/name lookup later
- *   bseCodeToUids      — Map: bseCode → uid[]
- *   nseSymbolToUids    — Map: nseSymbol → uid[]
- *   watchedBSECodes    — Set of all watched BSE codes across all users
- *   watchedNSESymbols  — Set of all watched NSE symbols across all users
- */
 async function loadUsersAndBuildIndex(db) {
+  const { getAllTrackedScripts } = require('../../lib/watchlistStore');
+  const allWatched = await getAllTrackedScripts();
+  
   const snap = await db.collection('users').get();
+  const users = [];
+  snap.forEach((d) => {
+    users.push({ uid: d.id, data: d.data() });
+  });
 
-  const users           = [];
   const bseCodeToUids   = {};
   const nseSymbolToUids = {};
   const watchedBSECodes   = new Set();
   const watchedNSESymbols = new Set();
 
-  snap.forEach((d) => {
-    const uid  = d.id;
-    const data = d.data();
-    const bseCodes   = Array.isArray(data.bseCodesIndex) ? data.bseCodesIndex : [];
-    const nseSymbols = Array.isArray(data.nseCodesIndex) ? data.nseCodesIndex : [];
-
-    if (!bseCodes.length && !nseSymbols.length) return; // skip users with empty watchlist
-
-    users.push({ uid, data });
-
-    for (const code of bseCodes) {
-      watchedBSECodes.add(code);
-      if (!bseCodeToUids[code]) bseCodeToUids[code] = [];
-      bseCodeToUids[code].push(uid);
+  for (const s of allWatched) {
+    const bse = (s.bseCode || s.ltdCode || '').trim();
+    if (bse) {
+      watchedBSECodes.add(bse);
+      if (!bseCodeToUids[bse]) bseCodeToUids[bse] = [];
+      bseCodeToUids[bse].push(...s.uids);
     }
-
-    for (const sym of nseSymbols) {
-      watchedNSESymbols.add(sym);
-      if (!nseSymbolToUids[sym]) nseSymbolToUids[sym] = [];
-      nseSymbolToUids[sym].push(uid);
+    
+    const nse = (s.nseSymbol || s.symbol || '').trim();
+    if (nse) {
+      watchedNSESymbols.add(nse);
+      if (!nseSymbolToUids[nse]) nseSymbolToUids[nse] = [];
+      nseSymbolToUids[nse].push(...s.uids);
     }
-  });
+  }
 
   return { users, bseCodeToUids, nseSymbolToUids, watchedBSECodes, watchedNSESymbols };
 }
 
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
-
-/** Filter fetched announcements to only watched codes — pure in-memory. */
-function filterToWatched(announcements, watchedBSECodes, watchedNSESymbols) {
-  return announcements.filter((a) => {
-    const code = (a.scriptCode || '').toUpperCase();
-    return a.exchange === 'NSE'
-      ? watchedNSESymbols.has(code)
-      : watchedBSECodes.has(code);
-  });
-}
 
 function deduplicateById(items) {
   const seen = new Set();
@@ -125,12 +100,6 @@ function deduplicateById(items) {
 
 // ─── Notification writers ─────────────────────────────────────────────────────
 
-/**
- * Write per-user notification docs.
- * Doc ID = NEWSID → completely idempotent, zero existence-check queries.
- * Since newAnnouncements are definitively new (just written to global
- * announcements collection for the first time), read:false is always correct.
- */
 async function saveUserNotifications(db, admin, uid, announcements) {
   if (!announcements.length) return;
 
@@ -139,13 +108,13 @@ async function saveUserNotifications(db, admin, uid, announcements) {
 
   for (let i = 0; i < announcements.length; i += BATCH_SIZE) {
     const batch = db.batch();
-    for (const ann of announcements.slice(i, i + BATCH_SIZE)) {
-      const ref = db
-        .collection('users').doc(uid)
-        .collection('notifications').doc(String(ann.id));
+    const chunk = announcements.slice(i, i + BATCH_SIZE);
+    
+    for (const ann of chunk) {
+      const ref = db.collection('users').doc(uid).collection('notifications').doc(String(ann.id));
       batch.set(ref, {
-        announcementId:   String(ann.id),
-        exchange:         ann.exchange         || 'BSE',
+        id:               ann.id               || '',
+        exchange:         ann.exchange         || '',
         scriptName:       ann.scriptName       || '',
         scriptCode:       ann.scriptCode       || '',
         category:         ann.category         || '',
@@ -165,7 +134,6 @@ async function saveUserNotifications(db, admin, uid, announcements) {
   }
 }
 
-/** Increment watchlist counters for newly-notified announcements. */
 async function updateWatchlistCounts(db, admin, uid, announcements) {
   const countByCode  = {};
   const latestByCode = {};
@@ -182,14 +150,13 @@ async function updateWatchlistCounts(db, admin, uid, announcements) {
   const codes = Object.keys(countByCode);
   if (!codes.length) return;
 
-  // Find watchlist docs by bseCode to get their docIds
   const codeSet = new Set(codes);
   const wlSnap  = await db.collection('users').doc(uid).collection('watchlist').get();
   if (wlSnap.empty) return;
 
   const batch = db.batch();
   wlSnap.forEach((d) => {
-    const code = (d.data().bseCode || '').toUpperCase();
+    const code = (d.data().bseCode || d.data().ltdCode || '').toUpperCase();
     if (!codeSet.has(code)) return;
     batch.update(d.ref, {
       announcementCount:  admin.firestore.FieldValue.increment(countByCode[code]),
@@ -200,7 +167,6 @@ async function updateWatchlistCounts(db, admin, uid, announcements) {
   await batch.commit();
 }
 
-/** Get user email: in-memory user data first, then Firebase Auth fallback. */
 async function getUserEmail(admin, uid, userData) {
   if (userData.email) return { email: userData.email, name: userData.displayName || 'Investor' };
   try {
@@ -232,14 +198,8 @@ async function runCron() {
     errors:              [],
   };
 
-  // ── Step 1: Load user docs + build in-memory reverse map ──────────────────
   const { users, bseCodeToUids, nseSymbolToUids, watchedBSECodes, watchedNSESymbols }
     = await loadUsersAndBuildIndex(db);
-
-  if (!users.length) {
-    console.log('[Cron] No users with watchlists. Done.');
-    return summary;
-  }
 
   summary.usersWithWatchlist = users.length;
   summary.watchedBSECodes    = watchedBSECodes.size;
@@ -248,41 +208,33 @@ async function runCron() {
     `[Cron] ${users.length} user(s) | ${watchedBSECodes.size} BSE code(s) | ${watchedNSESymbols.size} NSE symbol(s)`
   );
 
-  // ── Step 2: Fetch ALL BSE + ALL NSE concurrently ──────────────────────────
-  // BSE: one paginated fetch for ALL companies (~10-20 pages, ~500 items)
-  // NSE: one call for all (~100 items)
   const [bseAll, nseAll] = await Promise.all([
     fetchAllBSEAnnouncements().catch((e) => {
       summary.errors.push({ step: 'bse-fetch', error: e.message });
       return [];
     }),
-    watchedNSESymbols.size > 0
-      ? fetchNSEAnnouncements(null).catch((e) => {
-          summary.errors.push({ step: 'nse-fetch', error: e.message });
-          return [];
-        })
-      : Promise.resolve([]),
+    fetchNSEAnnouncements(null).catch((e) => {
+      summary.errors.push({ step: 'nse-fetch', error: e.message });
+      return [];
+    }),
   ]);
 
   summary.bseFetched = bseAll.length;
   summary.nseFetched = nseAll.length;
   console.log(`[Cron] Fetched: BSE=${bseAll.length} NSE=${nseAll.length}`);
 
-  // ── Step 3: Filter in-memory to only watched codes ────────────────────────
-  const bseFiltered = filterToWatched(bseAll, watchedBSECodes, new Set());
-  const nseFiltered = filterToWatched(nseAll, new Set(), watchedNSESymbols);
-  const allFiltered = deduplicateById([...bseFiltered, ...nseFiltered]);
+  const allFetched = deduplicateById([...bseAll, ...nseAll]);
 
-  summary.afterFilter = allFiltered.length;
-  console.log(`[Cron] After filter: ${allFiltered.length} (BSE: ${bseFiltered.length} NSE: ${nseFiltered.length})`);
+  summary.afterFilter = allFetched.length;
+  console.log(`[Cron] Saving all ${allFetched.length} announcements...`);
 
-  if (!allFiltered.length) {
-    console.log('[Cron] No watched-stock announcements today. Done.');
+  if (!allFetched.length) {
+    console.log('[Cron] No announcements today. Done.');
     return summary;
   }
 
-  // ── Step 4: Save only NEW to global announcements collection ──────────────
-  const { saved, skipped, newAnnouncements } = await saveAnnouncements(allFiltered);
+  // ── Step 4: Save ALL NEW announcements to global collection ──────────────
+  const { saved, skipped, newAnnouncements } = await saveAnnouncements(allFetched);
   summary.newlySaved      = saved;
   summary.skippedExisting = skipped;
   console.log(`[Cron] DB: ${saved} new saved, ${skipped} already existed`);
