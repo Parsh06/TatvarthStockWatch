@@ -3,30 +3,13 @@ import { TrendingUp, TrendingDown, RefreshCw, AlertCircle, ArrowUpRight, ArrowDo
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 
-// Constants for BSE filters
-const BSE_INDEX_GROUPS = [
-  { label: 'All Market', value: 'AllMkt' },
-  { label: 'Group', value: 'Group' },
-  { label: 'Index', value: 'Index' },
-  { label: 'Equity (T+1)', value: 'EqT1' },
-  { label: 'Equity (T+0)', value: 'EqT0' },
-]
 
-const BSE_ORDER_BY = [
-  { label: 'All', value: 'all' },
-  { label: '> 10%', value: 'morethen10' },
-  { label: '5% to 10%', value: '5to10' },
-  { label: '2% to 5%', value: '2to5' },
-  { label: 'Up to 2%', value: 'upto2' },
-]
 
 export default function GainersLosersPage() {
   const [type, setType] = useState('gainer') // 'gainer' or 'loser'
   const [exchange, setExchange] = useState('BSE')
   
   // BSE specific state
-  const [bseIndxGrp, setBseIndxGrp] = useState('AllMkt')
-  const [bseOrderBy, setBseOrderBy] = useState('all')
   const [bseData, setBseData] = useState([])
   
   // NSE specific state
@@ -41,7 +24,7 @@ export default function GainersLosersPage() {
     setError(null)
     
     try {
-      const bseUrl = `/api/bse/gainers-losers?GLtype=${type}&IndxGrp=${bseIndxGrp}&IndxGrpval=${bseIndxGrp}&orderby=${bseOrderBy}`
+      const bseUrl = `/api/bse/gainers-losers?GLtype=${type}&IndxGrp=AllMkt&IndxGrpval=AllMkt&orderby=all`
       
       const nseType = type === 'gainer' ? 'gainers' : 'loosers'
       const nseUrl = `/api/nse/gainers-losers?index=${nseType}`
@@ -84,7 +67,7 @@ export default function GainersLosersPage() {
   useEffect(() => {
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, bseIndxGrp, bseOrderBy])
+  }, [type])
 
   // Polling every 60 seconds
   useEffect(() => {
@@ -267,32 +250,6 @@ export default function GainersLosersPage() {
               NSE
             </button>
           </div>
-
-          {/* BSE Filters */}
-          {exchange === 'BSE' && (
-            <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-              <span className="text-sm text-textMuted font-medium whitespace-nowrap hidden md:inline-block">BSE Filters:</span>
-              <select
-                value={bseIndxGrp}
-                onChange={(e) => setBseIndxGrp(e.target.value)}
-                className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:border-primary outline-none"
-              >
-                {BSE_INDEX_GROUPS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-              
-              <select
-                value={bseOrderBy}
-                onChange={(e) => setBseOrderBy(e.target.value)}
-                className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:border-primary outline-none"
-              >
-                {BSE_ORDER_BY.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-          )}
         </div>
       </div>
 

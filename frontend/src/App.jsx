@@ -14,7 +14,7 @@ import BulkBlockPage from './components/BulkBlock/BulkBlockPage'
 import CompanyDataPage from './components/CompanyData/CompanyDataPage'
 import NewsPage from './components/News/NewsPage'
 import GainersLosersPage from './components/GainersLosers/GainersLosersPage'
-import AlertHistoryPage from './components/Alerts/AlertHistoryPage'
+
 import PremiumPage from './components/Premium/PremiumPage'
 import SettingsPage from './components/Settings/SettingsPage'
 import PortfolioPage from './components/Portfolio/PortfolioPage'
@@ -139,16 +139,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/alerts"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <AlertHistoryPage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
+
       <Route
         path="/premium"
         element={

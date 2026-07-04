@@ -19,7 +19,7 @@ const QUICK_RANGES = [
 const COLS = [
   { key: 'dealDate',   label: 'Date',        align: 'left',  sortable: true },
   { key: 'dealType',   label: 'Type',        align: 'left',  sortable: true },
-  { key: 'bseCode',    label: 'BSE Code',    align: 'left',  sortable: false },
+  { key: 'bseCode',    label: 'Code / Symbol',    align: 'left',  sortable: false },
   { key: 'scripname',  label: 'Company',     align: 'left',  sortable: true },
   { key: 'clientName', label: 'Client',      align: 'left',  sortable: true },
   { key: 'transactionType', label: 'B/S',   align: 'left',  sortable: true },
@@ -39,9 +39,10 @@ function StatCard({ label, value, sub, color = 'text-textPrimary', border }) {
 }
 
 export default function BulkBlockPage() {
+  const [exchange,   setExchange]   = useState('BSE')
   const [fromDate,   setFromDate]   = useState(today())
   const [toDate,     setToDate]     = useState(today())
-  const [dealType,   setDealType]   = useState('both')
+  const [dealType,   setDealType]   = useState('both') // BSE: 'both', '1', '2' | NSE: 'bulk_deals', 'block_deals', 'short_deals'
   const [codeFilter, setCodeFilter] = useState('')
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
@@ -50,6 +51,12 @@ export default function BulkBlockPage() {
   const [sortKey,    setSortKey]    = useState('dealDate')
   const [sortDir,    setSortDir]    = useState('desc')
   const [activeTab,  setActiveTab]  = useState('table')   // 'table' | 'summary'
+
+  // When switching exchange, reset dealType to a sensible default
+  useEffect(() => {
+    if (exchange === 'BSE' && !['both', '1', '2'].includes(dealType)) setDealType('both')
+    if (exchange === 'NSE' && !['bulk_deals', 'block_deals', 'short_deals'].includes(dealType)) setDealType('bulk_deals')
+  }, [exchange])
 
   function applyQuickRange(r) {
     setFromDate(r.from()); setToDate(r.to()); setResult(null); setError(null)
@@ -60,9 +67,45 @@ export default function BulkBlockPage() {
     if (fromDate > toDate)    { setError('From date must not be after To date.'); return }
     setLoading(true); setError(null); setSearch('')
     try {
-      const params = new URLSearchParams({ from: toYYYYMMDD(fromDate), to: toYYYYMMDD(toDate), dealType })
-      const data = await apiClient(`/api/bse/deals?${params}`)
-      setResult(data)
+      if (exchange === 'BSE') {
+        const params = new URLSearchParams({ from: toYYYYMMDD(fromDate), to: toYYYYMMDD(toDate), dealType })
+        const data = await apiClient(`/api/bse/deals?${params}`)
+        setResult(data)
+      } else {
+        // NSE mapping
+        const formatDateForNSE = (d) => {
+          const parts = d.split('-'); // YYYY-MM-DD
+          return `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+        const params = new URLSearchParams({ 
+          from: formatDateForNSE(fromDate), 
+          to: formatDateForNSE(toDate), 
+          dealType: dealType 
+        })
+        const data = await apiClient(`/api/nse/deals?${params}`)
+        
+        let deals = []
+        if (data && data.data && Array.isArray(data.data)) {
+          deals = data.data.map(d => {
+            const price = parseFloat(d.BD_TP_WATP) || 0
+            const qty = parseFloat(d.BD_QTY_TRD) || 0
+            const valueCr = (price * qty) / 10000000
+            
+            return {
+              dealDate: d.BD_DT_DATE,
+              dealType: dealType === 'bulk_deals' ? 'Bulk' : dealType === 'block_deals' ? 'Block' : 'Short',
+              bseCode: d.BD_SYMBOL, // Using this field for symbol
+              scripname: d.BD_SCRIP_NAME,
+              clientName: d.BD_CLIENT_NAME,
+              transactionCode: d.BD_BUY_SELL === 'BUY' ? 'P' : 'S',
+              quantity: qty,
+              price: price,
+              valueCr: valueCr,
+            }
+          })
+        }
+        setResult({ deals })
+      }
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
   }
@@ -133,7 +176,7 @@ export default function BulkBlockPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-textPrimary">Bulk &amp; Block Deals</h1>
-          <p className="text-sm text-textMuted mt-0.5">BSE bulk (≥0.5% equity) and block window deals</p>
+          <p className="text-sm text-textMuted mt-0.5">Bulk (≥0.5% equity), block window deals, and short deals</p>
         </div>
         {result && (
           <button onClick={() => exportToXLSX(filtered, `bulk_block_${toYYYYMMDD(fromDate)}_${toYYYYMMDD(toDate)}.xlsx`)}
@@ -174,9 +217,19 @@ export default function BulkBlockPage() {
             <label className="block text-xs font-medium text-textMuted mb-1.5">Deal Type</label>
             <select value={dealType} onChange={(e) => setDealType(e.target.value)}
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60">
-              <option value="both">Bulk + Block</option>
-              <option value="1">Bulk only</option>
-              <option value="2">Block only</option>
+              {exchange === 'BSE' ? (
+                <>
+                  <option value="both">Bulk + Block</option>
+                  <option value="1">Bulk only</option>
+                  <option value="2">Block only</option>
+                </>
+              ) : (
+                <>
+                  <option value="bulk_deals">Bulk Deals</option>
+                  <option value="block_deals">Block Deals</option>
+                  <option value="short_deals">Short Deals</option>
+                </>
+              )}
             </select>
           </div>
           <div>
@@ -189,11 +242,34 @@ export default function BulkBlockPage() {
           </div>
         </div>
 
-        <button onClick={fetchDeals} disabled={loading}
-          className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-lg text-sm font-semibold transition">
-          <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
-          {loading ? 'Fetching…' : 'Fetch Deals'}
-        </button>
+        <div className="flex items-center gap-3 flex-wrap justify-between w-full">
+          <button onClick={fetchDeals} disabled={loading}
+            className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-lg text-sm font-semibold transition">
+            <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
+            {loading ? 'Fetching…' : 'Fetch Deals'}
+          </button>
+          
+          <div className="flex items-center bg-background border border-border rounded-lg p-1">
+            <button
+              onClick={() => setExchange('BSE')}
+              className={clsx(
+                "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-md transition-all",
+                exchange === 'BSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+              )}
+            >
+              BSE
+            </button>
+            <button
+              onClick={() => setExchange('NSE')}
+              className={clsx(
+                "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-md transition-all",
+                exchange === 'NSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+              )}
+            >
+              NSE
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* ── Error ── */}
@@ -221,6 +297,7 @@ export default function BulkBlockPage() {
             <StatCard label="Total Deals"  value={filtered.length.toLocaleString()} />
             <StatCard label="Bulk"  value={bulkCount.toLocaleString()}  color="text-blue-400"   border="border-blue-800/40" />
             <StatCard label="Block" value={blockCount.toLocaleString()} color="text-violet-400" border="border-violet-800/40" />
+            <StatCard label="Short" value={(filtered.length - bulkCount - blockCount).toLocaleString()} color="text-amber-400" border="border-amber-800/40" />
             <StatCard label="Buy"   value={buyCount.toLocaleString()}   color="text-emerald-400" border="border-emerald-800/40"
               sub={`${filtered.length ? ((buyCount / filtered.length) * 100).toFixed(0) : 0}% of total`} />
             <StatCard label="Sell"  value={sellCount.toLocaleString()}  color="text-red-400" border="border-red-800/40"

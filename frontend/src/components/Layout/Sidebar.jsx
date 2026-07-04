@@ -20,7 +20,6 @@ const NAV_TOP = [
   { to: '/company-data',       icon: BarChart2,       label: 'Company Data' },
   { to: '/calendar',           icon: CalendarDays,    label: 'Corp. Calendar' },
   { to: '/insider',            icon: Eye,             label: 'Insider Trading' },
-  { to: '/alerts',             icon: BellRing,        label: 'Alert History' },
 ]
 const NAV_BOTTOM = [
   { to: '/premium',  icon: Crown,    label: 'Premium' },

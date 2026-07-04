@@ -46,17 +46,7 @@ function fmtDisp(iso) {
   catch { return iso }
 }
 
-function monthRange(year, month) {
-  const last = new Date(year, month + 1, 0).getDate()
-  const p2 = (n) => String(n).padStart(2, '0')
-  return { from: `${year}${p2(month + 1)}01`, to: `${year}${p2(month + 1)}${p2(last)}` }
-}
 
-function monthLabel(year, month) {
-  return new Date(year, month, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
-}
-
-const DAY_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 // ── Dropdown component ───────────────────────────────────────────────────────
 function Dropdown({ value, options, onChange, placeholder = 'Select…', className = '' }) {
@@ -107,9 +97,13 @@ export default function CorporateCalendarPage() {
   const { watchlist } = useWatchlist()
 
   const now = new Date()
-  const [year, setYear]           = useState(now.getFullYear())
-  const [month, setMonth]         = useState(now.getMonth())
-  const [view, setView]           = useState('list')
+  const today = () => now.toISOString().slice(0, 10)
+  const [fromDate, setFromDate] = useState(today())
+  const [toDate, setToDate] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + 30) // 30 days ahead by default
+    return d.toISOString().slice(0, 10)
+  })
   const [activeCat, setActiveCat] = useState('')
   const [activePurpose, setActivePurpose] = useState('')
   const [wlOnly, setWlOnly]       = useState(false)
@@ -124,15 +118,13 @@ export default function CorporateCalendarPage() {
     [watchlist]
   )
 
-  function prevMonth() { setMonth(m => { if (m === 0) { setYear(y => y - 1); return 11 } return m - 1 }) }
-  function nextMonth() { setMonth(m => { if (m === 11) { setYear(y => y + 1); return 0 } return m + 1 }) }
-  function goToday()   { setYear(now.getFullYear()); setMonth(now.getMonth()) }
+  const toYYYYMMDD = (d) => d.replace(/-/g, '')
 
   async function fetchEvents(bust = false) {
-    const { from, to } = monthRange(year, month)
+    if (!fromDate || !toDate) return
     setLoading(true); setError(null)
     try {
-      const qs = `from=${from}&to=${to}${bust ? '&bust=1' : ''}`
+      const qs = `from=${toYYYYMMDD(fromDate)}&to=${toYYYYMMDD(toDate)}${bust ? '&bust=1' : ''}`
       const data = await fetch(`${BACKEND}/api/bse/calendar?${qs}`).then(r => r.json())
       if (data.error) throw new Error(data.error)
       setEvents(data.events || [])
@@ -143,7 +135,7 @@ export default function CorporateCalendarPage() {
     } finally { setLoading(false) }
   }
 
-  useEffect(() => { fetchEvents() }, [year, month]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchEvents() }, [fromDate, toDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // When switching away from Board Meeting, clear purpose filter
   useEffect(() => { if (activeCat !== '' && activeCat !== 'Board Meeting') setActivePurpose('') }, [activeCat])
@@ -177,23 +169,7 @@ export default function CorporateCalendarPage() {
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
   }, [displayed])
 
-  const dateMap = useMemo(() => {
-    const map = {}
-    for (const e of displayed) {
-      const key = e.exDate || ''
-      if (key) { if (!map[key]) map[key] = []; map[key].push(e) }
-    }
-    return map
-  }, [displayed])
 
-  const calDays = useMemo(() => {
-    const first = new Date(year, month, 1).getDay()
-    const last  = new Date(year, month + 1, 0).getDate()
-    const days  = Array(first).fill(null)
-    for (let d = 1; d <= last; d++) days.push(d)
-    while (days.length % 7 !== 0) days.push(null)
-    return days
-  }, [year, month])
 
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
   const p2 = (n) => String(n).padStart(2, '0')
@@ -218,16 +194,7 @@ export default function CorporateCalendarPage() {
             Board meetings, results, dividends, AGMs &amp; corporate actions — BSE India
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button
-            onClick={() => setView(v => v === 'list' ? 'calendar' : 'list')}
-            className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-border rounded-xl text-xs text-textMuted hover:text-textPrimary hover:border-primary/40 transition"
-          >
-            {view === 'list'
-              ? <><CalendarDays className="w-3.5 h-3.5" /><span className="hidden sm:inline ml-1">Calendar view</span></>
-              : <><LayoutList   className="w-3.5 h-3.5" /><span className="hidden sm:inline ml-1">List view</span></>
-            }
-          </button>
+
           <button
             onClick={() => fetchEvents(true)} disabled={loading}
             className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-border rounded-xl text-xs text-textMuted hover:text-textPrimary hover:border-primary/40 disabled:opacity-50 transition"
@@ -238,22 +205,14 @@ export default function CorporateCalendarPage() {
         </div>
       </div>
 
-      {/* Month nav + watchlist toggle */}
+      {/* Date filter + search + watchlist */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-1 bg-surface border border-border rounded-xl px-3 py-2 flex-shrink-0">
-          <button onClick={prevMonth} className="p-1 rounded hover:bg-white/5 text-textMuted hover:text-textPrimary transition">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="text-sm font-semibold text-textPrimary w-36 text-center">{monthLabel(year, month)}</span>
-          <button onClick={nextMonth} className="p-1 rounded hover:bg-white/5 text-textMuted hover:text-textPrimary transition">
-            <ChevronRight className="w-4 h-4" />
-          </button>
-          <button
-            onClick={goToday}
-            className="ml-1.5 px-2 py-0.5 text-xs bg-primary/10 text-primary border border-primary/25 rounded-md hover:bg-primary/20 transition"
-          >
-            Today
-          </button>
+        <div className="flex items-center gap-2 bg-surface border border-border rounded-xl px-3 py-1.5 flex-shrink-0">
+          <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+            className="bg-transparent text-sm text-textPrimary focus:outline-none" />
+          <span className="text-textMuted text-sm">–</span>
+          <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
+            className="bg-transparent text-sm text-textPrimary focus:outline-none" />
         </div>
 
         {/* Search */}
@@ -359,79 +318,13 @@ export default function CorporateCalendarPage() {
         </div>
       )}
 
-      {/* ── CALENDAR GRID VIEW ────────────────────────────────────────────── */}
-      {!loading && !error && view === 'calendar' && (
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
-          {/* Day headers */}
-          <div className="grid grid-cols-7 bg-background/40 border-b border-border">
-            {DAY_HEADERS.map(d => (
-              <div key={d} className="py-2.5 text-center text-xs font-semibold text-textMuted">{d}</div>
-            ))}
-          </div>
-
-          {/* Weeks */}
-          <div className="grid grid-cols-7">
-            {calDays.map((day, idx) => {
-              if (!day) return (
-                <div key={idx} className="min-h-[90px] border-b border-r border-border/30 bg-background/20" />
-              )
-              const dateKey = `${year}-${p2(month + 1)}-${p2(day)}`
-              const dayEvts = dateMap[dateKey] || []
-              const isToday = dateKey === todayStr
-              const hasBoardMeeting = dayEvts.some(e => e.category === 'Board Meeting')
-              return (
-                <div
-                  key={idx}
-                  className={clsx(
-                    'min-h-[90px] p-1.5 border-b border-r border-border/30 hover:bg-white/[0.015] transition',
-                    isToday && 'bg-primary/[0.04]'
-                  )}
-                >
-                  <div className="flex items-center gap-1 mb-1">
-                    <span className={clsx(
-                      'inline-flex w-6 h-6 items-center justify-center rounded-full text-xs font-medium',
-                      isToday ? 'bg-primary text-white font-bold' : 'text-textMuted'
-                    )}>{day}</span>
-                    {hasBoardMeeting && !isToday && (
-                      <span className="w-1 h-1 rounded-full bg-blue-400 opacity-60" />
-                    )}
-                  </div>
-                  <div className="space-y-0.5">
-                    {dayEvts.slice(0, 3).map((e, i) => {
-                      const meta = catMeta(e.category)
-                      return (
-                        <button
-                          key={i}
-                          onClick={() => goCompany(e)}
-                          title={`${e.company} — ${e.purpose || e.category}`}
-                          className={clsx(
-                            'w-full text-left text-[10px] leading-tight px-1.5 py-0.5 rounded-sm truncate border flex items-center gap-1',
-                            meta.color
-                          )}
-                        >
-                          <span className={clsx('w-1 h-1 rounded-full flex-shrink-0', meta.dot)} />
-                          <span className="truncate">{e.company || e.bseCode}</span>
-                        </button>
-                      )
-                    })}
-                    {dayEvts.length > 3 && (
-                      <p className="text-[10px] text-textMuted/50 px-1">+{dayEvts.length - 3} more</p>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
       {/* ── LIST VIEW ─────────────────────────────────────────────────────── */}
-      {!loading && !error && view === 'list' && (
+      {!loading && !error && (
         <>
           {grouped.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center bg-surface border border-border rounded-xl">
               <Calendar className="w-10 h-10 text-textMuted/20 mb-3" />
-              <p className="text-sm text-textMuted">No events for {monthLabel(year, month)}</p>
+              <p className="text-sm text-textMuted">No events found for the selected dates</p>
               <p className="text-xs text-textMuted/50 mt-1">
                 {wlOnly ? 'Try disabling "Watchlist only"' :
                  search  ? 'Try clearing the search filter' :
