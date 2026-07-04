@@ -870,24 +870,27 @@ app.all('/api/cron/trigger', async (req, res) => {
     const lastClearedDate = stateDoc.exists ? stateDoc.data().lastClearedDate : null;
 
     if (lastClearedDate !== todayStr) {
-      console.log(`[Global Cron] New day detected (${todayStr}). Wiping old global announcements...`);
-      const annsSnap = await db.collection('announcements').select().get();
-      const BATCH_LIMIT = 400;
+      console.log(`[Global Cron] New day detected (${todayStr}). Wiping old global dailyEmailState...`);
       let batch = db.batch();
-      let count = 0;
-      for (const doc of annsSnap.docs) {
+      
+      const emailStateSnap = await db.collectionGroup('dailyEmailState').select().get();
+      let stateCount = 0;
+      const BATCH_LIMIT = 400;
+      for (const doc of emailStateSnap.docs) {
         batch.delete(doc.ref);
-        count++;
-        if (count % BATCH_LIMIT === 0) {
+        stateCount++;
+        if (stateCount % BATCH_LIMIT === 0) {
           await batch.commit();
           batch = db.batch();
         }
       }
-      if (count % BATCH_LIMIT !== 0) {
+      
+      if (stateCount % BATCH_LIMIT !== 0) {
         await batch.commit();
       }
+      
       await stateRef.set({ lastClearedDate: todayStr }, { merge: true });
-      console.log(`[Global Cron] Successfully wiped ${count} old announcements.`);
+      console.log(`[Global Cron] Successfully wiped ${stateCount} user states.`);
     }
 
     const watchlistStore = require('./lib/watchlistStore');
@@ -934,15 +937,11 @@ app.all('/api/cron/trigger', async (req, res) => {
 
     if (allFetched.length > 0) {
       const { saveAnnouncements } = require('./lib/announcementStore');
-      // Save ALL announcements to global DB
+      // Save ALL announcements to global DB (MongoDB)
       const { saved, newAnnouncements } = await saveAnnouncements(allFetched);
       const freshAll = newAnnouncements || [];
       
-      const existing = readAnnouncements();
-      writeAnnouncements([...freshAll, ...existing].slice(0, 1000), {
-        lastTriggeredAt: new Date().toISOString(),
-      });
-      console.log('[Global Cron] Saved ' + freshAll.length + ' new announcements to Firestore');
+      console.log(`[Global Cron] Saved ${freshAll.length} new announcements to MongoDB`);
       
       // Filter fresh announcements for just the matched ones to send emails
       const fresh = freshAll.filter((a) => bseSet.has(a.scriptCode) || nseSet.has((a.scriptCode || '').toUpperCase()));
