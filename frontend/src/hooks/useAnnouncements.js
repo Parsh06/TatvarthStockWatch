@@ -43,7 +43,7 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
 
     try {
       if (LOCAL_MODE) {
-        // Local mode: read from /api/announcements (populated by Fetch News trigger)
+        // Local mode logic...
         const params = new URLSearchParams()
         if (opts.exchange && opts.exchange !== 'ALL') params.set('exchange', opts.exchange)
         if (opts.scripCode) params.set('scriptCode', opts.scripCode)
@@ -51,21 +51,44 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
         const res  = await window.fetch(`/api/announcements?${params.toString()}`)
         const json = await res.json()
         const data = Array.isArray(json.data) ? json.data : []
-
         setAnnouncements(data)
         setSource('local')
         setLastFetched(new Date())
         return
       }
 
-      // Production mode: Firestore
-      const data = await getAnnouncementsFromDB({
-        exchange:   opts.exchange,
-        scripCode:  opts.scripCode,
-        limitCount: 200,
-      })
-      setAnnouncements(data)
-      setSource('db')
+      // Extract scripCode if search is a 6-digit number
+      let extractedCode = opts.scripCode;
+      if (!extractedCode && opts.search && /^\d{6}$/.test(opts.search.trim())) {
+        extractedCode = opts.search.trim();
+      }
+
+      // If specific custom filters are applied, bypass Firestore and proxy directly to BSE
+      const hasCustomFilters = opts.fromDate || opts.toDate || extractedCode;
+
+      if (hasCustomFilters) {
+        const params = new URLSearchParams()
+        if (opts.fromDate) params.set('fromDate', opts.fromDate)
+        if (opts.toDate) params.set('toDate', opts.toDate)
+        if (extractedCode) params.set('scripCode', extractedCode)
+        
+        // The endpoint is mounted under /api/bse in server.js
+        const res = await window.fetch(`/api/bse/announcements/proxy?${params.toString()}`)
+        if (!res.ok) throw new Error('Failed to fetch from proxy')
+        const json = await res.json()
+        setAnnouncements(Array.isArray(json.data) ? json.data : [])
+        setSource('proxy')
+      } else {
+        // Production mode: Default to Firestore for "today"
+        const data = await getAnnouncementsFromDB({
+          exchange:   opts.exchange,
+          scripCode:  opts.scripCode,
+          limitCount: 500, // Increased to support 1200+ announcements for today
+        })
+        setAnnouncements(data)
+        setSource('db')
+      }
+      
       setLastFetched(new Date())
     } catch (err) {
       console.error('[useAnnouncements] Fetch failed:', err.message)

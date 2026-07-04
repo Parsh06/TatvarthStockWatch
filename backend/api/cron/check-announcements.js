@@ -195,8 +195,42 @@ async function runCron() {
     notificationsCreated:0,
     emailsSent:          0,
     emailErrors:         0,
+    wipedOldData:        false,
     errors:              [],
   };
+
+  // ── Step 0: Daily Midnight Cleanup ──────────────────────────────────────────
+  try {
+    const todayStr = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0]; // IST Date
+    const stateRef = db.collection('system').doc('announcements-state');
+    const stateDoc = await stateRef.get();
+    const lastClearedDate = stateDoc.exists ? stateDoc.data().lastClearedDate : null;
+
+    if (lastClearedDate !== todayStr) {
+      console.log(`[Cron] New day detected (${todayStr}). Wiping old global announcements...`);
+      const annsSnap = await db.collection('announcements').select().get();
+      const BATCH_LIMIT = 400;
+      let batch = db.batch();
+      let count = 0;
+      for (const doc of annsSnap.docs) {
+        batch.delete(doc.ref);
+        count++;
+        if (count % BATCH_LIMIT === 0) {
+          await batch.commit();
+          batch = db.batch();
+        }
+      }
+      if (count % BATCH_LIMIT !== 0) {
+        await batch.commit();
+      }
+      await stateRef.set({ lastClearedDate: todayStr }, { merge: true });
+      summary.wipedOldData = true;
+      console.log(`[Cron] Successfully wiped ${count} old announcements.`);
+    }
+  } catch (err) {
+    console.error(`[Cron] Failed to wipe old data: ${err.message}`);
+    summary.errors.push({ step: 'cleanup', error: err.message });
+  }
 
   const { users, bseCodeToUids, nseSymbolToUids, watchedBSECodes, watchedNSESymbols }
     = await loadUsersAndBuildIndex(db);

@@ -912,5 +912,21 @@ router.get('/insider', async (req, res) => {
   }
 });
 
+// ── OPEN: BSE Announcements Proxy ─────────────────────────────────────────────
+router.get('/announcements/proxy', async (req, res) => {
+  const { scripCode, fromDate, toDate } = req.query;
+  try {
+    const { fetchBSEAnnouncements } = require('../lib/bseScraper');
+    // For Vercel Edge caching - cache this specific query for 60 seconds
+    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
+    
+    const data = await fetchBSEAnnouncements(scripCode || '', fromDate || '', toDate || '');
+    res.json({ data, total: data.length });
+  } catch (e) {
+    console.error('[BSE Announcements Proxy]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
   return router;
 };
