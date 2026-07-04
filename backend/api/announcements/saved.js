@@ -36,7 +36,7 @@ module.exports = async (req, res) => {
   }
 
   const { exchange, scripCode, limit: limitParam } = req.query || {};
-  const limitCount = Math.min(parseInt(limitParam, 10) || 100, 500);
+  const limitCount = Math.min(parseInt(limitParam, 10) || 100, 5000);
 
   try {
     const data = await getAnnouncements({

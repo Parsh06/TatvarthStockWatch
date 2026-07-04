@@ -12,6 +12,7 @@ import {
 import { db, FIREBASE_ENABLED } from './firebase'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || ''
+import { apiClient } from './apiClient'
 
 // ─── Announcement fetching ────────────────────────────────────────────────────
 
@@ -22,32 +23,8 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || ''
  * @param {{ exchange?: string, scripCode?: string, limitCount?: number }} opts
  */
 export async function getAnnouncementsFromDB({ exchange, scripCode, limitCount = 100 } = {}) {
-  if (!FIREBASE_ENABLED || !db) return []
-  let q = query(
-    collection(db, 'announcements'),
-    orderBy('announcementDate', 'desc'),
-    limit(limitCount)
-  )
-
-  // Firestore compound queries need composite indexes; use simple single-field filter
-  if (scripCode) {
-    q = query(
-      collection(db, 'announcements'),
-      where('scriptCode', '==', scripCode),
-      orderBy('announcementDate', 'desc'),
-      limit(limitCount)
-    )
-  } else if (exchange && exchange !== 'ALL') {
-    q = query(
-      collection(db, 'announcements'),
-      where('exchange', '==', exchange),
-      orderBy('announcementDate', 'desc'),
-      limit(limitCount)
-    )
-  }
-
-  const snap = await getDocs(q)
-  return snap.docs.map((d) => ({ ...d.data() }))
+  // Alias to the backend proxy which now reads from MongoDB
+  return fetchSavedAnnouncements({ exchange, scripCode, limitCount })
 }
 
 /**
@@ -60,9 +37,7 @@ export async function fetchAnnouncements({ exchange, scripCode, fromDate, toDate
   if (scripCode) params.set('scripCode', scripCode)
   if (fromDate) params.set('fromDate', fromDate)
   if (toDate) params.set('toDate', toDate)
-  const res = await fetch(`${BACKEND_URL}/api/announcements?${params.toString()}`)
-  if (!res.ok) throw new Error(`Failed to fetch announcements: ${res.statusText}`)
-  const json = await res.json()
+  const json = await apiClient(`/api/announcements?${params.toString()}`)
   return Array.isArray(json) ? json : (json.data || [])
 }
 
@@ -75,42 +50,35 @@ export async function fetchSavedAnnouncements({ exchange, scripCode, limitCount 
   if (exchange && exchange !== 'ALL') params.set('exchange', exchange)
   if (scripCode) params.set('scripCode', scripCode)
   if (limitCount) params.set('limit', String(limitCount))
-  const res = await fetch(`${BACKEND_URL}/api/announcements/saved?${params.toString()}`)
-  if (!res.ok) throw new Error(`Saved announcements fetch failed: ${res.statusText}`)
-  const json = await res.json()
+  const json = await apiClient(`/api/announcements/saved?${params.toString()}`)
   return Array.isArray(json) ? json : (json.data || [])
 }
 
 export async function fetchBSEAnnouncements(scripCode) {
-  const res = await fetch(`${BACKEND_URL}/api/announcements/bse?scripCode=${encodeURIComponent(scripCode || '')}`)
-  if (!res.ok) throw new Error(`BSE fetch failed: ${res.statusText}`)
-  const json = await res.json()
+  const json = await apiClient(`/api/announcements/bse?scripCode=${encodeURIComponent(scripCode || '')}`)
   return Array.isArray(json) ? json : (json.data || [])
 }
 
 export async function fetchNSEAnnouncements(symbol) {
-  const res = await fetch(`${BACKEND_URL}/api/announcements/nse?symbol=${encodeURIComponent(symbol || '')}`)
-  if (!res.ok) throw new Error(`NSE fetch failed: ${res.statusText}`)
-  const json = await res.json()
+  const json = await apiClient(`/api/announcements/nse?symbol=${encodeURIComponent(symbol || '')}`)
   return Array.isArray(json) ? json : (json.data || [])
 }
 
 // Uses BSE company listing API via backend proxy
 export async function searchBSEScripts(queryStr) {
-  const res = await fetch(`${BACKEND_URL}/api/bse/search?q=${encodeURIComponent(queryStr)}`)
-  if (!res.ok) return []
-  const json = await res.json()
-  return Array.isArray(json) ? json : (json.data || [])
+  try {
+    const json = await apiClient(`/api/bse/search?q=${encodeURIComponent(queryStr)}`)
+    return Array.isArray(json) ? json : (json.data || [])
+  } catch {
+    return []
+  }
 }
 
 export async function triggerEmailNotification(userEmail, userName, announcements) {
-  const res = await fetch(`${BACKEND_URL}/api/notify/email`, {
+  return apiClient(`/api/notify/email`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userEmail, userName, announcements }),
   })
-  if (!res.ok) throw new Error(`Email notification failed: ${res.statusText}`)
-  return res.json()
 }
 
 // ─── Notifications (per-user Firestore) ──────────────────────────────────────
