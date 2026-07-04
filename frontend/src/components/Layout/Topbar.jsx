@@ -14,10 +14,9 @@ const PAGE_TITLES = {
   '/settings': 'Settings',
 }
 
-export default function Topbar({ sidebarWidth, onSearch }) {
+export default function Topbar({ sidebarWidth, onSearch, theme, toggleTheme }) {
   const { currentUser, logout } = useAuth()
   const location = useLocation()
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') !== 'light')
   const [notifOpen, setNotifOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
@@ -31,11 +30,6 @@ export default function Topbar({ sidebarWidth, onSearch }) {
     if (!currentUser) return
     getNotifications(currentUser.uid).then(setNotifications).catch(() => {})
   }, [currentUser])
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode)
-    localStorage.setItem('theme', darkMode ? 'dark' : 'light')
-  }, [darkMode])
 
   useEffect(() => {
     function handler(e) {
@@ -62,10 +56,10 @@ export default function Topbar({ sidebarWidth, onSearch }) {
 
   return (
     <header
-      className="fixed top-0 right-0 h-16 bg-surface/80 backdrop-blur border-b border-border flex items-center px-6 z-20 transition-all duration-300"
-      style={{ left: sidebarWidth }}
+      className="fixed top-0 right-0 h-24 bg-background/40 backdrop-blur-md border-b border-white/5 flex items-end pb-4 px-8 z-20 transition-all duration-300"
+      style={{ left: `calc(${sidebarWidth}px + 2rem)` }}
     >
-      <h1 className="text-lg font-semibold text-textPrimary flex-1">{pageTitle}</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-textPrimary flex-1">{pageTitle}</h1>
 
       <div className="flex items-center gap-2">
         {/* Global Search */}
@@ -80,10 +74,10 @@ export default function Topbar({ sidebarWidth, onSearch }) {
 
         {/* Theme toggle */}
         <button
-          onClick={() => setDarkMode(!darkMode)}
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-textMuted hover:text-textPrimary hover:bg-white/5 transition"
+          onClick={toggleTheme}
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-textMuted hover:text-textPrimary hover:bg-black/5 dark:hover:bg-white/5 transition"
         >
-          {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
 
         {/* Notifications */}

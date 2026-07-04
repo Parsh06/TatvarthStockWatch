@@ -5,19 +5,22 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: '#0EA5E9',
-        background: '#0F172A',
-        surface: '#1E293B',
-        border: '#334155',
-        textPrimary: '#F1F5F9',
-        textMuted: '#94A3B8',
-        success: '#10B981',
+        primary: '#6366F1', // Electric Indigo
+        primaryHover: '#4F46E5',
+        background: 'var(--bg-base)', 
+        surface: 'var(--bg-surface)', 
+        surfaceHover: 'var(--bg-surface-hover)', 
+        border: 'var(--border)', 
+        textPrimary: 'var(--text-primary)', 
+        textMuted: 'var(--text-muted)', 
+        success: '#10B981', // Neon Emerald
         warning: '#F59E0B',
-        danger: '#EF4444',
+        danger: '#F43F5E', // Vibrant Rose
       },
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
+        display: ['Space Grotesk', 'sans-serif'],
       },
       keyframes: {
         'fade-in-up': {
