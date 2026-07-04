@@ -108,6 +108,7 @@ export default function GainersLosersPage() {
               <th className="px-4 py-3 font-medium text-right">Change</th>
               <th className="px-4 py-3 font-medium text-right">% Change</th>
               <th className="px-4 py-3 font-medium text-right">Volume</th>
+              <th className="w-full"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -129,11 +130,12 @@ export default function GainersLosersPage() {
                 <td className="px-4 py-3 text-right text-textMuted">
                   {item.trd_vol?.toLocaleString('en-IN')}
                 </td>
+                <td className="w-full"></td>
               </tr>
             ))}
             {bseData.length === 0 && !loading && (
               <tr>
-                <td colSpan="6" className="px-4 py-12 text-center text-textMuted">No records found.</td>
+                <td colSpan="7" className="px-4 py-12 text-center text-textMuted">No records found.</td>
               </tr>
             )}
           </tbody>
@@ -157,6 +159,7 @@ export default function GainersLosersPage() {
               <th className="px-4 py-3 font-medium text-right">Change</th>
               <th className="px-4 py-3 font-medium text-right">% Change</th>
               <th className="px-4 py-3 font-medium text-right">Volume</th>
+              <th className="w-full"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -174,11 +177,12 @@ export default function GainersLosersPage() {
                 <td className="px-4 py-3 text-right text-textMuted">
                   {item.trade_quantity?.toLocaleString('en-IN')}
                 </td>
+                <td className="w-full"></td>
               </tr>
             ))}
             {nseData.length === 0 && !loading && (
               <tr>
-                <td colSpan="6" className="px-4 py-12 text-center text-textMuted">No records found.</td>
+                <td colSpan="7" className="px-4 py-12 text-center text-textMuted">No records found.</td>
               </tr>
             )}
           </tbody>
