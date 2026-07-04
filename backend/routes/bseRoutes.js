@@ -697,6 +697,50 @@ router.get('/companynews', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// ── PROTECTED: BSE Board Meetings ─────────────────────────────────────────────
+router.get('/board-meetings', verifyToken, async (req, res) => {
+  const { fromDT, ToDt } = req.query;
+  
+  // Format dates: API expects DD/MM/YYYY
+  const today = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  const dd = String(today.getDate()).padStart(2, '0');
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const yyyy = today.getFullYear();
+  const defaultDate = `${dd}/${mm}/${yyyy}`;
+
+  const params = {
+    SCRIPCODE: '',
+    fromDT: fromDT || defaultDate,
+    ToDt: ToDt || defaultDate,
+    purposeCode: '',
+    IsCanRev: '0',
+    FLAGDUR: '0',
+    ISUBGROUP_CODE: ' ',
+    LnFlag: 'en'
+  };
+
+  try {
+    const cookies = await getBseCookies();
+    const sessionHdr = cookies ? { Cookie: cookies } : {};
+
+    const data = await bseGet(
+      '/Corp_Fetch_BoardMeeting_With_Filter_ng/w',
+      params,
+      15000,
+      sessionHdr
+    );
+    
+    // Sometimes it returns a string if it fails to parse, or an object with Corp_fetch_BoardMeeting_Table1
+    if (typeof data === 'string' && data.trim() === '') {
+      return res.json({ Corp_fetch_BoardMeeting_Table1: [] });
+    }
+    
+    res.json(data);
+  } catch (e) {
+    console.error('[BSE Board Meetings]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 router.get('/quote', async (req, res) => {
   const codes = (req.query.codes || '').split(',')

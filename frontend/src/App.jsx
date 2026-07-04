@@ -9,6 +9,7 @@ import DashboardPage from './components/Dashboard/DashboardPage'
 import WatchlistPage from './components/Watchlist/WatchlistPage'
 import AnnouncementsPage from './components/Announcements/AnnouncementsPage'
 import AllAnnouncementsPage from './components/AllAnnouncements/AllAnnouncementsPage'
+import BoardMeetingsPage from './components/BoardMeetings/BoardMeetingsPage'
 import BulkBlockPage from './components/BulkBlock/BulkBlockPage'
 import CompanyDataPage from './components/CompanyData/CompanyDataPage'
 import NewsPage from './components/News/NewsPage'
@@ -83,6 +84,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <AllAnnouncementsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/board-meetings"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <BoardMeetingsPage />
             </AppLayout>
           </ProtectedRoute>
         }
