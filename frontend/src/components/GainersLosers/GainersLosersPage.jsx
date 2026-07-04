@@ -21,8 +21,7 @@ const BSE_ORDER_BY = [
 ]
 
 export default function GainersLosersPage() {
-  const [activeTab, setActiveTab] = useState('BSE')
-  const [type, setType] = useState('gainer') // 'gainer' or 'loser' (for BSE) or 'loosers' for NSE
+  const [type, setType] = useState('gainer') // 'gainer' or 'loser'
   
   // BSE specific state
   const [bseIndxGrp, setBseIndxGrp] = useState('AllMkt')
@@ -39,31 +38,38 @@ export default function GainersLosersPage() {
   const fetchData = async () => {
     setLoading(true)
     setError(null)
+    
     try {
-      if (activeTab === 'BSE') {
-        const url = `/api/bse/gainers-losers?GLtype=${type}&IndxGrp=${bseIndxGrp}&IndxGrpval=${bseIndxGrp}&orderby=${bseOrderBy}`
-        const res = await apiClient(url)
-        let items = res?.Table || []
-        // Ensure descending order by absolute change percentage
+      const bseUrl = `/api/bse/gainers-losers?GLtype=${type}&IndxGrp=${bseIndxGrp}&IndxGrpval=${bseIndxGrp}&orderby=${bseOrderBy}`
+      
+      const nseType = type === 'gainer' ? 'gainers' : 'loosers'
+      const nseUrl = `/api/nse/gainers-losers?index=${nseType}`
+      
+      const [bseRes, nseRes] = await Promise.allSettled([
+        apiClient(bseUrl),
+        apiClient(nseUrl)
+      ])
+      
+      if (bseRes.status === 'fulfilled') {
+        let items = bseRes.value?.Table || []
         items.sort((a, b) => Math.abs(b.change_percent) - Math.abs(a.change_percent))
         setBseData(items)
       } else {
-        const nseType = type === 'gainer' ? 'gainers' : 'loosers'
-        const url = `/api/nse/gainers-losers?index=${nseType}`
-        const res = await apiClient(url)
-        // Extract allSec data
-        const allSec = res?.NIFTY?.data || res?.allSec?.data || [] 
-        
-        // Let's parse exactly how NSE structures it. Often it's res.NIFTY.data or res.allSec.data. 
-        // We'll look for allSec or default to first key
+        console.error('[BSE fetch error]', bseRes.reason)
+      }
+      
+      if (nseRes.status === 'fulfilled') {
+        const res = nseRes.value
         let items = []
         if (res?.allSec?.data) items = res.allSec.data
-        else if (res?.NIFTY?.data) items = res.NIFTY.data // Fallback just in case
+        else if (res?.NIFTY?.data) items = res.NIFTY.data
         
-        // Ensure descending order by absolute change percentage
         items.sort((a, b) => Math.abs(b.perChange || 0) - Math.abs(a.perChange || 0))
         setNseData(items)
+      } else {
+        console.error('[NSE fetch error]', nseRes.reason)
       }
+
       setLastRefreshed(new Date())
     } catch (err) {
       console.error(err)
@@ -77,7 +83,7 @@ export default function GainersLosersPage() {
   useEffect(() => {
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, type, bseIndxGrp, bseOrderBy])
+  }, [type, bseIndxGrp, bseOrderBy])
 
   // Polling every 60 seconds
   useEffect(() => {
@@ -85,11 +91,14 @@ export default function GainersLosersPage() {
       fetchData()
     }, 60000)
     return () => clearInterval(interval)
-  }, [activeTab, type, bseIndxGrp, bseOrderBy]) // Re-bind on state change
+  }, [type, bseIndxGrp, bseOrderBy]) // Re-bind on state change
 
   const renderBseTable = () => (
-    <div className="bg-surface border border-border rounded-xl overflow-hidden flex flex-col mt-4 min-h-[400px]">
-      <div className="overflow-x-auto">
+    <div className="bg-surface border border-border rounded-xl overflow-hidden flex flex-col h-[500px]">
+      <div className="bg-surfaceHover border-b border-border px-4 py-3 font-semibold flex items-center justify-between sticky top-0 z-20">
+        <span>BSE {type === 'gainer' ? 'Gainers' : 'Losers'}</span>
+      </div>
+      <div className="overflow-y-auto overflow-x-auto flex-1 relative">
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-background border-b border-border text-xs uppercase tracking-wider text-textMuted sticky top-0 z-10">
             <tr>
@@ -134,8 +143,11 @@ export default function GainersLosersPage() {
   )
 
   const renderNseTable = () => (
-    <div className="bg-surface border border-border rounded-xl overflow-hidden flex flex-col mt-4 min-h-[400px]">
-      <div className="overflow-x-auto">
+    <div className="bg-surface border border-border rounded-xl overflow-hidden flex flex-col h-[500px]">
+      <div className="bg-surfaceHover border-b border-border px-4 py-3 font-semibold flex items-center justify-between sticky top-0 z-20">
+        <span>NSE {type === 'gainer' ? 'Gainers' : 'Losers'} (All Securities)</span>
+      </div>
+      <div className="overflow-y-auto overflow-x-auto flex-1 relative">
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-background border-b border-border text-xs uppercase tracking-wider text-textMuted sticky top-0 z-10">
             <tr>
@@ -176,9 +188,9 @@ export default function GainersLosersPage() {
   )
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
-      {/* Header & Tabs */}
+      {/* Header & Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-border pb-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
@@ -191,49 +203,27 @@ export default function GainersLosersPage() {
         </div>
         
         <div className="flex items-center gap-4 w-full md:w-auto">
-          {/* Exchange Tabs */}
-          <div className="flex items-center bg-surface border border-border rounded-lg p-1">
-            <button
-              onClick={() => setActiveTab('BSE')}
-              className={clsx(
-                "px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
-                activeTab === 'BSE' ? "bg-primary/20 text-primary" : "text-textMuted hover:text-textPrimary"
-              )}
-            >
-              BSE
-            </button>
-            <button
-              onClick={() => setActiveTab('NSE')}
-              className={clsx(
-                "px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
-                activeTab === 'NSE' ? "bg-primary/20 text-primary" : "text-textMuted hover:text-textPrimary"
-              )}
-            >
-              NSE
-            </button>
-          </div>
-          
           {/* Refresh Button */}
           <button 
             onClick={fetchData}
             disabled={loading}
-            className="hidden md:flex items-center gap-2 px-3 py-2 bg-surface hover:bg-surfaceHover border border-border rounded-lg text-sm font-medium transition-colors"
+            className="flex items-center gap-2 px-3 py-2 bg-surface hover:bg-surfaceHover border border-border rounded-lg text-sm font-medium transition-colors"
           >
             <RefreshCw className={clsx("w-4 h-4", loading && "animate-spin")} />
           </button>
         </div>
       </div>
 
-      {/* Type Toggle & Filters */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      {/* Type Toggle & BSE Filters */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-surface p-4 rounded-xl border border-border">
         
         {/* Gainers / Losers Switch */}
-        <div className="flex items-center bg-surface border border-border rounded-lg p-1">
+        <div className="flex items-center bg-background border border-border rounded-lg p-1">
           <button
             onClick={() => setType('gainer')}
             className={clsx(
               "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-md transition-all",
-              type === 'gainer' ? "bg-green-500/20 text-green-500" : "text-textMuted hover:text-textPrimary"
+              type === 'gainer' ? "bg-green-500/20 text-green-500 shadow-sm" : "text-textMuted hover:text-textPrimary"
             )}
           >
             <ArrowUpRight className="w-4 h-4" /> Gainers
@@ -242,7 +232,7 @@ export default function GainersLosersPage() {
             onClick={() => setType('loser')}
             className={clsx(
               "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-md transition-all",
-              type === 'loser' ? "bg-red-500/20 text-red-500" : "text-textMuted hover:text-textPrimary"
+              type === 'loser' ? "bg-red-500/20 text-red-500 shadow-sm" : "text-textMuted hover:text-textPrimary"
             )}
           >
             <ArrowDownRight className="w-4 h-4" /> Losers
@@ -250,29 +240,28 @@ export default function GainersLosersPage() {
         </div>
 
         {/* BSE Filters */}
-        {activeTab === 'BSE' && (
-          <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-            <select
-              value={bseIndxGrp}
-              onChange={(e) => setBseIndxGrp(e.target.value)}
-              className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:border-primary outline-none"
-            >
-              {BSE_INDEX_GROUPS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-            
-            <select
-              value={bseOrderBy}
-              onChange={(e) => setBseOrderBy(e.target.value)}
-              className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:border-primary outline-none"
-            >
-              {BSE_ORDER_BY.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+          <span className="text-sm text-textMuted font-medium whitespace-nowrap hidden md:inline-block">BSE Filters:</span>
+          <select
+            value={bseIndxGrp}
+            onChange={(e) => setBseIndxGrp(e.target.value)}
+            className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:border-primary outline-none"
+          >
+            {BSE_INDEX_GROUPS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          
+          <select
+            value={bseOrderBy}
+            onChange={(e) => setBseOrderBy(e.target.value)}
+            className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:border-primary outline-none"
+          >
+            {BSE_ORDER_BY.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {error && (
@@ -282,15 +271,18 @@ export default function GainersLosersPage() {
         </div>
       )}
 
-      {/* Main Content Area */}
+      {/* Main Content Area - Grid Layout */}
       <div className="relative">
         {loading && (
-          <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-20 flex items-center justify-center rounded-xl">
+          <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-30 flex items-center justify-center rounded-xl">
             <RefreshCw className="w-8 h-8 text-primary animate-spin" />
           </div>
         )}
         
-        {activeTab === 'BSE' ? renderBseTable() : renderNseTable()}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          {renderBseTable()}
+          {renderNseTable()}
+        </div>
       </div>
     </div>
   )
