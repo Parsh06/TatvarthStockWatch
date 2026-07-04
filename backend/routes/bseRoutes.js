@@ -588,6 +588,9 @@ router.get('/announcements', verifyToken, async (req, res) => {
   const toDate = to || from;
 
   try {
+    const cookies = await getBseCookies();
+    const sessionHdr = cookies ? { Cookie: cookies } : {};
+
     function tradingDays(fromStr, toStr) {
       const days = [];
       const cur = new Date(`${fromStr.slice(0,4)}-${fromStr.slice(4,6)}-${fromStr.slice(6,8)}`);
@@ -605,7 +608,8 @@ router.get('/announcements', verifyToken, async (req, res) => {
       const data = await bseGet(
         '/AnnSubCategoryGetData/w',
         { pageno: pageNo, strCat: -1, strPrevDate: dateStr, strScrip: '', strSearch: 'P', strToDate: dateStr, strType: 'C', subcategory: -1 },
-        15000
+        15000,
+        sessionHdr
       );
       const items = (data && Array.isArray(data.Table))  ? data.Table  : [];
       const cnt   = (data && Array.isArray(data.Table1)) ? (data.Table1[0]?.ROWCNT || 0) : 0;
