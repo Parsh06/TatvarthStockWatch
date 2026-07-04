@@ -220,12 +220,26 @@ async function runCron() {
           batch = db.batch();
         }
       }
-      if (count % BATCH_LIMIT !== 0) {
+      
+      // Also wipe dailyEmailState for all users
+      const emailStateSnap = await db.collectionGroup('dailyEmailState').select().get();
+      let stateCount = 0;
+      for (const doc of emailStateSnap.docs) {
+        batch.delete(doc.ref);
+        stateCount++;
+        if ((count + stateCount) % BATCH_LIMIT === 0) {
+          await batch.commit();
+          batch = db.batch();
+        }
+      }
+      
+      if ((count + stateCount) % BATCH_LIMIT !== 0) {
         await batch.commit();
       }
+      
       await stateRef.set({ lastClearedDate: todayStr }, { merge: true });
       summary.wipedOldData = true;
-      console.log(`[Cron] Successfully wiped ${count} old announcements.`);
+      console.log(`[Cron] Successfully wiped ${count} old announcements and ${stateCount} user states.`);
     }
   } catch (err) {
     console.error(`[Cron] Failed to wipe old data: ${err.message}`);
@@ -315,20 +329,56 @@ async function runCron() {
       await updateWatchlistCounts(db, admin, uid, anns);
       summary.usersNotified++;
 
-      const { email, name } = await getUserEmail(admin, uid, userDataMap[uid] || {});
-
-      if (email) {
-        try {
-          await sendAnnouncementEmail(email, name, anns);
-          summary.emailsSent++;
-          console.log(`[Cron] ✉ ${email} — ${anns.length} new: ${anns.map((a) => a.scriptName).join(', ')}`);
-        } catch (e) {
-          summary.emailErrors++;
-          summary.errors.push({ uid, email, step: 'email', error: e.message });
-          console.error(`[Cron] Email failed ${email}:`, e.message);
+      // Filter anns by dailyEmailState
+      const uniqueScripts = [...new Set(anns.map(a => a.scriptCode).filter(Boolean))];
+      const refs = uniqueScripts.map(code => db.collection('users').doc(uid).collection('dailyEmailState').doc(code));
+      
+      let annsToEmail = [];
+      let scriptsToUpdate = [];
+      
+      if (refs.length > 0) {
+        // We can safely getAll if refs.length <= 100, assuming max 100 scripts with new announcements per user at one time
+        // If > 100, we should chunk it, but for a single cron run, it's highly unlikely.
+        let states = [];
+        for (let i = 0; i < refs.length; i += 100) {
+          const chunkRefs = refs.slice(i, i + 100);
+          const chunkStates = await db.getAll(...chunkRefs);
+          states = states.concat(chunkStates);
         }
-      } else {
-        console.log(`[Cron] uid=${uid} has no email address — skipping email`);
+        
+        const stateMap = {};
+        states.forEach((doc, idx) => {
+          stateMap[uniqueScripts[idx]] = doc.exists ? doc.data().state : 0;
+        });
+        
+        annsToEmail = anns.filter(a => stateMap[a.scriptCode] !== 1);
+        scriptsToUpdate = [...new Set(annsToEmail.map(a => a.scriptCode).filter(Boolean))];
+      }
+
+      if (annsToEmail.length > 0) {
+        const { email, name } = await getUserEmail(admin, uid, userDataMap[uid] || {});
+        if (email) {
+          try {
+            await sendAnnouncementEmail(email, name, annsToEmail);
+            summary.emailsSent++;
+            console.log(`[Cron] ✉ ${email} — ${annsToEmail.length} new: ${annsToEmail.map((a) => a.scriptName).join(', ')}`);
+            
+            // Mark state as 1 for these scripts
+            const batch = db.batch();
+            const ts = admin.firestore.FieldValue.serverTimestamp();
+            for (const code of scriptsToUpdate) {
+              const ref = db.collection('users').doc(uid).collection('dailyEmailState').doc(code);
+              batch.set(ref, { state: 1, updatedAt: ts }, { merge: true });
+            }
+            await batch.commit();
+          } catch (e) {
+            summary.emailErrors++;
+            summary.errors.push({ uid, email, step: 'email', error: e.message });
+            console.error(`[Cron] Email failed ${email}:`, e.message);
+          }
+        } else {
+          console.log(`[Cron] uid=${uid} has no email address — skipping email`);
+        }
       }
     } catch (e) {
       summary.errors.push({ uid, step: 'user', error: e.message });

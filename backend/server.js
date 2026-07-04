@@ -344,17 +344,14 @@ app.post('/api/watchlist/catchup', verifyToken, async (req, res) => {
     const announcements = [];
     annsSnap.forEach(d => announcements.push(d.data()));
 
-    // 2. Check which ones have NOT been notified to this user
+    // 2. Check which ones have NOT been added to notifications
     const toNotify = [];
     const ts = admin.firestore.FieldValue.serverTimestamp();
     const batch = db.batch();
     
-    // We check if the notification document exists. If not, we create it.
-    // Instead of doing individual gets, we can fetch the existing notifications for these IDs
     const docIds = announcements.map(a => String(a.id));
     const notifRefs = docIds.map(id => db.collection('users').doc(req.uid).collection('notifications').doc(id));
     
-    // Firestore getAll has a limit of 100 docs per call, but announcements for a single script will be << 100
     const existingNotifs = await db.getAll(...notifRefs);
     
     for (let i = 0; i < announcements.length; i++) {
@@ -384,22 +381,32 @@ app.post('/api/watchlist/catchup', verifyToken, async (req, res) => {
       return res.json({ sent: 0, skipped: announcements.length, reason: 'already notified' });
     }
 
-    // 3. Get user email
-    let userEmail = null, userName = 'Investor';
-    const userDoc = await db.collection('users').doc(req.uid).get();
-    if (userDoc.exists && userDoc.data().email) {
-      userEmail = userDoc.data().email;
-      userName = userDoc.data().displayName || 'Investor';
-    } else {
-      try {
-        const record = await admin.auth().getUser(req.uid);
-        userEmail = record.email;
-        userName = record.displayName || 'Investor';
-      } catch (e) {}
-    }
+    // 3. Check dailyEmailState to see if we should send an email today
+    const dailyEmailStateRef = db.collection('users').doc(req.uid).collection('dailyEmailState').doc(scriptCode);
+    const dailyStateDoc = await dailyEmailStateRef.get();
+    const hasSentEmailToday = dailyStateDoc.exists && dailyStateDoc.data().state === 1;
 
-    if (userEmail) {
-      await sendAnnouncementEmail(userEmail, toNotify, userName);
+    let emailsSent = 0;
+    if (!hasSentEmailToday) {
+      let userEmail = null, userName = 'Investor';
+      const userDoc = await db.collection('users').doc(req.uid).get();
+      if (userDoc.exists && userDoc.data().email) {
+        userEmail = userDoc.data().email;
+        userName = userDoc.data().displayName || 'Investor';
+      } else {
+        try {
+          const record = await admin.auth().getUser(req.uid);
+          userEmail = record.email;
+          userName = record.displayName || 'Investor';
+        } catch (e) {}
+      }
+
+      if (userEmail) {
+        await sendAnnouncementEmail(userEmail, userName, toNotify);
+        emailsSent = 1;
+        // Update state to 1
+        batch.set(dailyEmailStateRef, { state: 1, updatedAt: ts }, { merge: true });
+      }
     }
     
     // 4. Update watchlist count for this script
