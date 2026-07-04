@@ -13,6 +13,7 @@ import BoardMeetingsPage from './components/BoardMeetings/BoardMeetingsPage'
 import BulkBlockPage from './components/BulkBlock/BulkBlockPage'
 import CompanyDataPage from './components/CompanyData/CompanyDataPage'
 import NewsPage from './components/News/NewsPage'
+import GainersLosersPage from './components/GainersLosers/GainersLosersPage'
 import AlertHistoryPage from './components/Alerts/AlertHistoryPage'
 import PremiumPage from './components/Premium/PremiumPage'
 import SettingsPage from './components/Settings/SettingsPage'
@@ -104,6 +105,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <NewsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/gainers-losers"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <GainersLosersPage />
             </AppLayout>
           </ProtectedRoute>
         }

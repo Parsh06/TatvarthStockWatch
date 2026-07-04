@@ -19,6 +19,7 @@ const mobileNav = [
   { to: '/announcements',     icon: Bell,            label: 'My News'   },
   { to: '/all-announcements', icon: Globe,           label: 'All News'  },
   { to: '/board-meetings',    icon: Presentation,    label: 'Meetings'  },
+  { to: '/gainers-losers',    icon: TrendingUp,      label: 'Gain/Loss' },
   { to: '/calendar',          icon: CalendarDays,    label: 'Calendar'  },
   { to: '/company-data',      icon: BarChart2,       label: 'Company'   },
   { to: '/news',              icon: Newspaper,       label: 'Market'    },

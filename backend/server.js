@@ -703,6 +703,7 @@ function _triggerRatesFetch(scripts, uid) {
 const { bseGet, getBseCookies, getYahooFundamentals, sanitizeCode } = require('./lib/apiClients');
 
 app.use("/api/bse", require("./routes/bseRoutes")(verifyToken));
+app.use("/api/nse", require("./routes/nseRoutes")(verifyToken));
 app.get("/api/search/scripts", (req, res) => res.redirect(`/api/bse/search?q=${encodeURIComponent(req.query.q || "")}`));
 
 // ── Portfolio storage (local mode) ────────────────────────────────────────────

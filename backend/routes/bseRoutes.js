@@ -742,6 +742,35 @@ router.get('/board-meetings', verifyToken, async (req, res) => {
   }
 });
 
+// ── PROTECTED: BSE Top Gainers/Losers ─────────────────────────────────────────
+router.get('/gainers-losers', verifyToken, async (req, res) => {
+  const { GLtype = 'gainer', IndxGrp = 'AllMkt', IndxGrpval = 'AllMkt', orderby = 'all' } = req.query;
+  
+  const params = {
+    GLtype,
+    IndxGrp,
+    IndxGrpval,
+    orderby
+  };
+
+  try {
+    const cookies = await getBseCookies();
+    const sessionHdr = cookies ? { Cookie: cookies } : {};
+
+    const data = await bseGet(
+      '/MktRGainerLoserDataeqto/w',
+      params,
+      15000,
+      sessionHdr
+    );
+    
+    res.json(data);
+  } catch (e) {
+    console.error('[BSE Gainers/Losers]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.get('/quote', async (req, res) => {
   const codes = (req.query.codes || '').split(',')
     .map(c => sanitizeCode(c)).filter(Boolean).slice(0, 50);

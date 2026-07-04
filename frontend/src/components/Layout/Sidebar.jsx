@@ -14,6 +14,7 @@ const NAV_TOP = [
   { to: '/announcements',      icon: Bell,            label: 'My Announcements' },
   { to: '/all-announcements',  icon: Globe,           label: 'All Announcements' },
   { to: '/board-meetings',     icon: Presentation,    label: 'Board Meeting Updates' },
+  { to: '/gainers-losers',     icon: TrendingUp,      label: 'Top Gainers/Losers' },
   { to: '/news',               icon: Newspaper,       label: 'Market News' },
   { to: '/bulk-block',         icon: Layers,          label: 'Bulk & Block Deals' },
   { to: '/company-data',       icon: BarChart2,       label: 'Company Data' },
