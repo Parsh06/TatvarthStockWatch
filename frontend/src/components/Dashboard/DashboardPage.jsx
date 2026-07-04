@@ -365,7 +365,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 animate-pulse">
             {[1,2,3,4,5,6].map((i) => <div key={i} className="h-[88px] bg-border rounded-xl" />)}
           </div>
-        ) : indices?.length > 0 ? (
+        ) : Array.isArray(indices) && indices.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
             {indices.map((idx, i) => {
               const pchg = parseFloat((idx.perchg || '').replace(/,/g, ''));
