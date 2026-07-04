@@ -22,6 +22,7 @@ const BSE_ORDER_BY = [
 
 export default function GainersLosersPage() {
   const [type, setType] = useState('gainer') // 'gainer' or 'loser'
+  const [exchange, setExchange] = useState('BSE')
   
   // BSE specific state
   const [bseIndxGrp, setBseIndxGrp] = useState('AllMkt')
@@ -243,49 +244,75 @@ export default function GainersLosersPage() {
           </button>
         </div>
 
-        {/* BSE Filters */}
-        <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-          <span className="text-sm text-textMuted font-medium whitespace-nowrap hidden md:inline-block">BSE Filters:</span>
-          <select
-            value={bseIndxGrp}
-            onChange={(e) => setBseIndxGrp(e.target.value)}
-            className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:border-primary outline-none"
-          >
-            {BSE_INDEX_GROUPS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+        {/* Exchange Switch & BSE Filters */}
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-4 bg-surface p-4 rounded-xl border border-border mt-4 w-full justify-between">
           
-          <select
-            value={bseOrderBy}
-            onChange={(e) => setBseOrderBy(e.target.value)}
-            className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:border-primary outline-none"
-          >
-            {BSE_ORDER_BY.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+          <div className="flex items-center bg-background border border-border rounded-lg p-1">
+            <button
+              onClick={() => setExchange('BSE')}
+              className={clsx(
+                "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-md transition-all",
+                exchange === 'BSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+              )}
+            >
+              BSE
+            </button>
+            <button
+              onClick={() => setExchange('NSE')}
+              className={clsx(
+                "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-md transition-all",
+                exchange === 'NSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+              )}
+            >
+              NSE
+            </button>
+          </div>
+
+          {/* BSE Filters */}
+          {exchange === 'BSE' && (
+            <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+              <span className="text-sm text-textMuted font-medium whitespace-nowrap hidden md:inline-block">BSE Filters:</span>
+              <select
+                value={bseIndxGrp}
+                onChange={(e) => setBseIndxGrp(e.target.value)}
+                className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:border-primary outline-none"
+              >
+                {BSE_INDEX_GROUPS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              
+              <select
+                value={bseOrderBy}
+                onChange={(e) => setBseOrderBy(e.target.value)}
+                className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:border-primary outline-none"
+              >
+                {BSE_ORDER_BY.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-500 rounded-lg p-4 text-sm flex items-start gap-3">
+        <div className="bg-red-500/10 border border-red-500/20 text-red-500 rounded-lg p-4 text-sm flex items-start gap-3 mt-4">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
           <p>{error}</p>
         </div>
       )}
 
-      {/* Main Content Area - Grid Layout */}
-      <div className="relative">
+      {/* Main Content Area - Full Width Table */}
+      <div className="relative mt-6">
         {loading && (
           <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-30 flex items-center justify-center rounded-xl">
             <RefreshCw className="w-8 h-8 text-primary animate-spin" />
           </div>
         )}
         
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          {renderBseTable()}
-          {renderNseTable()}
+        <div className="w-full">
+          {exchange === 'BSE' ? renderBseTable() : renderNseTable()}
         </div>
       </div>
     </div>

@@ -139,8 +139,12 @@ export default function WatchlistPage() {
 
   useEffect(() => {
     if (Object.keys(liveRates).length > 0) {
-      applyRates({ rates: liveRates, fetchedAt: new Date().toISOString() }, true)
+      const now = new Date().toISOString()
+      applyRates({ rates: liveRates, fetchedAt: now }, true)
       setRatesFetching(false)
+      // Since backend cronjob updates both rates and announcements at the exact same time,
+      // sync the UI fetch time so the user knows announcements are also up to date.
+      setAnnFetchedAt(now)
     }
   }, [liveRates])
 
@@ -340,6 +344,12 @@ export default function WatchlistPage() {
               className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium transition">
               <Plus className="w-4 h-4" />
               <span className="hidden sm:inline">Add Script</span>
+            </button>
+            <button onClick={() => setClearConfirm(true)}
+              disabled={watchlist.length === 0}
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg text-sm font-medium transition disabled:opacity-50">
+              <Trash2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Clear All</span>
             </button>
             <button
               onClick={() => { setBulkMode(!bulkMode); setSelected(new Set()) }}

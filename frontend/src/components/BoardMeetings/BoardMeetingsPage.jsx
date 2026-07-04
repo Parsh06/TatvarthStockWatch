@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { RefreshCw, Search, Download, CheckCircle2, XCircle, Calendar } from 'lucide-react'
+import { RefreshCw, Search, Download, CheckCircle2, XCircle, Calendar, FileText } from 'lucide-react'
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 import { getAnnouncementsFromDB } from '../../services/announcementService'
@@ -82,7 +82,7 @@ export default function BoardMeetingsPage() {
       ) {
         const code = String(ann.scriptCode || ann.bseCode || ann.ltdCode || '').trim()
         if (code) {
-          map[code] = true
+          map[code] = ann.pdfUrl || ann.sourceUrl || true
         }
       }
     }
@@ -248,11 +248,24 @@ export default function BoardMeetingsPage() {
                       </td>
                       <td className="px-4 py-3">{m.MEETING_DATE}</td>
                       <td className="px-4 py-3 text-center">
-                        <div className="flex justify-center">
+                        <div className="flex justify-center items-center gap-2">
                           {hasResult ? (
-                            <div className="flex items-center gap-1.5 text-xs font-medium text-green-500 bg-green-500/10 px-2.5 py-1 rounded-full border border-green-500/20">
-                              <CheckCircle2 className="w-4 h-4" /> Yes
-                            </div>
+                            <>
+                              <div className="flex items-center gap-1.5 text-xs font-medium text-green-500 bg-green-500/10 px-2.5 py-1 rounded-full border border-green-500/20">
+                                <CheckCircle2 className="w-4 h-4" /> Yes
+                              </div>
+                              {typeof outcomeByScript[m.scrip_code] === 'string' && (
+                                <a 
+                                  href={outcomeByScript[m.scrip_code]} 
+                                  target="_blank" 
+                                  rel="noreferrer"
+                                  className="text-primary hover:text-primary/80 transition-colors"
+                                  title="View Result PDF"
+                                >
+                                  <FileText className="w-5 h-5" />
+                                </a>
+                              )}
+                            </>
                           ) : (
                             <div className="flex items-center gap-1.5 text-xs font-medium text-red-500 bg-red-500/10 px-2.5 py-1 rounded-full border border-red-500/20">
                               <XCircle className="w-4 h-4" /> No
