@@ -5,9 +5,12 @@ import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Star, Bell, Settings, TrendingUp, Briefcase,
   BarChart2, Search, CalendarDays, Globe, Newspaper, Layers, BellRing, Eye,
+  LogOut, Crown, Presentation
 } from 'lucide-react'
 import GlobalSearch from '../Common/GlobalSearch'
 import clsx from 'clsx'
+import { useAuth } from '../../contexts/AuthContext'
+import toast from 'react-hot-toast'
 
 const mobileNav = [
   { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard' },
@@ -15,15 +18,19 @@ const mobileNav = [
   { to: '/portfolio',         icon: Briefcase,       label: 'Portfolio' },
   { to: '/announcements',     icon: Bell,            label: 'My News'   },
   { to: '/all-announcements', icon: Globe,           label: 'All News'  },
+  { to: '/board-meetings',    icon: Presentation,    label: 'Meetings'  },
   { to: '/calendar',          icon: CalendarDays,    label: 'Calendar'  },
   { to: '/company-data',      icon: BarChart2,       label: 'Company'   },
   { to: '/news',              icon: Newspaper,       label: 'Market'    },
   { to: '/bulk-block',        icon: Layers,          label: 'Deals'     },
   { to: '/insider',           icon: Eye,             label: 'Insider'   },
   { to: '/alerts',            icon: BellRing,        label: 'Alerts'    },
+  { to: '/premium',           icon: Crown,           label: 'Premium'   },
+  { to: '/settings',          icon: Settings,        label: 'Settings'  },
 ]
 
 export default function AppLayout({ children }) {
+  const { logout } = useAuth()
   const [collapsed, setCollapsed]   = useState(false)
   const [isMd, setIsMd]             = useState(() => window.innerWidth >= 768)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -58,6 +65,15 @@ export default function AppLayout({ children }) {
     }
   }, [location.pathname])
 
+  async function handleLogout() {
+    try {
+      await logout()
+      toast.success('Signed out')
+    } catch {
+      toast.error('Failed to sign out')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
@@ -70,20 +86,12 @@ export default function AppLayout({ children }) {
 
       {/* Mobile topbar */}
       {!isMd && (
-        <div className="fixed top-0 left-0 right-0 h-14 bg-surface border-b border-border flex items-center px-4 z-20">
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 bg-primary/20 rounded-lg flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 text-primary" />
-              </div>
-              <span className="font-bold text-textPrimary">TatvarthStockWatch</span>
+        <div className="fixed top-0 left-0 right-0 h-14 bg-surface/80 backdrop-blur-md border-b border-border flex items-center justify-center px-4 z-20">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-[#0F172A]">
+              <img src="/logo2.png" alt="Logo" className="w-6 h-6 object-contain" />
             </div>
-            <button
-              onClick={() => setSearchOpen(true)}
-              className="p-2 rounded-lg text-textMuted hover:text-textPrimary hover:bg-white/5 transition"
-            >
-              <Search className="w-5 h-5" />
-            </button>
+            <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-400">TatvarthStockWatch</span>
           </div>
         </div>
       )}
