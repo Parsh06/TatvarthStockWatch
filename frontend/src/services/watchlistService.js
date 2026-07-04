@@ -38,10 +38,18 @@ export async function addScript(uid, scriptData) {
   if (!ltdCode) throw new Error('scriptData must include an LTD Code')
 
   if (LOCAL_MODE) {
-    return apiClient('/api/watchlist', {
+    const res = await apiClient('/api/watchlist', {
       method: 'POST',
       body:   JSON.stringify({ ltdCode, symbol, scriptName, exchange, notes, isin, group }),
     })
+    
+    // Call catch-up logic
+    apiClient('/api/watchlist/catchup', {
+      method: 'POST',
+      body: JSON.stringify({ scriptCode: ltdCode })
+    }).catch(e => console.error('[Watchlist Catchup]', e))
+    
+    return res
   }
 
   const existing = await getDocs(
@@ -54,6 +62,13 @@ export async function addScript(uid, scriptData) {
     setDoc(ref, { ltdCode, symbol, scriptName, exchange, notes, isin, group, addedAt: serverTimestamp() }),
     setDoc(doc(db, 'users', uid), { ltdCodesIndex: arrayUnion(ltdCode) }, { merge: true }),
   ])
+  
+  // Trigger email catch-up for today's announcements in the background
+  apiClient('/api/watchlist/catchup', {
+    method: 'POST',
+    body: JSON.stringify({ scriptCode: ltdCode })
+  }).catch(e => console.error('[Watchlist Catchup]', e))
+
   return ref
 }
 
@@ -122,8 +137,17 @@ export async function bulkAddScripts(uid, scripts) {
     await batch.commit()
   }
 
-  const newCodes = toAdd.map((t) => t.ltdCode)
-  await setDoc(doc(db, 'users', uid), { ltdCodesIndex: arrayUnion(...newCodes) }, { merge: true })
+  const addedCodes = toAdd.map((t) => t.ltdCode)
+  const ref = doc(db, 'users', uid)
+  await setDoc(ref, { ltdCodesIndex: arrayUnion(...addedCodes) }, { merge: true })
+
+  // Trigger email catch-up for today's announcements in the background for all added codes
+  for (const code of addedCodes) {
+    apiClient('/api/watchlist/catchup', {
+      method: 'POST',
+      body: JSON.stringify({ scriptCode: code })
+    }).catch(e => console.error('[Watchlist Catchup Bulk]', e))
+  }
 
   return { added: toAdd.length, skipped }
 }

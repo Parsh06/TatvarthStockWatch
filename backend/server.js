@@ -320,6 +320,114 @@ app.post('/api/watchlist/bulk', verifyToken, async (req, res) => {
   res.json({ added, skipped });
 });
 
+// ── PROTECTED: Watchlist catch-up emails ─────────────────────────────────────
+app.post('/api/watchlist/catchup', verifyToken, async (req, res) => {
+  try {
+    const { scriptCode } = req.body;
+    if (!scriptCode) return res.status(400).json({ error: 'scriptCode required' });
+
+    const { db, admin } = require('./lib/firebaseAdmin');
+    const { sendAnnouncementEmail } = require('./lib/mailer');
+    
+    // 1. Fetch today's announcements for this script from the global DB
+    const todayStr = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const annsSnap = await db.collection('announcements')
+      .where('scriptCode', '==', scriptCode)
+      // date string like '04 Jul 2026' doesn't easily compare, but the frontend/backend wipes old data daily
+      // so whatever is in the DB *is* today's data. 
+      .get();
+      
+    if (annsSnap.empty) {
+      return res.json({ sent: 0, skipped: 0, reason: 'no announcements found today' });
+    }
+
+    const announcements = [];
+    annsSnap.forEach(d => announcements.push(d.data()));
+
+    // 2. Check which ones have NOT been notified to this user
+    const toNotify = [];
+    const ts = admin.firestore.FieldValue.serverTimestamp();
+    const batch = db.batch();
+    
+    // We check if the notification document exists. If not, we create it.
+    // Instead of doing individual gets, we can fetch the existing notifications for these IDs
+    const docIds = announcements.map(a => String(a.id));
+    const notifRefs = docIds.map(id => db.collection('users').doc(req.uid).collection('notifications').doc(id));
+    
+    // Firestore getAll has a limit of 100 docs per call, but announcements for a single script will be << 100
+    const existingNotifs = await db.getAll(...notifRefs);
+    
+    for (let i = 0; i < announcements.length; i++) {
+      if (!existingNotifs[i].exists) {
+        toNotify.push(announcements[i]);
+        batch.set(notifRefs[i], {
+          id:               announcements[i].id               || '',
+          exchange:         announcements[i].exchange         || '',
+          scriptName:       announcements[i].scriptName       || '',
+          scriptCode:       announcements[i].scriptCode       || '',
+          category:         announcements[i].category         || '',
+          subCategory:      announcements[i].subCategory      || '',
+          subject:          announcements[i].subject          || '',
+          announcementDate: announcements[i].announcementDate || '',
+          date:             announcements[i].date             || '',
+          time:             announcements[i].time             || '',
+          datetimeIST:      announcements[i].datetimeIST      || '',
+          pdfUrl:           announcements[i].pdfUrl           || null,
+          critical:         announcements[i].critical         || false,
+          read:             false,
+          createdAt:        ts,
+        });
+      }
+    }
+
+    if (toNotify.length === 0) {
+      return res.json({ sent: 0, skipped: announcements.length, reason: 'already notified' });
+    }
+
+    // 3. Get user email
+    let userEmail = null, userName = 'Investor';
+    const userDoc = await db.collection('users').doc(req.uid).get();
+    if (userDoc.exists && userDoc.data().email) {
+      userEmail = userDoc.data().email;
+      userName = userDoc.data().displayName || 'Investor';
+    } else {
+      try {
+        const record = await admin.auth().getUser(req.uid);
+        userEmail = record.email;
+        userName = record.displayName || 'Investor';
+      } catch (e) {}
+    }
+
+    if (userEmail) {
+      await sendAnnouncementEmail(userEmail, toNotify, userName);
+    }
+    
+    // 4. Update watchlist count for this script
+    // Note: The frontend just added it, so it might not be in the 'watchlist' subcollection yet if they used bulkAdd
+    // But it will eventually be.
+    const wlSnap = await db.collection('users').doc(req.uid).collection('watchlist')
+      .where('ltdCode', '==', scriptCode)
+      .limit(1)
+      .get();
+      
+    if (!wlSnap.empty) {
+      const latestAnn = toNotify.reduce((latest, a) => (!latest || a.announcementDate > latest) ? a.announcementDate : latest, null);
+      batch.update(wlSnap.docs[0].ref, {
+        announcementCount:  admin.firestore.FieldValue.increment(toNotify.length),
+        lastAnnouncementAt: latestAnn,
+        lastCheckedAt:      ts,
+      });
+    }
+
+    await batch.commit();
+    res.json({ sent: toNotify.length, skipped: announcements.length - toNotify.length });
+
+  } catch (e) {
+    console.error('[Catchup Error]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── PROTECTED: Watchlist export as CSV ───────────────────────────────────────
 app.get('/api/watchlist/export', verifyToken, async (req, res) => {
   try {
