@@ -6,6 +6,7 @@ import { apiClient } from '../../services/apiClient'
 import { exportToXLSX } from '../../utils/csvParser'
 import { getCategoryColor } from '../../utils/formatters'
 import { useWatchlist } from '../../contexts/WatchlistContext'
+import { getAnnouncementsFromDB } from '../../services/announcementService'
 import ScriptSearchInput from '../Common/ScriptSearchInput'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -100,10 +101,21 @@ export default function AllAnnouncementsPage() {
     if (fromDate > toDate)    { setError('From date must not be after To date.'); return }
     setLoading(true); setError(null); setPage(1); setSearch('')
     try {
-      // Company filtering is done client-side
-      const params = new URLSearchParams({ from: toYYYYMMDD(fromDate), to: toYYYYMMDD(toDate) })
-      const data = await apiClient(`/api/bse/announcements?${params}`)
-      setResult(data)
+      if (fromDate === today() && toDate === today()) {
+        const data = await getAnnouncementsFromDB({ limitCount: 1500 }) // Fetch enough to cover all today's announcements
+        setResult({
+          from: fromDate,
+          to: toDate,
+          total: data.length,
+          rawTotal: data.length,
+          announcements: data
+        })
+      } else {
+        // Company filtering is done client-side
+        const params = new URLSearchParams({ from: toYYYYMMDD(fromDate), to: toYYYYMMDD(toDate) })
+        const data = await apiClient(`/api/bse/announcements?${params}`)
+        setResult(data)
+      }
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
   }
