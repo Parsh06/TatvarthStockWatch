@@ -16,10 +16,19 @@ async function saveWatchlist(uid, scripts) {
   // In the new schema, scripts are saved individually, not as an array
 }
 
+let globalWatchlistCache = null;
+let lastCacheTime = 0;
+const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
 // Global aggregation for background cron jobs
 // The cron needs to know which scripts to fetch live rates and announcements for.
 // We pull all watchlists via a Collection Group query on 'watchlist'.
 async function getAllTrackedScripts() {
+  const now = Date.now();
+  if (globalWatchlistCache && (now - lastCacheTime < CACHE_TTL)) {
+    return globalWatchlistCache;
+  }
+
   const snap = await db.collectionGroup('watchlist').get();
   const allScripts = [];
   
@@ -46,14 +55,24 @@ async function getAllTrackedScripts() {
   }
   
   // Convert Sets to Arrays for easier consumption
-  return Array.from(unique.values()).map(s => ({
+  const result = Array.from(unique.values()).map(s => ({
     ...s,
     uids: Array.from(s.uids)
   }));
+  
+  globalWatchlistCache = result;
+  lastCacheTime = now;
+  return result;
+}
+
+function invalidateWatchlistCache() {
+  globalWatchlistCache = null;
+  lastCacheTime = 0;
 }
 
 module.exports = {
   getWatchlist,
   saveWatchlist,
-  getAllTrackedScripts
+  getAllTrackedScripts,
+  invalidateWatchlistCache
 };

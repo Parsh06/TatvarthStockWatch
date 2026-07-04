@@ -328,6 +328,10 @@ app.post('/api/watchlist/catchup', verifyToken, async (req, res) => {
 
     const { db, admin } = require('./lib/firebaseAdmin');
     const { sendAnnouncementEmail } = require('./lib/mailer');
+    const { invalidateWatchlistCache } = require('./lib/watchlistStore');
+    
+    // Invalidate the cache so the cron background jobs pick up this new script immediately
+    invalidateWatchlistCache();
     
     // 1. Fetch today's announcements for this script from the global DB
     const todayStr = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
