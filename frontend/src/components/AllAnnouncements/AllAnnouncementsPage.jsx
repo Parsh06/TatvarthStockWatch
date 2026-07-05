@@ -10,12 +10,13 @@ import { getAnnouncementsFromDB } from '../../services/announcementService'
 import ScriptSearchInput from '../Common/ScriptSearchInput'
 import PageTransition from '../Common/PageTransition'
 
-const today = () => new Date().toISOString().slice(0, 10)
+const getISTDate = (d = new Date()) => new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10)
+const today = () => getISTDate()
 const toYYYYMMDD  = (d) => d.replace(/-/g, '')
 const PAGE_SIZE   = 50
 
 function dateNDaysAgo(n) {
-  const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10)
+  const d = new Date(); d.setDate(d.getDate() - n); return getISTDate(d)
 }
 
 const QUICK_RANGES = [

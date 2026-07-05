@@ -2,6 +2,7 @@ import { ExternalLink, FileText, Star } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import { getCategoryColor, getExchangeColor, formatRelativeDate } from '../../utils/formatters'
+import AiSummaryCard from './AiSummaryCard'
 
 export default function AnnouncementCard({ announcement: a, read = false, onRead }) {
   const navigate = useNavigate()
@@ -85,6 +86,9 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
 
         {/* Subject */}
         <p className="text-sm text-textMuted line-clamp-2 mb-2">{subject}</p>
+
+        {/* AI Summary */}
+        {a.aiSummary && <AiSummaryCard summary={a.aiSummary} />}
 
         {/* Footer */}
         <div className="flex items-center justify-between">

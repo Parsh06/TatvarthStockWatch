@@ -6,7 +6,8 @@ import { getAnnouncementsFromDB } from '../../services/announcementService'
 import { exportToXLSX } from '../../utils/csvParser'
 import PageTransition from '../Common/PageTransition'
 
-const today = () => new Date().toISOString().slice(0, 10)
+const getISTDate = (d = new Date()) => new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+const today = () => getISTDate();
 
 function StatCard({ label, value, sub, color = 'text-textPrimary', icon: Icon, iconColor }) {
   return (

@@ -542,6 +542,7 @@ app.patch('/api/watchlist/:id/alert', verifyToken, async (req, res) => {
 // ── PROTECTED: Trigger — fetch BSE/NSE announcements + kick off rates ─────────
 app.post('/api/trigger', verifyToken, async (req, res) => {
   const scripts = await watchlistStore.getWatchlist(req.uid);
+  
   if (!scripts.length) {
     return res.json({ announcements: [], total: 0, emailSent: false, message: 'No scripts in watchlist' });
   }
@@ -627,6 +628,33 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
       // But only alert for the ones in the watchlist!
       const freshAll = newAnnouncements || [];
       freshAnnouncements = freshAll.filter((a) => bseSet.has(a.scriptCode) || nseSet.has((a.scriptCode || '').toUpperCase()));
+      
+      // Run AI Summarization on all fresh watchlist announcements!
+      if (freshAnnouncements.length > 0) {
+        try {
+          console.log(`[Trigger] Running AI Summarizer on ${freshAnnouncements.length} new announcements...`);
+          const { generateAnnouncementSummary } = require('./lib/aiSummarizer');
+          const { getDb } = require('./lib/mongoClient');
+          const mongoDb = await getDb();
+          
+          await Promise.all(freshAnnouncements.map(async (ann) => {
+            if (ann.pdfUrl) {
+              const summary = await generateAnnouncementSummary(ann);
+              if (summary) {
+                ann.aiSummary = summary;
+                // Also update it in the database
+                await mongoDb.collection('announcements').updateOne(
+                  { _id: String(ann.id) },
+                  { $set: { aiSummary: summary } }
+                );
+              }
+            }
+          }));
+          console.log(`[Trigger] AI Summarization complete!`);
+        } catch (err) {
+          console.error(`[Trigger] AI Summarization error:`, err.message);
+        }
+      }
       
       console.log(`[Trigger] Saved ${saved} new announcements to MongoDB`);
       
@@ -949,5 +977,55 @@ app.all('/api/cron/trigger', async (req, res) => {
   } catch (err) {
     console.error('[Global Cron] Error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * NEW ROUTE: Background AI Summary Generator
+ * Triggered periodically to process announcements that don't have an aiSummary yet.
+ */
+app.all('/api/cron/generate-summaries', async (req, res) => {
+  try {
+    const { getDb } = require('./lib/mongoClient');
+    const { generateAnnouncementSummary } = require('./lib/aiSummarizer');
+    const db = await getDb();
+    const annCol = db.collection('announcements');
+
+    // Find up to 5 most recent announcements (from last 48 hours) that don't have aiSummary
+    // and aren't marked as 'failed_ai' to avoid infinite retries
+    const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const pending = await annCol.find({
+      savedAt: { $gte: twoDaysAgo },
+      aiSummary: { $exists: false },
+      aiSummaryStatus: { $ne: 'failed' }
+    }).sort({ savedAt: -1 }).limit(5).toArray();
+
+    if (pending.length === 0) {
+      return res.status(200).json({ success: true, processed: 0, message: 'No pending summaries' });
+    }
+
+    let successCount = 0;
+    for (const ann of pending) {
+      console.log(`[AI Cron] Summarizing ${ann._id} (${ann.scriptName})`);
+      const summaryJson = await generateAnnouncementSummary(ann);
+      
+      if (summaryJson) {
+        await annCol.updateOne(
+          { _id: ann._id },
+          { $set: { aiSummary: summaryJson, aiSummaryStatus: 'completed' } }
+        );
+        successCount++;
+      } else {
+        await annCol.updateOne(
+          { _id: ann._id },
+          { $set: { aiSummaryStatus: 'failed' } }
+        );
+      }
+    }
+
+    res.status(200).json({ success: true, processed: pending.length, successful: successCount });
+  } catch (err) {
+    console.error('[AI Cron] Error:', err);
+    res.status(500).json({ error: 'Failed to generate summaries' });
   }
 });

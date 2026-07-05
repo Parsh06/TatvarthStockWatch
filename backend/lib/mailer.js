@@ -83,6 +83,54 @@ function buildSingleEmailHtml(userName, ann) {
       </td>
     </tr>` : '';
 
+  let aiSummaryHtml = '';
+  if (ann.aiSummary && typeof ann.aiSummary === 'object') {
+    const s = ann.aiSummary;
+    const bullets = Array.isArray(s.summary) ? s.summary.map(b => `<li style="margin-bottom:8px;">${b}</li>`).join('') : '';
+    
+    let metrics = '';
+    if (s.financials && s.financials.applicable !== false) {
+      const getMet = (label, val, qoq, yoy) => {
+        if (!val || val === 'Not Reported' || val === 'Not Applicable') return '';
+        const getColor = (num) => parseFloat(num) > 0 ? '#166534' : parseFloat(num) < 0 ? '#991b1b' : '#475569';
+        const getBg = (num) => parseFloat(num) > 0 ? '#dcfce7' : parseFloat(num) < 0 ? '#fee2e2' : '#f1f5f9';
+        
+        const qBadge = (qoq && qoq !== 'Not Reported' && qoq !== 'Not Applicable') ? `<span style="background:${getBg(qoq)};color:${getColor(qoq)};padding:2px 6px;border-radius:4px;font-size:10px;font-weight:bold;margin-left:4px;">QoQ ${qoq}%</span>` : '';
+        const yBadge = (yoy && yoy !== 'Not Reported' && yoy !== 'Not Applicable') ? `<span style="background:${getBg(yoy)};color:${getColor(yoy)};padding:2px 6px;border-radius:4px;font-size:10px;font-weight:bold;margin-left:4px;">YoY ${yoy}%</span>` : '';
+        
+        return `<div style="padding:10px;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;text-align:center;width:30%;box-sizing:border-box;">
+          <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;margin-bottom:4px;">${label}</div>
+          <div style="font-size:14px;color:#0f172a;font-weight:700;margin-bottom:6px;">${val}</div>
+          <div style="display:flex;justify-content:center;gap:4px;">${qBadge}${yBadge}</div>
+        </div>`;
+      };
+      
+      const rev = getMet('Revenue', s.financials.revenue?.current, s.financials.revenue?.qoqPercent, s.financials.revenue?.yoyPercent);
+      const pat = getMet('Net Profit', s.financials.netProfit?.current, s.financials.netProfit?.qoqPercent, s.financials.netProfit?.yoyPercent);
+      const ebitda = getMet('EBITDA', s.financials.ebitda?.current, s.financials.ebitda?.qoqPercent, s.financials.ebitda?.yoyPercent);
+      
+      if (rev || pat || ebitda) {
+        metrics = `<div style="display:flex;justify-content:space-between;gap:8px;margin-top:16px;">${rev}${ebitda}${pat}</div>`;
+      }
+    }
+
+    aiSummaryHtml = `
+    <tr>
+      <td style="padding:0 32px 24px;">
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;padding:20px;border-radius:12px;">
+          <div style="font-size:12px;font-weight:800;color:#166534;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;">
+            ✨ Tatvarth AI Insight
+          </div>
+          ${s.headline ? `<div style="font-size:16px;font-weight:700;color:#14532d;margin-bottom:12px;">${s.headline}</div>` : ''}
+          <ul style="margin:0;padding-left:20px;font-size:14px;color:#166534;line-height:1.6;">
+            ${bullets}
+          </ul>
+          ${metrics}
+        </div>
+      </td>
+    </tr>`;
+  }
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -161,6 +209,7 @@ function buildSingleEmailHtml(userName, ann) {
         </tr>
 
         ${subCatRow}
+        ${aiSummaryHtml}
 
         <!-- ── Action buttons ── -->
         <tr>

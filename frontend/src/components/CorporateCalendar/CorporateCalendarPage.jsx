@@ -105,7 +105,8 @@ export default function CorporateCalendarPage() {
   const { watchlist } = useWatchlist()
 
   const now = new Date()
-  const today = () => now.toISOString().slice(0, 10)
+  const getISTDate = (d = new Date()) => new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const today = () => getISTDate();
   const [fromDate, setFromDate] = useState(today())
   const [toDate, setToDate] = useState(() => {
     const d = new Date()
