@@ -22,6 +22,7 @@ import CorporateCalendarPage from './components/CorporateCalendar/CorporateCalen
 import InsiderTradingPage from './components/InsiderTrading/InsiderTradingPage'
 import AppLayout from './components/Layout/AppLayout'
 import SecurityGuard from './components/SecurityGuard/SecurityGuard'
+import CommandPalette from './components/Common/CommandPalette'
 
 import { Preloader } from './components/Common/Preloader'
 
@@ -45,7 +46,9 @@ function PublicRoute({ children }) {
 
 function AppRoutes() {
   return (
-    <Routes>
+    <>
+      <CommandPalette />
+      <Routes>
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -192,6 +195,7 @@ function AppRoutes() {
       />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    </>
   )
 }
 

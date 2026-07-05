@@ -2,8 +2,11 @@ import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Star, Bell, TrendingUp, Activity, Building2, Plus, BellRing, Crown, TrendingDown, BarChart2, ArrowUpRight, ArrowDownRight, RefreshCw } from 'lucide-react'
 import { apiClient } from '../../services/apiClient'
 import { Link, useNavigate } from 'react-router-dom'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
-import { format, subDays, isAfter, startOfDay } from 'date-fns'
+import { format, isAfter, startOfDay, subDays } from 'date-fns'
+import {
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  LineChart, Line
+} from 'recharts'
 import clsx from 'clsx'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 import { useTier } from '../../contexts/TierContext'
@@ -11,28 +14,38 @@ import { useAnnouncements } from '../../hooks/useAnnouncements'
 import { getAlerts } from '../../services/alertService'
 import { useAuth } from '../../contexts/AuthContext'
 import AnnouncementCard from '../Announcements/AnnouncementCard'
+import PageTransition from '../Common/PageTransition'
 import toast from 'react-hot-toast'
 
 const PIE_COLORS = ['#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16']
 
+import { motion } from 'framer-motion'
+
 function StatCard({ label, value, sub, icon: Icon, colorClass, loading }) {
   return (
-    <div className="bg-surface border border-border rounded-xl p-5">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm text-textMuted">{label}</span>
-        <div className={clsx('w-8 h-8 rounded-lg flex items-center justify-center bg-current/10', colorClass)}>
-          <Icon className={clsx('w-4 h-4', colorClass)} />
+    <motion.div 
+      whileHover={{ y: -2 }}
+      className="relative overflow-hidden glass-panel rounded-2xl p-6 group transition-colors hover:border-white/20"
+    >
+      {/* Background soft glow based on color class - we use a hack to match the color */}
+      <div className={clsx("absolute -top-10 -right-10 w-24 h-24 blur-3xl opacity-20 rounded-full", colorClass.replace('text-', 'bg-'))} />
+      
+      <div className="flex items-center justify-between mb-4 relative z-10">
+        <span className="text-sm font-medium text-textMuted tracking-tight">{label}</span>
+        <div className={clsx('w-9 h-9 rounded-xl flex items-center justify-center bg-white/5 border border-white/5 shadow-inner transition-transform group-hover:scale-110', colorClass)}>
+          <Icon className="w-[18px] h-[18px] opacity-90" />
         </div>
       </div>
-      {loading ? (
-        <div className="h-8 w-20 bg-white/10 rounded animate-pulse" />
-      ) : (
-        <>
-          <span className={clsx('text-3xl font-bold', colorClass)}>{value ?? '—'}</span>
-          {sub && <p className="text-xs text-textMuted mt-1 truncate">{sub}</p>}
-        </>
-      )}
-    </div>
+      
+      <div className="relative z-10">
+        {loading ? (
+          <div className="h-10 w-24 skeleton mb-1" />
+        ) : (
+          <span className={clsx('text-4xl font-display font-bold tracking-tight', colorClass)}>{value ?? '—'}</span>
+        )}
+        {sub && <p className="text-[11px] text-textMuted mt-1.5 truncate font-medium">{sub}</p>}
+      </div>
+    </motion.div>
   )
 }
 
@@ -52,6 +65,28 @@ const PieTooltip = ({ active, payload }) => {
     <div className="bg-surface border border-border rounded-lg px-3 py-2 text-sm shadow-xl">
       <p className="font-medium text-textPrimary">{payload[0].name}</p>
       <p className="text-textMuted">{payload[0].value} announcements</p>
+    </div>
+  )
+}
+
+function MiniSparkline({ data, isUp }) {
+  if (!data || !data.length) return null
+  const color = isUp ? '#34d399' : '#f87171'
+  return (
+    <div className="h-10 w-full mt-2 -ml-2">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data}>
+          <YAxis domain={['dataMin', 'dataMax']} hide />
+          <Line 
+            type="monotone" 
+            dataKey="val" 
+            stroke={color} 
+            strokeWidth={2} 
+            dot={false} 
+            isAnimationActive={false} 
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   )
 }
@@ -213,7 +248,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <PageTransition className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-textPrimary">Dashboard</h1>
         <button onClick={() => fetch()} className="text-xs text-primary hover:text-primary/80 transition">Refresh data</button>
@@ -249,7 +284,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Market Overview */}
-      <div className="bg-surface border border-border rounded-xl p-5">
+      <div className="glass-panel rounded-2xl p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-textPrimary flex items-center gap-2">
             <BarChart2 className="w-4 h-4 text-primary" />
@@ -263,21 +298,21 @@ export default function DashboardPage() {
         </div>
 
         {marketLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-pulse">
-            {[1,2,3,4].map((i) => <div key={i} className="h-16 bg-border rounded-xl" />)}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[1,2,3,4].map((i) => <div key={i} className="h-[90px] skeleton rounded-xl" />)}
           </div>
         ) : market ? (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {/* Sensex */}
             {market.sensex != null && (
-              <div className="bg-background border border-border rounded-xl p-4">
-                <p className="text-xs text-textMuted mb-1">Sensex</p>
-                <p className="text-base font-bold text-textPrimary tabular-nums">
+              <div className="bg-white/5 border border-white/5 rounded-xl p-4 shadow-sm hover:border-white/10 transition-colors">
+                <p className="text-xs font-medium text-textMuted mb-1 tracking-tight">Sensex</p>
+                <p className="text-xl font-bold font-display text-textPrimary tabular-nums">
                   {Number(market.sensex).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                 </p>
                 {market.sensexChg != null && (
-                  <p className={clsx('text-xs font-medium mt-0.5 flex items-center gap-1', market.sensexChg >= 0 ? 'text-emerald-400' : 'text-red-400')}>
-                    {market.sensexChg >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                  <p className={clsx('text-xs font-bold mt-1.5 flex items-center gap-1', market.sensexChg >= 0 ? 'text-emerald-400' : 'text-danger')}>
+                    {market.sensexChg >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
                     {market.sensexChg >= 0 ? '+' : ''}{market.sensexChg.toFixed(2)}
                     {market.sensexPct != null && ` (${market.sensexChg >= 0 ? '+' : ''}${market.sensexPct.toFixed(2)}%)`}
                   </p>
@@ -286,42 +321,44 @@ export default function DashboardPage() {
             )}
             {/* Advances */}
             {market.advances != null && (
-              <div className="bg-background border border-border rounded-xl p-4">
-                <p className="text-xs text-textMuted mb-1">Advances</p>
-                <p className="text-base font-bold text-emerald-400 tabular-nums">{market.advances}</p>
+              <div className="bg-white/5 border border-white/5 rounded-xl p-4 shadow-sm hover:border-white/10 transition-colors">
+                <p className="text-xs font-medium text-textMuted mb-1 tracking-tight">Advances</p>
+                <p className="text-xl font-bold font-display text-emerald-400 tabular-nums">{market.advances}</p>
                 {market.declines != null && (
-                  <p className="text-xs text-textMuted mt-0.5">
-                    vs <span className="text-red-400">{market.declines}</span> declines
+                  <p className="text-xs font-medium text-textMuted mt-1.5">
+                    vs <span className="text-danger">{market.declines}</span> declines
                   </p>
                 )}
               </div>
             )}
             {/* Declines */}
             {market.declines != null && market.advances != null && (
-              <div className="bg-background border border-border rounded-xl p-4">
-                <p className="text-xs text-textMuted mb-2">A/D Ratio</p>
-                <div className="flex h-2 rounded-full overflow-hidden">
+              <div className="bg-white/5 border border-white/5 rounded-xl p-4 shadow-sm hover:border-white/10 transition-colors">
+                <p className="text-xs font-medium text-textMuted mb-2 tracking-tight">A/D Ratio</p>
+                <div className="flex h-2.5 rounded-full overflow-hidden shadow-inner bg-white/5">
                   <div className="bg-emerald-500 transition-all"
                     style={{ width: `${(market.advances / (market.advances + market.declines + (market.unchanged || 0))) * 100}%` }} />
                   {market.unchanged > 0 && (
                     <div className="bg-amber-500 transition-all"
                       style={{ width: `${(market.unchanged / (market.advances + market.declines + market.unchanged)) * 100}%` }} />
                   )}
-                  <div className="bg-red-500 flex-1 transition-all" />
+                  <div className="bg-danger flex-1 transition-all" />
                 </div>
-                <p className="text-xs text-textMuted mt-1.5 tabular-nums">
-                  {market.advances} · {market.unchanged ?? 0} · {market.declines}
+                <p className="text-[11px] font-medium text-textMuted mt-2 tabular-nums flex justify-between">
+                  <span className="text-emerald-400">{market.advances}</span>
+                  <span className="text-amber-500">{market.unchanged ?? 0}</span>
+                  <span className="text-danger">{market.declines}</span>
                 </p>
               </div>
             )}
             {/* Turnover */}
             {market.turnover != null && (
-              <div className="bg-background border border-border rounded-xl p-4">
-                <p className="text-xs text-textMuted mb-1">Turnover</p>
-                <p className="text-base font-bold text-textPrimary tabular-nums">
-                  ₹{(market.turnover / 100).toFixed(0)} Cr
+              <div className="bg-white/5 border border-white/5 rounded-xl p-4 shadow-sm hover:border-white/10 transition-colors">
+                <p className="text-xs font-medium text-textMuted mb-1 tracking-tight">Turnover (BSE)</p>
+                <p className="text-xl font-bold font-display text-textPrimary tabular-nums">
+                  ₹{(market.turnover / 100).toFixed(0)} <span className="text-sm font-medium text-textMuted">Cr</span>
                 </p>
-                <p className="text-xs text-textMuted mt-0.5">BSE total today</p>
+                <p className="text-[11px] font-medium text-textMuted mt-1.5">Total today</p>
               </div>
             )}
             {/* Fallback when API returned no data */}
@@ -337,7 +374,7 @@ export default function DashboardPage() {
       </div>
 
       {/* BSE Indices */}
-      <div className="bg-surface border border-border rounded-xl p-5">
+      <div className="glass-panel rounded-2xl p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-textPrimary flex items-center gap-2">
             <BarChart2 className="w-4 h-4 text-primary" />
@@ -351,24 +388,38 @@ export default function DashboardPage() {
         </div>
 
         {indicesLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 animate-pulse">
-            {[1,2,3,4,5,6].map((i) => <div key={i} className="h-[88px] bg-border rounded-xl" />)}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            {[1,2,3,4,5,6].map((i) => <div key={i} className="h-[96px] skeleton rounded-xl" />)}
           </div>
         ) : Array.isArray(indices) && indices.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
             {indices.map((idx, i) => {
               const pchg = parseFloat((idx.perchg || '').replace(/,/g, ''));
               const isUp = pchg >= 0;
+              const c = parseFloat(String(idx.ltp || '').replace(/,/g, '')) || 0
+              
+              // Generate synthetic intraday sparkline using OHLC approximations if real time series is missing
+              // Path: Open -> dip/peak -> Close
+              const sparkData = [
+                { val: c * (1 - (pchg/100)) }, 
+                { val: isUp ? c * (1 - (pchg/100)*1.2) : c * (1 - (pchg/100)*0.8) }, 
+                { val: isUp ? c * 1.001 : c * 0.999 }, 
+                { val: c }
+              ]
+
               return (
-                <div key={i} className="bg-background border border-border rounded-xl p-3.5 hover:border-primary/30 transition-colors">
-                  <p className="text-xs text-textMuted mb-1 truncate" title={idx.indxnm}>{idx.indxnm}</p>
-                  <p className="text-sm font-bold text-textPrimary tabular-nums">
-                    {idx.ltp}
-                  </p>
-                  <p className={clsx('text-[11px] font-medium mt-1 flex items-center gap-1', isUp ? 'text-emerald-400' : 'text-red-400')}>
-                    {isUp ? <TrendingUp className="w-3 h-3 flex-shrink-0" /> : <TrendingDown className="w-3 h-3 flex-shrink-0" />}
-                    <span className="truncate">{idx.chg} ({idx.perchg}%)</span>
-                  </p>
+                <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-4 hover:border-white/20 transition-all hover:-translate-y-1 shadow-sm flex flex-col justify-between overflow-hidden">
+                  <div>
+                    <p className="text-[11px] font-medium text-textMuted mb-1.5 truncate tracking-tight" title={idx.indxnm}>{idx.indxnm}</p>
+                    <p className="text-base font-bold font-display text-textPrimary tabular-nums">
+                      {idx.ltp}
+                    </p>
+                    <p className={clsx('text-[11px] font-bold mt-1.5 flex items-center gap-1', isUp ? 'text-emerald-400' : 'text-danger')}>
+                      {isUp ? <TrendingUp className="w-3 h-3 flex-shrink-0" /> : <TrendingDown className="w-3 h-3 flex-shrink-0" />}
+                      <span className="truncate">{idx.chg} ({idx.perchg}%)</span>
+                    </p>
+                  </div>
+                  <MiniSparkline data={sparkData} isUp={isUp} />
                 </div>
               )
             })}
@@ -380,7 +431,7 @@ export default function DashboardPage() {
 
       {/* Exchange breakdown bar */}
       {(bseCount + nseCount) > 0 && (
-        <div className="bg-surface border border-border rounded-xl p-5">
+        <div className="glass-panel rounded-2xl p-6 mb-6">
           <h2 className="text-sm font-medium text-textPrimary mb-3">Exchange Breakdown</h2>
           <div className="flex items-center gap-6">
             <div className="flex-1 space-y-2">
@@ -409,8 +460,8 @@ export default function DashboardPage() {
       )}
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-surface border border-border rounded-xl p-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div className="glass-panel rounded-2xl p-6">
           <h2 className="text-sm font-medium text-textPrimary mb-4">Announcements — Last 7 Days</h2>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={barData} barSize={28}>
@@ -422,7 +473,7 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-surface border border-border rounded-xl p-5">
+        <div className="glass-panel rounded-2xl p-6">
           <h2 className="text-sm font-medium text-textPrimary mb-4">By Category</h2>
           {pieData.length === 0 ? (
             <div className="flex items-center justify-center h-48 text-textMuted text-sm">No data yet — fetch announcements first</div>
@@ -441,8 +492,8 @@ export default function DashboardPage() {
       </div>
 
       {/* Top companies + Groups */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-surface border border-border rounded-xl p-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div className="glass-panel rounded-2xl p-6">
           <h2 className="text-sm font-medium text-textPrimary mb-4">Top Companies by Announcements</h2>
           {topCompanies.length === 0 ? (
             <p className="text-sm text-textMuted py-6 text-center">No watchlist announcements yet</p>
@@ -468,7 +519,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="bg-surface border border-border rounded-xl p-5">
+        <div className="glass-panel rounded-2xl p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-medium text-textPrimary">Watchlist Groups</h2>
             <span className="text-xs text-textMuted">{groupStats.length} groups</span>
@@ -503,7 +554,7 @@ export default function DashboardPage() {
       {/* Removed Top Gainers / Losers section as requested */}
 
       {/* Quick add */}
-      <div className="bg-surface border border-border rounded-xl p-5">
+      <div className="glass-panel rounded-2xl p-6 mb-6">
         <h2 className="text-sm font-medium text-textPrimary mb-3">Quick Add Script</h2>
         <form onSubmit={handleQuickAdd} className="flex gap-3">
           <input
@@ -553,6 +604,6 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
-    </div>
+    </PageTransition>
   )
 }

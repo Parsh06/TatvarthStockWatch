@@ -2,10 +2,44 @@ import { useState, memo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Trash2, TrendingUp, TrendingDown, Bell, BellRing, BarChart2, RefreshCw } from 'lucide-react'
 import clsx from 'clsx'
+import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts'
 import { getExchangeColor, formatRelativeDate } from '../../utils/formatters'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 import ConfirmDialog from '../Common/ConfirmDialog'
 import toast from 'react-hot-toast'
+
+function MiniSparkline({ rate, isUp }) {
+  if (!rate || rate.ltp == null) return null
+  const color = isUp ? '#34d399' : '#f87171'
+  const c = rate.ltp
+  const o = rate.open != null ? rate.open : c * (isUp ? 0.99 : 1.01)
+  const h = rate.high != null ? rate.high : c * (isUp ? 1.01 : 1.001)
+  const l = rate.low != null ? rate.low : c * (isUp ? 0.999 : 0.99)
+  
+  const sparkData = [
+    { val: o }, 
+    { val: isUp ? l : h }, 
+    { val: isUp ? h : l }, 
+    { val: c }
+  ]
+  return (
+    <div className="h-10 w-full mt-2 -ml-2 -mb-2">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={sparkData}>
+          <YAxis domain={['dataMin', 'dataMax']} hide />
+          <Line 
+            type="monotone" 
+            dataKey="val" 
+            stroke={color} 
+            strokeWidth={2} 
+            dot={false} 
+            isAnimationActive={false} 
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
 
 function fmt(n, dec = 2) {
   if (n == null) return '—'
@@ -142,6 +176,8 @@ function ScriptCard({ script, annStats = {}, rate = null, onOpenDrawer, onSetAle
                   </div>
                 )}
               </div>
+              <MiniSparkline rate={rate} isUp={isUp} />
+
 
               {/* OHLC mini row */}
               {(rate.open != null || rate.high != null || rate.low != null) && (

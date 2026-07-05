@@ -11,6 +11,10 @@ import { apiClient } from '../../services/apiClient'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 import ScriptSearchInput from '../Common/ScriptSearchInput'
 import SetAlertModal from '../Watchlist/SetAlertModal'
+import PageTransition from '../Common/PageTransition'
+import {
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid
+} from 'recharts'
 import toast from 'react-hot-toast'
 import { fmtCr } from '../../utils/formatters.js'
 
@@ -124,10 +128,10 @@ function IntradayChart({ points, prevClose, current }) {
 
 function PriceCard({ label, value, color, sub }) {
   return (
-    <div className="bg-background border border-border rounded-xl p-4">
-      <p className="text-xs text-textMuted mb-1.5">{label}</p>
-      <p className={clsx('text-base font-bold', color || 'text-textPrimary')}>{value ?? '—'}</p>
-      {sub && <p className="text-xs text-textMuted mt-0.5 opacity-70">{sub}</p>}
+    <div className="glass-panel border-t-2 border-t-white/10 rounded-2xl p-4 hover:-translate-y-1 transition-transform">
+      <p className="text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">{label}</p>
+      <p className={clsx('text-xl font-bold font-display tracking-tight tabular-nums', color || 'text-textPrimary')}>{value ?? '—'}</p>
+      {sub && <p className="text-[10px] font-medium text-textMuted mt-1.5 opacity-80">{sub}</p>}
     </div>
   )
 }
@@ -135,17 +139,19 @@ function PriceCard({ label, value, color, sub }) {
 function Section({ title, icon: Icon, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+    <div className="glass-panel rounded-2xl overflow-hidden shadow-lg mb-6">
       <button
-        className="w-full flex items-center justify-between gap-2 px-5 py-3.5 border-b border-border bg-background/40 hover:bg-background/60 transition text-left"
+        className="w-full flex items-center justify-between gap-2 px-6 py-4 border-b border-white/5 bg-black/20 hover:bg-black/40 transition-colors text-left backdrop-blur-md"
         onClick={() => setOpen((v) => !v)}>
-        <div className="flex items-center gap-2">
-          <Icon className="w-4 h-4 text-primary" />
-          <h3 className="text-sm font-semibold text-textPrimary">{title}</h3>
+        <div className="flex items-center gap-3">
+          <div className="p-1.5 rounded-lg bg-primary/20 text-primary">
+            <Icon className="w-4 h-4" />
+          </div>
+          <h3 className="text-sm font-semibold text-textPrimary tracking-wide uppercase">{title}</h3>
         </div>
-        {open ? <ChevronUp className="w-4 h-4 text-textMuted" /> : <ChevronDown className="w-4 h-4 text-textMuted" />}
+        {open ? <ChevronUp className="w-5 h-5 text-textMuted" /> : <ChevronDown className="w-5 h-5 text-textMuted" />}
       </button>
-      {open && <div className="p-5">{children}</div>}
+      {open && <div className="p-6">{children}</div>}
     </div>
   )
 }
@@ -159,93 +165,89 @@ const HIST_RANGES = [
 ]
 
 function HistoricalChart({ points, range }) {
-  const [hover, setHover] = useState(null)
-  const svgRef = useRef(null)
+  const valid = useMemo(() => {
+    return (points || []).filter((p) => p.close != null).map(p => ({
+      ...p,
+      dateFormatted: new Date(p.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+    }))
+  }, [points])
 
-  const valid = useMemo(() => (points || []).filter((p) => p.close != null), [points])
   if (!valid.length) return <p className="text-xs text-textMuted py-4 text-center">No historical data available</p>
-
-  const W = 700, H = 200, PAD = { t: 12, b: 32, l: 8, r: 8 }
-  const cW = W - PAD.l - PAD.r
-  const cH = H - PAD.t - PAD.b
-
-  const prices = valid.map((p) => p.close)
-  const minP   = Math.min(...prices)
-  const maxP   = Math.max(...prices)
-  const rng    = maxP - minP || 1
-
-  const xOf = (i) => PAD.l + (i / Math.max(valid.length - 1, 1)) * cW
-  const yOf = (p) => PAD.t + (1 - (p - minP) / rng) * cH
-
-  const path = valid.map((p, i) => `${i === 0 ? 'M' : 'L'}${xOf(i).toFixed(1)},${yOf(p.close).toFixed(1)}`).join(' ')
-  const area = `${path} L${xOf(valid.length - 1).toFixed(1)},${(PAD.t + cH).toFixed(1)} L${PAD.l.toFixed(1)},${(PAD.t + cH).toFixed(1)} Z`
 
   const first = valid[0]?.close
   const last  = valid[valid.length - 1]?.close
   const up    = last != null && first != null ? last >= first : true
-  const lineColor = up ? '#34d399' : '#f87171'
+  const lineColor = up ? '#34d399' : '#f87171' // emerald-400 / red-400
+  const gradientId = `colorClose-${up ? 'up' : 'down'}`
 
-  // Date labels: first, middle, last
-  const dateFmt = (s) => {
-    if (!s) return ''
-    const d = new Date(s)
-    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
-  }
-  const labelIdxs = [0, Math.floor(valid.length / 2), valid.length - 1]
+  const min = Math.min(...valid.map(p => p.close))
+  const max = Math.max(...valid.map(p => p.close))
+  // Add some padding to domain
+  const padding = (max - min) * 0.1
+  const domainMin = Math.max(0, min - padding)
+  const domainMax = max + padding
 
-  return (
-    <div className="relative select-none">
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full"
-        style={{ height: 200 }}
-        onMouseLeave={() => setHover(null)}
-        onMouseMove={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect()
-          const mx   = ((e.clientX - rect.left) / rect.width) * W
-          let best = 0, bestDist = Infinity
-          valid.forEach((_, i) => { const d = Math.abs(xOf(i) - mx); if (d < bestDist) { bestDist = d; best = i } })
-          setHover(best)
-        }}
-      >
-        <defs>
-          <linearGradient id="histGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={lineColor} stopOpacity="0.22" />
-            <stop offset="100%" stopColor={lineColor} stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
-        <path d={area} fill="url(#histGrad)" />
-        <path d={path} fill="none" stroke={lineColor} strokeWidth="1.5" strokeLinejoin="round" />
-        {hover != null && (
-          <>
-            <line x1={xOf(hover)} y1={PAD.t} x2={xOf(hover)} y2={PAD.t + cH}
-              stroke="#9ca3af" strokeWidth="1" strokeDasharray="3 3" />
-            <circle cx={xOf(hover)} cy={yOf(valid[hover].close)} r="3" fill={lineColor} />
-          </>
-        )}
-        {labelIdxs.map((i) => (
-          <text key={i} x={xOf(i)} y={H - 6}
-            textAnchor={i === 0 ? 'start' : i === valid.length - 1 ? 'end' : 'middle'}
-            fontSize="9" fill="#6b7280">{dateFmt(valid[i]?.date)}</text>
-        ))}
-      </svg>
-      {hover != null && (
-        <div className="absolute top-0 left-0 right-0 flex justify-center pointer-events-none">
-          <div className="bg-surface border border-border rounded-lg px-3 py-1.5 text-xs text-textPrimary shadow-md flex items-center gap-3">
-            <span className="text-textMuted">{valid[hover].date}</span>
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload
+      return (
+        <div className="bg-surface/90 backdrop-blur-md border border-border rounded-lg px-3 py-2 text-xs text-textPrimary shadow-xl">
+          <div className="text-textMuted mb-1">{data.date}</div>
+          <div className="flex items-center gap-3">
             <span className={clsx('font-bold tabular-nums', up ? 'text-emerald-400' : 'text-red-400')}>
-              ₹{fmt(valid[hover].close)}
+              ₹{fmt(data.close)}
             </span>
-            {valid[hover].high != null && (
-              <span className="text-textMuted">H: <span className="text-emerald-400">₹{fmt(valid[hover].high)}</span></span>
+            {data.high != null && (
+              <span className="text-textMuted">H: <span className="text-emerald-400">₹{fmt(data.high)}</span></span>
             )}
-            {valid[hover].low != null && (
-              <span className="text-textMuted">L: <span className="text-red-400">₹{fmt(valid[hover].low)}</span></span>
+            {data.low != null && (
+              <span className="text-textMuted">L: <span className="text-red-400">₹{fmt(data.low)}</span></span>
             )}
           </div>
         </div>
-      )}
+      )
+    }
+    return null
+  }
+
+  return (
+    <div className="w-full h-64 -ml-4">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={valid} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={lineColor} stopOpacity={0.3} />
+              <stop offset="95%" stopColor={lineColor} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
+          <XAxis 
+            dataKey="dateFormatted" 
+            tickLine={false} 
+            axisLine={false} 
+            tick={{ fontSize: 10, fill: '#6b7280' }}
+            minTickGap={30}
+          />
+          <YAxis 
+            domain={[domainMin, domainMax]} 
+            tickLine={false} 
+            axisLine={false} 
+            tick={{ fontSize: 10, fill: '#6b7280' }}
+            tickFormatter={(val) => `₹${fmt(val)}`}
+            width={55}
+          />
+          <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#6b7280', strokeWidth: 1, strokeDasharray: '3 3' }} />
+          <Area 
+            type="monotone" 
+            dataKey="close" 
+            stroke={lineColor} 
+            strokeWidth={2}
+            fillOpacity={1} 
+            fill={`url(#${gradientId})`} 
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
     </div>
   )
 }
@@ -377,15 +379,10 @@ export default function CompanyDataPage() {
   }
 
   return (
-    <div className="space-y-5">
-      {/* ── Header ── */}
-      <div>
-        <h1 className="text-xl font-semibold text-textPrimary">Company Data</h1>
-        <p className="text-sm text-textMuted mt-0.5">Live BSE quote, fundamentals, shareholding, and bulk deals</p>
-      </div>
-
-      {/* ── Search card ── */}
-      <div className="bg-surface border border-border rounded-xl p-5">
+    <PageTransition className="space-y-6 pb-20">
+      
+      {/* ── Header Area ── */}
+      <div className="glass-panel rounded-2xl p-6 shadow-2xl">
         <label className="block text-xs font-medium text-textMuted mb-2">Search Company</label>
         <div className="flex gap-3">
           <div className="flex-1">
@@ -432,8 +429,8 @@ export default function CompanyDataPage() {
       {data && !loading && (
         <div className="space-y-4">
           {/* Company header */}
-          <div className="bg-surface border border-border rounded-xl p-5">
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="glass-panel rounded-2xl p-6 shadow-2xl">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-5">
               <div>
                 <h2 className="text-lg font-bold text-textPrimary leading-tight">
                   {quote?.companyName || item?.scripName}
@@ -441,12 +438,12 @@ export default function CompanyDataPage() {
                 {quote?.sector && (
                   <p className="text-xs text-textMuted mt-0.5 mb-2">{quote.sector}</p>
                 )}
-                <div className="flex items-center gap-2 flex-wrap mt-1">
-                  <code className="text-xs font-mono text-textMuted bg-background px-2 py-0.5 rounded border border-border">
+                <div className="flex items-center gap-3 flex-wrap mt-2">
+                  <code className="text-xs font-mono text-textMuted bg-black/20 px-2.5 py-1 rounded-lg border border-white/10 shadow-inner">
                     BSE: {item?.bseCode}
                   </code>
                   {item?.symbol && (
-                    <code className="text-xs font-mono text-textMuted bg-background px-2 py-0.5 rounded border border-border">
+                    <code className="text-xs font-mono text-textMuted bg-black/20 px-2.5 py-1 rounded-lg border border-white/10 shadow-inner">
                       NSE: {item.symbol}
                     </code>
                   )}
@@ -454,7 +451,7 @@ export default function CompanyDataPage() {
                     <span className="text-xs text-textMuted">ISIN: {item.isin}</span>
                   )}
                   {item?.type && (
-                    <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full border border-primary/20">{item.type}</span>
+                    <span className="text-xs px-2.5 py-0.5 bg-primary/20 text-primary font-medium rounded-full border border-primary/30">{item.type}</span>
                   )}
                 </div>
               </div>
@@ -462,15 +459,15 @@ export default function CompanyDataPage() {
               <div className="flex flex-col items-end gap-2 flex-shrink-0">
                 {ltp != null ? (
                   <>
-                    <p className="text-3xl font-bold text-textPrimary tabular-nums">₹{fmt(ltp)}</p>
+                    <p className="text-4xl font-display font-bold text-textPrimary tabular-nums tracking-tight">₹{fmt(ltp)}</p>
                     {change != null && (
-                      <p className={clsx('flex items-center justify-end gap-1.5 text-sm font-semibold', up ? 'text-emerald-400' : 'text-red-400')}>
+                      <p className={clsx('flex items-center justify-end gap-1.5 text-sm font-semibold px-3 py-1 rounded-full', up ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400')}>
                         {up ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                         {up ? '+' : ''}{fmt(change)} ({up ? '+' : ''}{fmt(changePct)}%)
                       </p>
                     )}
                     {prevClose != null && (
-                      <p className="text-xs text-textMuted">Prev close: ₹{fmt(prevClose)}</p>
+                      <p className="text-xs text-textMuted font-medium tracking-wide">Prev close: <span className="text-textPrimary">₹{fmt(prevClose)}</span></p>
                     )}
                   </>
                 ) : (
@@ -1079,15 +1076,15 @@ export default function CompanyDataPage() {
 
           {/* Per-section unavailability notices */}
           {companyData && !hasHolding && (
-            <div className="bg-surface border border-border/40 rounded-xl px-4 py-3 flex items-center gap-2.5 text-xs text-textMuted/60">
-              <Info className="w-3.5 h-3.5 flex-shrink-0" />
+            <div className="glass-panel rounded-xl px-5 py-4 flex items-center gap-3 text-xs text-textMuted/60 shadow-inner">
+              <Info className="w-4 h-4 flex-shrink-0 text-primary/70" />
               <span><span className="text-textMuted font-medium">Shareholding Breakdown</span> — data currently unavailable from BSE (API returned empty for this script)</span>
             </div>
           )}
 
           {companyData && !hasCorpActions && (
-            <div className="bg-surface border border-border/40 rounded-xl px-4 py-3 flex items-center gap-2.5 text-xs text-textMuted/60">
-              <Info className="w-3.5 h-3.5 flex-shrink-0" />
+            <div className="glass-panel rounded-xl px-5 py-4 flex items-center gap-3 text-xs text-textMuted/60 shadow-inner">
+              <Info className="w-4 h-4 flex-shrink-0 text-primary/70" />
               <span><span className="text-textMuted font-medium">Corporate Actions</span> — data currently unavailable from BSE</span>
             </div>
           )}
@@ -1105,23 +1102,23 @@ export default function CompanyDataPage() {
       {/* ── Empty state ── */}
       {!data && !loading && (
         <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-5">
-            <Search className="w-8 h-8 text-primary" />
+          <div className="w-20 h-20 glass-panel rounded-3xl flex items-center justify-center mb-6 shadow-2xl">
+            <Search className="w-10 h-10 text-primary" />
           </div>
-          <p className="text-textPrimary font-semibold text-base mb-1">Search for any BSE-listed company</p>
-          <p className="text-sm text-textMuted max-w-xs">
+          <p className="text-textPrimary font-bold text-xl mb-2 tracking-tight">Search for any BSE-listed company</p>
+          <p className="text-sm text-textMuted max-w-sm">
             Type a company name, BSE code, or NSE symbol above to view live price, fundamentals, and filings.
           </p>
-          <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-3 text-left max-w-sm w-full">
+          <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 gap-4 text-left max-w-lg w-full">
             {[['₹ Live price', 'Real-time LTP, OHLC'], ['📈 Intraday chart', 'Minute-by-minute price'], ['📊 Fundamentals', 'P/E, EPS, Face Value'], ['👥 Holding', 'Promoter / FII / DII %'], ['🏢 Peer comparison', 'Sector peer table'], ['📋 Bulk Deals', 'Block transactions'], ['🎯 Analyst targets', 'Buy/Hold/Sell + price'], ['📅 Corp. Actions', 'Dividends, splits, bonus']].map(([title, sub]) => (
-              <div key={title} className="bg-surface border border-border rounded-xl p-3">
-                <p className="text-xs font-semibold text-textPrimary">{title}</p>
-                <p className="text-xs text-textMuted mt-0.5">{sub}</p>
+              <div key={title} className="glass-panel rounded-2xl p-4 hover:-translate-y-1 transition-transform border-t-2 border-t-white/10">
+                <p className="text-xs font-bold text-textPrimary tracking-wide">{title}</p>
+                <p className="text-[10px] text-textMuted mt-1">{sub}</p>
               </div>
             ))}
           </div>
         </div>
       )}
-    </div>
+    </PageTransition>
   )
 }
