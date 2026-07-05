@@ -15,6 +15,7 @@ import BulkUploadModal from './BulkUploadModal'
 import ScriptDrawer from './ScriptDrawer'
 import EmptyState from '../Common/EmptyState'
 import { SkeletonCard } from '../Common/Loader'
+import PageTransition from '../Common/PageTransition'
 import ConfirmDialog from '../Common/ConfirmDialog'
 import toast from 'react-hot-toast'
 
@@ -306,7 +307,7 @@ export default function WatchlistPage() {
   const ratesHaveData = ratesCount > 0
 
   return (
-    <div className="space-y-5">
+    <PageTransition className="space-y-6">
       {/* ── Header ── */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -375,50 +376,10 @@ export default function WatchlistPage() {
 
         {/* ── Status bars ── */}
         <div className="flex flex-col gap-2">
-          {/* Rates */}
-          <div className={clsx(
-            'flex items-center gap-3 px-3 py-2 rounded-xl border text-xs flex-wrap',
-            ratesHaveData ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-surface border-border'
-          )}>
-            <div className="flex items-center gap-1.5">
-              <TrendingUp className={clsx('w-3.5 h-3.5', ratesHaveData ? 'text-emerald-400' : 'text-textMuted/40')} />
-              <span className={ratesHaveData ? 'text-emerald-400 font-medium' : 'text-textMuted/50'}>
-                {ratesHaveData ? `${ratesCount.toLocaleString()} live rates loaded` : 'No rates loaded yet'}
-              </span>
-            </div>
-            {ratesUpdatedAt && (
-              <span className="flex items-center gap-1 text-textMuted/60">
-                <Clock className="w-3 h-3" />
-                Rates fetched: {fmtTime(ratesUpdatedAt)}
-              </span>
-            )}
-            {ratesFetching && (
-              <span className="flex items-center gap-1.5 text-amber-400/80">
-                <RefreshCw className="w-3 h-3 animate-spin" />
-                Fetching rates in background…
-              </span>
-            )}
-            {!ratesFetching && (
-              <button
-                onClick={async () => {
-                  const triggerTime = new Date().toISOString()
-                  try {
-                    await apiClient('/api/rates/refresh', { method: 'POST' })
-                  } catch { /* ignore — polling will handle it */ }
-            
-                }}
-                className="ml-auto flex items-center gap-1 text-textMuted/50 hover:text-textMuted transition"
-              >
-                <RefreshCw className="w-3 h-3" />
-                Refresh Rates
-              </button>
-            )}
-          </div>
-
           {/* Announcements */}
           <div className={clsx(
-            'flex items-center gap-3 px-3 py-2 rounded-xl border text-xs flex-wrap',
-            annFetchedAt ? 'bg-amber-500/5 border-amber-500/20' : 'bg-surface border-border'
+            'flex items-center gap-3 px-3 py-2 rounded-xl border text-xs flex-wrap shadow-sm transition-colors',
+            annFetchedAt ? 'bg-amber-500/10 border-amber-500/20' : 'bg-black/20 border-white/5'
           )}>
             <div className="flex items-center gap-1.5">
               <Zap className={clsx('w-3.5 h-3.5', annFetchedAt ? 'text-amber-400' : 'text-textMuted/40')} />
@@ -465,22 +426,22 @@ export default function WatchlistPage() {
       )}
 
       {/* ── Filters ── */}
-      <div className="flex flex-col sm:flex-row gap-2">
+      <div className="flex flex-col sm:flex-row gap-2 glass-panel p-2 rounded-2xl shadow-inner">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or code…"
-            className="w-full bg-surface border border-border rounded-lg pl-9 pr-4 py-2.5 text-textPrimary placeholder-textMuted/40 focus:outline-none focus:ring-1 focus:ring-primary text-sm" />
+            className="w-full bg-black/20 border border-white/5 rounded-xl pl-9 pr-4 py-2.5 text-textPrimary placeholder-textMuted/40 focus:outline-none focus:ring-1 focus:ring-primary/50 text-sm shadow-sm transition-all" />
         </div>
         <select value={exchange} onChange={(e) => setExchange(e.target.value)}
-          className="bg-surface border border-border rounded-lg px-3 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary text-sm">
+          className="bg-black/20 border border-white/5 rounded-xl px-3 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-sm shadow-sm cursor-pointer transition-all">
           <option value="">All Exchanges</option>
           <option value="BSE">BSE</option>
           <option value="NSE">NSE</option>
           <option value="BOTH">BOTH</option>
         </select>
         <select value={sort} onChange={(e) => setSort(e.target.value)}
-          className="bg-surface border border-border rounded-lg px-3 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary text-sm">
+          className="bg-black/20 border border-white/5 rounded-xl px-3 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-sm shadow-sm cursor-pointer transition-all">
           {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </div>
@@ -491,10 +452,10 @@ export default function WatchlistPage() {
           <button
             onClick={() => setActiveGroup('')}
             className={clsx(
-              'shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition',
+              'shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition hover:-translate-y-0.5 shadow-sm',
               activeGroup === ''
                 ? 'bg-primary/20 border-primary text-primary'
-                : 'bg-surface border-border text-textMuted hover:text-textPrimary hover:border-primary/40'
+                : 'bg-white/5 border-white/10 text-textMuted hover:text-textPrimary hover:border-primary/40'
             )}
           >
             All <span className="text-xs opacity-70">{watchlist.length}</span>
@@ -511,10 +472,10 @@ export default function WatchlistPage() {
             return (
               <button key={g} onClick={() => setActiveGroup(activeGroup === g ? '' : g)}
                 className={clsx(
-                  'shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition',
+                  'shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition hover:-translate-y-0.5 shadow-sm',
                   activeGroup === g
                     ? 'bg-primary/20 border-primary text-primary'
-                    : 'bg-surface border-border text-textMuted hover:text-textPrimary hover:border-primary/40'
+                    : 'bg-white/5 border-white/10 text-textMuted hover:text-textPrimary hover:border-primary/40'
                 )}
               >
                 {g} <span className="text-xs opacity-70">{groups[g]}</span>
@@ -580,8 +541,8 @@ export default function WatchlistPage() {
 
       {/* ── Announcements panel ── */}
       {triggerAnnouncements !== null && (
-        <div className="bg-surface border border-border rounded-2xl overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div className="glass-panel rounded-2xl overflow-hidden shadow-2xl">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
             <div className="flex items-center gap-3 flex-wrap">
               <Zap className="w-4 h-4 text-amber-400 shrink-0" />
               <span className="font-semibold text-textPrimary text-sm">Today's Announcements</span>
@@ -595,11 +556,11 @@ export default function WatchlistPage() {
             </button>
           </div>
           {triggerAnnouncements.length === 0 ? (
-            <div className="px-4 py-8 text-center text-textMuted text-sm">
+            <div className="px-6 py-12 text-center text-textMuted text-sm">
               No new announcements for your watchlist today.
             </div>
           ) : (
-            <div className="divide-y divide-border max-h-[480px] overflow-y-auto">
+            <div className="divide-y divide-white/5 max-h-[480px] overflow-y-auto scrollbar-hide">
               {triggerAnnouncements.map((ann) => <AnnouncementRow key={ann.id} ann={ann} />)}
             </div>
           )}
@@ -628,6 +589,6 @@ export default function WatchlistPage() {
       <ConfirmDialog isOpen={clearConfirm} title="Clear Watchlist"
         message="This will permanently remove all scripts from your watchlist."
         confirmLabel="Clear All" onConfirm={handleClearAll} onCancel={() => setClearConfirm(false)} danger />
-    </div>
+    </PageTransition>
   )
 }

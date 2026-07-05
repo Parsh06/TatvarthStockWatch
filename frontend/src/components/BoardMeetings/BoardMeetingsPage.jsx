@@ -4,21 +4,22 @@ import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 import { getAnnouncementsFromDB } from '../../services/announcementService'
 import { exportToXLSX } from '../../utils/csvParser'
+import PageTransition from '../Common/PageTransition'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
 function StatCard({ label, value, sub, color = 'text-textPrimary', icon: Icon, iconColor }) {
   return (
-    <div className="bg-surface border border-border rounded-xl p-4 flex items-center gap-3">
+    <div className="glass-panel hover:-translate-y-1 hover:border-white/20 transition-all rounded-2xl p-5 flex items-center gap-4 group">
       {Icon && (
-        <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0', iconColor || 'bg-primary/10')}>
-          <Icon className="w-5 h-5 text-primary" />
+        <div className={clsx('w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-inner', iconColor || 'bg-white/5')}>
+          <Icon className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
         </div>
       )}
       <div>
-        <p className="text-xs text-textMuted mb-0.5">{label}</p>
-        <p className={clsx('text-xl font-bold tabular-nums', color)}>{value}</p>
-        {sub && <p className="text-xs text-textMuted">{sub}</p>}
+        <p className="text-[11px] font-medium tracking-tight text-textMuted mb-0.5 uppercase">{label}</p>
+        <p className={clsx('text-2xl font-bold font-display tabular-nums', color)}>{value}</p>
+        {sub && <p className="text-xs text-textMuted mt-1">{sub}</p>}
       </div>
     </div>
   )
@@ -48,7 +49,8 @@ export default function BoardMeetingsPage() {
       // 2. Fetch Board Meetings
       const url = `/api/bse/board-meetings?fromDT=${formatApiDate(fromDate)}&ToDt=${formatApiDate(toDate)}`
       const data = await apiClient(url)
-      const fetchedMeetings = data?.Corp_fetch_BoardMeeting_Table1 || []
+      const fetchedMeetings = (data?.Corp_fetch_BoardMeeting_Table1 || [])
+        .filter(m => m.scrip_code && m.scrip_code !== '-')
       setMeetings(fetchedMeetings)
 
       // 3. Fetch today's announcements from Firestore to check results status
@@ -115,7 +117,7 @@ export default function BoardMeetingsPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <PageTransition className="space-y-6">
       
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -130,7 +132,7 @@ export default function BoardMeetingsPage() {
           <button 
             onClick={fetchData}
             disabled={loading}
-            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-surface hover:bg-surfaceHover border border-border rounded-lg text-sm font-medium transition-colors"
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-colors shadow-sm"
           >
             <RefreshCw className={clsx("w-4 h-4", loading && "animate-spin")} />
             Refresh
@@ -138,7 +140,7 @@ export default function BoardMeetingsPage() {
           <button 
             onClick={handleExport}
             disabled={!filteredMeetings.length}
-            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-primary/15 hover:bg-primary/25 border border-primary/20 text-primary rounded-xl text-sm font-medium transition-colors disabled:opacity-50 shadow-sm"
           >
             <Download className="w-4 h-4" />
             Export
@@ -147,35 +149,35 @@ export default function BoardMeetingsPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-surface border border-border rounded-xl p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="glass-panel rounded-2xl p-5 grid grid-cols-1 md:grid-cols-4 gap-5">
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-textMuted uppercase tracking-wider">From Date</label>
+          <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">From Date</label>
           <input 
             type="date" 
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
-            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-shadow"
+            className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all shadow-inner cursor-pointer"
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-textMuted uppercase tracking-wider">To Date</label>
+          <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">To Date</label>
           <input 
             type="date" 
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
-            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-shadow"
+            className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all shadow-inner cursor-pointer"
           />
         </div>
         <div className="space-y-1.5 md:col-span-2">
-          <label className="text-xs font-semibold text-textMuted uppercase tracking-wider">Search</label>
+          <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">Search</label>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted" />
             <input 
               type="text" 
               placeholder="Search company, code, or purpose..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-shadow"
+              className="w-full bg-black/20 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all shadow-inner placeholder:text-textMuted/50"
             />
           </div>
         </div>
@@ -198,10 +200,10 @@ export default function BoardMeetingsPage() {
       )}
 
       {/* Table */}
-      <div className="bg-surface border border-border rounded-xl overflow-hidden flex flex-col min-h-[400px]">
-        <div className="overflow-x-auto flex-1">
+      <div className="glass-panel rounded-2xl overflow-hidden flex flex-col min-h-[400px]">
+        <div className="overflow-x-auto flex-1 scrollbar-hide">
           <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-background border-b border-border text-xs uppercase tracking-wider text-textMuted sticky top-0 z-10">
+            <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
               <tr>
                 <th className="px-4 py-3 font-medium">BSE Code</th>
                 <th className="px-4 py-3 font-medium">Company Name</th>
@@ -210,17 +212,17 @@ export default function BoardMeetingsPage() {
                 <th className="px-4 py-3 font-medium text-center">Result Out?</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-white/5">
               {loading ? (
                 <tr>
-                  <td colSpan="5" className="px-4 py-12 text-center text-textMuted">
-                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 opacity-50" />
+                  <td colSpan="5" className="px-4 py-16 text-center text-textMuted">
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-50 text-primary" />
                     <p>Loading board meetings...</p>
                   </td>
                 </tr>
               ) : filteredMeetings.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-4 py-12 text-center text-textMuted">
+                  <td colSpan="5" className="px-4 py-16 text-center text-textMuted">
                     No board meetings found for this date range.
                   </td>
                 </tr>
@@ -228,7 +230,7 @@ export default function BoardMeetingsPage() {
                 filteredMeetings.map((m, idx) => {
                   const hasResult = !!outcomeByScript[m.scrip_code]
                   return (
-                    <tr key={`${m.scrip_code}-${idx}`} className="hover:bg-surfaceHover transition-colors">
+                    <tr key={`${m.scrip_code}-${idx}`} className="hover:bg-white/5 transition-colors group">
                       <td className="px-4 py-3 font-medium">{m.scrip_code}</td>
                       <td className="px-4 py-3">
                         <a 
@@ -282,6 +284,6 @@ export default function BoardMeetingsPage() {
         </div>
       </div>
 
-    </div>
+    </PageTransition>
   )
 }
