@@ -875,9 +875,36 @@ app.all('/api/cron/trigger', async (req, res) => {
     if (allFetched.length > 0) {
       const { saveAnnouncements } = require('./lib/announcementStore');
       // Save ALL announcements to global DB (MongoDB)
-      await saveAnnouncements(allFetched);
+      const saveResult = await saveAnnouncements(allFetched);
+      const newAnns = saveResult.newAnnouncements || [];
       
-      if (matched.length > 0) {
+      const newMatched = newAnns.filter((a) => {
+        const code = (a.scriptCode || '').toUpperCase();
+        return bseSet.has(a.scriptCode) || nseSet.has(code);
+      });
+      
+      if (newMatched.length > 0) {
+        console.log(`[Global Cron] Running AI Summarizer on ${newMatched.length} new watchlist announcements...`);
+        const { generateAnnouncementSummary } = require('./lib/aiSummarizer');
+        const { getDb } = require('./lib/mongoClient');
+        const mongoDb = await getDb();
+        
+        await Promise.all(newMatched.map(async (ann) => {
+          if (ann.pdfUrl) {
+            const summary = await generateAnnouncementSummary(ann);
+            if (summary) {
+              ann.aiSummary = summary;
+              await mongoDb.collection('announcements').updateOne(
+                { _id: String(ann.id) },
+                { $set: { aiSummary: summary, aiSummaryStatus: 'completed' } }
+              );
+            }
+          }
+        }));
+        console.log(`[Global Cron] AI Summarization complete!`);
+      }
+      
+      if (newMatched.length > 0) {
         const { getDb } = require('./lib/mongoClient');
         const mongoDb = await getDb();
         const receiveEmailCol = mongoDb.collection('receive_email');
@@ -911,8 +938,8 @@ app.all('/api/cron/trigger', async (req, res) => {
               if (s.symbol || s.nseSymbol) uNse.add((s.symbol || s.nseSymbol).trim().toUpperCase());
             }
 
-            // Find matching announcements for this user
-            const uMatched = matched.filter((a) => {
+            // Find matching newly-discovered announcements for this user
+            const uMatched = newMatched.filter((a) => {
               const code = (a.scriptCode || '').toUpperCase();
               return uBse.has(code) || uNse.has(code);
             });
