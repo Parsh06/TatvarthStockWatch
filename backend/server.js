@@ -389,20 +389,8 @@ app.post('/api/watchlist/catchup', verifyToken, async (req, res) => {
       return res.json({ sent: 0, skipped: announcements.length, reason: 'already notified' });
     }
 
-    // 3. Check dailyEmailState to see if we should send an email today
-    const dailyEmailStateRef = db.collection('users').doc(req.uid).collection('dailyEmailState').doc(scriptCode);
-    const dailyStateDoc = await dailyEmailStateRef.get();
-    let hasSentEmailToday = false;
-    if (dailyStateDoc.exists && dailyStateDoc.data().state === 1) {
-      const todayStr = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const docDateStr = dailyStateDoc.data().updatedAt ? new Date(dailyStateDoc.data().updatedAt.toDate().getTime() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0] : null;
-      if (docDateStr === todayStr) {
-        hasSentEmailToday = true;
-      }
-    }
-
     let emailsSent = 0;
-    if (!hasSentEmailToday) {
+    if (toNotify.length > 0) {
       let userEmail = null, userName = 'Investor';
       const userDoc = await db.collection('users').doc(req.uid).get();
       if (userDoc.exists && userDoc.data().email) {
@@ -418,9 +406,23 @@ app.post('/api/watchlist/catchup', verifyToken, async (req, res) => {
 
       if (userEmail) {
         await sendAnnouncementEmail(userEmail, userName, toNotify);
-        emailsSent = 1;
-        // Update state to 1
-        batch.set(dailyEmailStateRef, { state: 1, updatedAt: ts }, { merge: true });
+        emailsSent = toNotify.length;
+        
+        // Update receive_email in MongoDB
+        const { getDb } = require('./lib/mongoClient');
+        const mongoDb = await getDb();
+        const receiveEmailCol = mongoDb.collection('receive_email');
+        const bulkOps = toNotify.map(ann => ({
+          updateOne: {
+            filter: { _id: String(ann.id) },
+            update: {
+              $addToSet: { sentTo: req.uid },
+              $setOnInsert: { announcementId: String(ann.id), createdAt: new Date() }
+            },
+            upsert: true
+          }
+        }));
+        await receiveEmailCol.bulkWrite(bulkOps, { ordered: false });
       }
     }
     
@@ -887,7 +889,7 @@ app.all('/api/cron/trigger', async (req, res) => {
 
     const watchlistStore = require('./lib/watchlistStore');
     const scripts = await watchlistStore.getAllTrackedScripts();
-    if (!scripts.length) return res.json({ started: false, reason: 'no_scripts_tracked_globally' });
+    // Do NOT abort if scripts.length === 0, we still want to fetch BSE announcements globally
 
     const { fetchAllBSEAnnouncements } = require('./lib/bseScraper');
     const { fetchAllNSEAnnouncements } = require('./lib/nseScraper');
@@ -902,10 +904,7 @@ app.all('/api/cron/trigger', async (req, res) => {
 
     console.log('[Global Cron] Triggering for BSE: ' + bseSet.size + ' codes | NSE: ' + nseSet.size + ' symbols');
 
-    // 1. Kick off rates fetch
-    if (!_ratesFetchInProgress) _triggerRatesFetch(scripts, 'GLOBAL_CRON');
-
-    // 2. Fetch Announcements
+    // 1. Fetch Announcements
     const nseWatchedMap = new Map([...nseSet].map((c) => [c.toUpperCase(), metaMap.get(c) || {}]));
     const [bseAll, nseAll] = await Promise.all([
       fetchAllBSEAnnouncements(), // Fetch ALL BSE announcements unconditionally
@@ -923,27 +922,35 @@ app.all('/api/cron/trigger', async (req, res) => {
     }
 
     // Match against watchlists for notifications
-    const bseMatched = bseAll.filter((a) => bseSet.has(a.scriptCode));
-    const nseMatched = nseAll.filter((a) => nseSet.has((a.scriptCode || '').toUpperCase()));
-    const matched    = [...bseMatched, ...nseMatched];
+    const bseMatched = allFetched.filter((a) => bseSet.has(a.scriptCode));
+    const nseMatched = allFetched.filter((a) => nseSet.has((a.scriptCode || '').toUpperCase()));
+    const matched = [...bseMatched, ...nseMatched];
 
     if (allFetched.length > 0) {
       const { saveAnnouncements } = require('./lib/announcementStore');
       // Save ALL announcements to global DB (MongoDB)
-      const { saved, newAnnouncements } = await saveAnnouncements(allFetched);
-      const freshAll = newAnnouncements || [];
+      await saveAnnouncements(allFetched);
       
-      console.log(`[Global Cron] Saved ${freshAll.length} new announcements to MongoDB`);
-      
-      // Filter fresh announcements for just the matched ones to send emails
-      const fresh = freshAll.filter((a) => bseSet.has(a.scriptCode) || nseSet.has((a.scriptCode || '').toUpperCase()));
-      
-      if (fresh.length > 0) {
+      if (matched.length > 0) {
+        const { getDb } = require('./lib/mongoClient');
+        const mongoDb = await getDb();
+        const receiveEmailCol = mongoDb.collection('receive_email');
+        
+        // Fetch existing sent states for these announcements
+        const matchedIds = matched.map(a => String(a.id));
+        const emailStates = await receiveEmailCol.find({ _id: { $in: matchedIds } }).toArray();
+        const emailStateMap = new Map();
+        for (const state of emailStates) {
+           emailStateMap.set(String(state._id), new Set(state.sentTo || []));
+        }
+
         const admin = require('firebase-admin');
         const prefsStore = require('./lib/prefsStore');
         const { sendAnnouncementEmails } = require('./lib/mailer');
         const emailOk = !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
         const { sendTelegramAlert, isConfigured: isTelegramOk } = require('./lib/telegramNotifier');
+
+        const updatesToMongo = new Map(); // annId -> Set of new UIDs to add
 
         let pageToken;
         do {
@@ -953,32 +960,45 @@ app.all('/api/cron/trigger', async (req, res) => {
             const uScripts = await watchlistStore.getWatchlist(uid);
             if (!uScripts || uScripts.length === 0) continue;
 
-            // Find which fresh announcements belong to this user's watchlist
             const uBse = new Set(), uNse = new Set();
             for (const s of uScripts) {
               if (s.ltdCode || s.bseCode) uBse.add((s.ltdCode || s.bseCode).trim());
               if (s.symbol || s.nseSymbol) uNse.add((s.symbol || s.nseSymbol).trim().toUpperCase());
             }
 
-            const uFresh = fresh.filter((a) => {
+            // Find matching announcements for this user
+            const uMatched = matched.filter((a) => {
               const code = (a.scriptCode || '').toUpperCase();
               return uBse.has(code) || uNse.has(code);
             });
 
-            if (uFresh.length > 0) {
+            // Filter out announcements already sent to this user
+            const uPending = uMatched.filter(a => {
+              const sentSet = emailStateMap.get(String(a.id));
+              return !sentSet || !sentSet.has(uid);
+            });
+
+            if (uPending.length > 0) {
               try {
                 const prefs = await prefsStore.getPrefs(uid);
                 
                 // Email Dispatch
                 if (emailOk && prefs.emailEnabled !== false && user.email) {
-                  await sendAnnouncementEmails(user.email, user.displayName || 'User', uFresh);
+                  await sendAnnouncementEmails(user.email, user.displayName || 'User', uPending);
                 }
                 
                 // Telegram Dispatch
                 if (isTelegramOk() && prefs.telegramEnabled !== false) {
-                  for (const ann of uFresh) {
-                    await sendTelegramAlert(ann); // Requires telegram notifier to handle announcement object
+                  for (const ann of uPending) {
+                    await sendTelegramAlert(ann);
                   }
+                }
+                
+                // Mark as sent for this user
+                for (const ann of uPending) {
+                   const aId = String(ann.id);
+                   if (!updatesToMongo.has(aId)) updatesToMongo.set(aId, new Set());
+                   updatesToMongo.get(aId).add(uid);
                 }
               } catch (err) {
                 console.error(`[Global Cron] Error dispatching announcements for ${uid}:`, err.message);
@@ -987,9 +1007,27 @@ app.all('/api/cron/trigger', async (req, res) => {
           }
           pageToken = result.pageToken;
         } while (pageToken);
+
+        // Bulk update MongoDB receive_email collection
+        if (updatesToMongo.size > 0) {
+           const bulkOps = [];
+           for (const [aId, uidsSet] of updatesToMongo.entries()) {
+              bulkOps.push({
+                 updateOne: {
+                    filter: { _id: aId },
+                    update: { 
+                       $addToSet: { sentTo: { $each: Array.from(uidsSet) } },
+                       $setOnInsert: { announcementId: aId, createdAt: new Date() }
+                    },
+                    upsert: true
+                 }
+              });
+           }
+           await receiveEmailCol.bulkWrite(bulkOps, { ordered: false });
+        }
       }
     }
-    res.json({ started: true, scriptsFetched: scripts.length, newAnnouncements: matched.length });
+    res.json({ started: true, scriptsFetched: scripts.length, matchedAnnouncements: matched.length });
   } catch (err) {
     console.error('[Global Cron] Error:', err);
     res.status(500).json({ error: err.message });
