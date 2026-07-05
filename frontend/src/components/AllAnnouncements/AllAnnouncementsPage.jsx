@@ -146,6 +146,19 @@ export default function AllAnnouncementsPage() {
 
   const filtered = useMemo(() => {
     let list = allItems
+    
+    // Date filtering (since DB returns latest N items, we must filter out older ones locally)
+    if (fromDate && toDate) {
+      const fromTs = new Date(fromDate).getTime()
+      // toDate is a date string like 2026-07-05, we add 1 day to make it inclusive
+      const toTs = new Date(toDate).getTime() + 86400000 
+      list = list.filter((a) => {
+        if (!a.announcementDate) return true;
+        const d = new Date(a.announcementDate).getTime();
+        return d >= fromTs && d < toTs;
+      })
+    }
+
     // codeFilter: Server cannot filter by company server-side, must do it here
     if (codeFilter)    list = list.filter((a) => a.bseCode === codeFilter || a.scriptCode === codeFilter)
     if (onlyWatchlist) list = list.filter((a) => watchlistCodes.has(a.bseCode))
