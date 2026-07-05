@@ -407,13 +407,18 @@ async function sendBoardMeetingAlertEmail(userEmail, userName, ann) {
   if (!userEmail) throw new Error('userEmail is required');
   const transporter = getTransporter();
 
-  const company    = (ann.scriptName  || ann.scriptCode || 'Unknown').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const code       = (ann.scriptCode  || ann.scripCode  || '').replace(/</g, '&lt;');
-  const category   = (ann.category    || 'General').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const subjectStr = (ann.subject     || ann.headline || ann.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const dateStr    = ann.date || 'Unknown Date';
-  const timeStr    = ann.time || 'Unknown Time';
-  const exchange   = ann.exchange     || 'BSE';
+  const company     = (ann.scriptName  || ann.scriptCode || 'Unknown').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const code        = (ann.scriptCode  || ann.scripCode  || '').replace(/</g, '&lt;');
+  const category    = (ann.category    || 'General').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const subCategory = (ann.subCategory || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const subjectStr  = (ann.subject     || ann.headline || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const descStr     = (ann.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const dateStr     = ann.date || 'Unknown Date';
+  const timeStr     = ann.time || 'Unknown Time';
+  const exchange    = ann.exchange     || 'BSE';
+  const isCritical  = !!ann.critical;
+  
+  const linkUrl = ann.pdfUrl || ann.sourceUrl || 'https://tatvarthstockwatch.web.app/board-meetings';
 
   // Format HTML
   const html = `<!DOCTYPE html>
@@ -434,7 +439,9 @@ async function sendBoardMeetingAlertEmail(userEmail, userName, ann) {
   .detail-row { margin-bottom: 12px; font-size: 14px; }
   .detail-label { font-weight: 600; color: #64748b; width: 140px; display: inline-block; }
   .detail-value { font-weight: 700; color: #0f172a; }
+  .critical-badge { display: inline-block; background: #ef4444; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; margin-left: 8px; }
   .summary { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; font-size: 14px; margin-top: 20px; border-radius: 0 8px 8px 0; color: #78350f; }
+  .description-box { margin-top: 15px; font-size: 13px; color: #475569; line-height: 1.6; }
   .action-btn { display: inline-block; background: #2563eb; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-size: 15px; font-weight: 600; text-align: center; margin: 30px 0; box-shadow: 0 4px 6px -1px rgba(37,99,235,0.2); }
   .footer { background: #f1f5f9; padding: 20px 30px; font-size: 12px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; }
   @media only screen and (max-width:600px){
@@ -458,16 +465,29 @@ async function sendBoardMeetingAlertEmail(userEmail, userName, ann) {
       <div class="detail-row"><span class="detail-label">Board Meeting Date:</span> <span class="detail-value">${dateStr}</span></div>
       <div class="detail-row"><span class="detail-label">Announcement Time:</span> <span class="detail-value">${timeStr}</span></div>
       <div class="detail-row"><span class="detail-label">Exchange:</span> <span class="detail-value">${exchange}</span></div>
-      <div class="detail-row"><span class="detail-label">Category:</span> <span class="detail-value">${category}</span></div>
+      <div class="detail-row">
+        <span class="detail-label">Category:</span> 
+        <span class="detail-value">${category}${subCategory ? ` - ${subCategory}` : ''}</span>
+        ${isCritical ? '<span class="critical-badge">Critical</span>' : ''}
+      </div>
     </div>
     
+    ${subjectStr ? `
     <div class="summary">
-      <strong>Announcement Summary:</strong><br/>
+      <strong>Announcement Subject:</strong><br/>
       ${subjectStr}
     </div>
+    ` : ''}
+
+    ${descStr && descStr !== subjectStr ? `
+    <div class="description-box">
+      <strong>Details:</strong><br/>
+      ${descStr}
+    </div>
+    ` : ''}
     
     <center>
-      <a href="https://tatvarthstockwatch.web.app/board-meetings" class="action-btn">View Full Announcement</a>
+      <a href="${linkUrl}" target="_blank" rel="noreferrer" class="action-btn">View Full Announcement Document</a>
     </center>
   </div>
   
