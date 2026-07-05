@@ -71,13 +71,22 @@ export async function bulkAddScripts(uid, scripts) {
     body:   JSON.stringify({ scripts: toAdd }),
   })
 
-  // Trigger email catch-up for today's announcements in the background for all added codes
-  for (const item of toAdd) {
-    apiClient('/api/watchlist/catchup', {
-      method: 'POST',
-      body: JSON.stringify({ scriptCode: item.ltdCode })
-    }).catch(e => console.error('[Watchlist Catchup Bulk]', e))
-  }
+  // Trigger email catch-up for today's announcements in the background sequentially
+  // to avoid hitting Vercel serverless concurrent memory/connection limits (Exit code 128)
+  (async () => {
+    for (const item of toAdd) {
+      try {
+        await apiClient('/api/watchlist/catchup', {
+          method: 'POST',
+          body: JSON.stringify({ scriptCode: item.ltdCode })
+        })
+        // Throttle by waiting 250ms before triggering the next script
+        await new Promise(r => setTimeout(r, 250))
+      } catch(e) {
+        console.error('[Watchlist Catchup Bulk]', e)
+      }
+    }
+  })()
 
   return res
 }
