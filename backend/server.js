@@ -9,6 +9,7 @@ const path    = require('path');
 const { verifyToken }           = require('./lib/authMiddleware');
 const alertStore                = require('./lib/alertStore');
 const prefsStore                = require('./lib/prefsStore');
+const ratesStore                = require('./lib/ratesStore');
 const watchlistStore            = require('./lib/watchlistStore');
 
 const app                = express();
@@ -59,6 +60,26 @@ function readAnnouncements() { return _cache.announcements; }
 
 function writeAnnouncements(announcements, meta = {}) { _cache.announcements = announcements; }
 
+// ── Rates fetch state ─────────────────────────────────────────────────────────
+// _ratesInMemory: grows progressively as batches complete during an active fetch.
+// Clients poll GET /api/rates and receive this growing partial snapshot.
+// On fetch complete → persisted to Redis/JSON via ratesStore.writeRates().
+
+let _ratesFetchInProgress = false;
+let _ratesInMemory = {
+  fetchedAt: null, updatedAt: null,
+  total: 0, success: 0, failed: 0,
+  complete: false, fetching: false, rates: {},
+};
+
+function _resetInMemory() {
+  _ratesInMemory = {
+    fetchedAt: null, updatedAt: null,
+    total: 0, success: 0, failed: 0,
+    complete: false, fetching: false, rates: {},
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Routes
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,12 +99,46 @@ app.get('/api/health', async (req, res) => {
     uptime:     Math.floor(process.uptime()),
     timestamp:  new Date().toISOString(),
     authMode:   SECURE_MODE ? 'secure' : 'local',
+    ratesStore: ratesStore.UPSTASH_ENABLED ? 'redis' : 'local',
     emailOk:    !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD),
     telegramOk: !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
     scriptCount,
   });
 });
 
+// ── OPEN: Live rates ──────────────────────────────────────────────────────────
+// During an active fetch: returns growing in-memory partial rates (zero DB reads).
+// When idle: returns last persisted snapshot from Redis/JSON.
+// Clients poll this every 5s during active fetch, 60s otherwise.
+
+app.get('/api/rates', async (req, res) => {
+  // Tell Vercel CDN to cache this response for 15 seconds.
+  // This drastically reduces Upstash Redis GETs even if 1000 users are polling.
+  res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
+
+  if (_ratesFetchInProgress) {
+    return res.json({ ..._ratesInMemory, fetching: true });
+  }
+  try {
+    const stored = await ratesStore.readRates();
+    res.json({ ...stored, fetching: false });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── OPEN: Rates status (tiny response — ~100 bytes, safe to poll frequently) ──
+app.get('/api/rates/status', (req, res) => {
+  res.json({
+    fetching:  _ratesFetchInProgress,
+    complete:  _ratesInMemory.complete,
+    fetchedAt: _ratesInMemory.fetchedAt,
+    total:     _ratesInMemory.total,
+    success:   _ratesInMemory.success,
+    failed:    _ratesInMemory.failed,
+    backend:   ratesStore.UPSTASH_ENABLED ? 'redis' : 'local',
+  });
+});
 
 // ── OPEN: Telegram status ─────────────────────────────────────────────────────
 app.get('/api/telegram-status', (req, res) => {
@@ -443,15 +498,7 @@ app.patch('/api/watchlist/:id/alert', verifyToken, async (req, res) => {
   res.json({ success: true });
 });
 
-// ── PROTECTED: Rates refresh (cron-safe — skips if already running) ───────────
-app.post('/api/rates/refresh', verifyToken, async (req, res) => {
-  const scripts = await watchlistStore.getWatchlist(req.uid);
-  if (!scripts.length)        return res.json({ started: false, reason: 'no_scripts' });
-  if (_ratesFetchInProgress)  return res.json({ started: false, reason: 'already_running' });
 
-  _triggerRatesFetch(scripts, req.uid);
-  res.json({ started: true, total: scripts.length });
-});
 
 // ── PROTECTED: Trigger — fetch BSE/NSE announcements + kick off rates ─────────
 app.post('/api/trigger', verifyToken, async (req, res) => {
@@ -480,6 +527,7 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
       bseSet.size > 0 ? fetchAllBSEAnnouncements() : Promise.resolve([]),
       nseSet.size > 0 ? fetchAllNSEAnnouncements(nseWatchedMap) : Promise.resolve([]),
     ]);
+
 
 
     const bseMatched = bseAll.filter((a) => bseSet.has(a.scriptCode));
@@ -568,6 +616,90 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+
+
+const { bseGet, getBseCookies, getYahooFundamentals, sanitizeCode } = require('./lib/apiClients');
+
+app.use("/api/bse", require("./routes/bseRoutes")(verifyToken));
+app.use("/api/nse", require("./routes/nseRoutes")(verifyToken));
+app.get("/api/search/scripts", (req, res) => res.redirect(`/api/bse/search?q=${encodeURIComponent(req.query.q || "")}`));
+
+// ── Portfolio storage (local mode) ────────────────────────────────────────────
+app.get('/api/portfolio', (req, res) => {
+  try {
+    const raw = fs.readFileSync(PORTFOLIO_FILE, 'utf8');
+    res.json(JSON.parse(raw));
+  } catch { res.json({ holdings: [], updatedAt: null }); }
+});
+
+app.put('/api/portfolio', (req, res) => {
+  const { holdings } = req.body;
+  if (!Array.isArray(holdings)) return res.status(400).json({ error: 'holdings must be an array' });
+  const data = { holdings, updatedAt: new Date().toISOString() };
+  try {
+    fs.writeFileSync(PORTFOLIO_FILE, JSON.stringify(data, null, 2), 'utf8');
+    res.json({ ok: true, count: holdings.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── In-memory caches for calendar and movers ─────────────────────────────────
+const _calCache   = new Map(); // key: `${from}|${to}|${cat}`, val: { data, exp }
+const CAL_TTL     = 30 * 60 * 1000; // 30 min
+let   _moversCache    = null;
+let   _moversCacheExp = 0;
+const MOVERS_TTL  = 5 * 60 * 1000;  // 5 min
+
+// ── OPEN: BSE top gainers / losers (market-wide, 5-min cache) ────────────────
+app.get('/api/bse/movers', async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || '10', 10), 50);
+
+  if (_moversCache && Date.now() < _moversCacheExp) {
+    return res.json({
+      gainers:   _moversCache.gainers.slice(0, limit),
+      losers:    _moversCache.losers.slice(0, limit),
+      fetchedAt: _moversCache.fetchedAt,
+      cached: true,
+    });
+  }
+
+  const _f = (v) => { const n = parseFloat(String(v ?? '').replace(/,/g, '')); return isNaN(n) ? null : n; };
+
+  function parseMovers(r) {
+    if (r.status !== 'fulfilled' || !r.value) return [];
+    const rows = r.value?.Table || r.value?.Table1 || r.value?.Data || (Array.isArray(r.value) ? r.value : []);
+    return rows.map((i) => ({
+      bseCode:   String(i.SCRIP_CODE  || i.scripcode   || i.ScripCode  || '').trim(),
+      company:   (i.SCRIP_NAME  || i.scripname    || i.ScripName  || i.CompanyName || '').trim(),
+      symbol:    (i.NSE_SYMBOL  || i.nseSymbol    || i.Symbol     || '').trim(),
+      ltp:       _f(i.LTP        || i.ltp          || i.CURRENT_VALUE),
+      change:    _f(i.NET_CHANGE || i.NetChange    || i.change     || i.NETCHANGE),
+      pctChange: _f(i.PERCENT_CHG|| i.PercentChg   || i.PctChg     || i.PERCHANGE  || i.perChange),
+      volume:    parseInt(String(i.VOLUME || i.volume || i.TotalTradedQuantity || '0').replace(/,/g,''), 10) || null,
+    })).filter((m) => m.bseCode && m.ltp != null);
+  }
+
+  try {
+    const [grR, lrR] = await Promise.allSettled([
+      bseGet('https://api.bseindia.com/BseIndiaAPI/api/GetTopGainerLoser/w',
+        { Type: 'gainer', CategoryName: 'equity', IndexName: '' }, 12000),
+      bseGet('https://api.bseindia.com/BseIndiaAPI/api/GetTopGainerLoser/w',
+        { Type: 'loser',  CategoryName: 'equity', IndexName: '' }, 12000),
+    ]);
+    const gainers = parseMovers(grR);
+    const losers  = parseMovers(lrR);
+    _moversCache    = { gainers, losers, fetchedAt: new Date().toISOString() };
+    _moversCacheExp = Date.now() + MOVERS_TTL;
+    res.json({ gainers: gainers.slice(0, limit), losers: losers.slice(0, limit), fetchedAt: _moversCache.fetchedAt, cached: false });
+  } catch (e) {
+    console.error('[BSE Movers]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 
 
 if (require.main === module) {
