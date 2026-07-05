@@ -374,36 +374,7 @@ export default function WatchlistPage() {
           </div>
         </div>
 
-        {/* ── Status bars ── */}
-        <div className="flex flex-col gap-2">
-          {/* Announcements */}
-          <div className={clsx(
-            'flex items-center gap-3 px-3 py-2 rounded-xl border text-xs flex-wrap shadow-sm transition-colors',
-            annFetchedAt ? 'bg-amber-500/10 border-amber-500/20' : 'bg-black/20 border-white/5'
-          )}>
-            <div className="flex items-center gap-1.5">
-              <Zap className={clsx('w-3.5 h-3.5', annFetchedAt ? 'text-amber-400' : 'text-textMuted/40')} />
-              <span className={annFetchedAt ? 'text-amber-400 font-medium' : 'text-textMuted/50'}>
-                {annFetchedAt
-                  ? `${triggerAnnouncements?.length ?? 0} announcement${(triggerAnnouncements?.length ?? 0) !== 1 ? 's' : ''} fetched`
-                  : 'Announcements not fetched yet'}
-              </span>
-            </div>
-            {annFetchedAt && (
-              <span className="flex items-center gap-1 text-textMuted/60">
-                <Clock className="w-3 h-3" />
-                News fetched: {fmtTime(annFetchedAt)}
-              </span>
-            )}
-            {triggering && (
-              <span className="flex items-center gap-1.5 text-amber-400/80">
-                <RefreshCw className="w-3 h-3 animate-spin" />
-                Fetching announcements…
-              </span>
-            )}
-          </div>
         </div>
-      </div>
 
       {/* ── Free tier limit warning ── */}
       {atScriptLimit && (
