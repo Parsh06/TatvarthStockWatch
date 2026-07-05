@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { format, isAfter, startOfDay, subDays } from 'date-fns'
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line
+  LineChart, Line, Legend
 } from 'recharts'
 import clsx from 'clsx'
 import { useWatchlist } from '../../contexts/WatchlistContext'
