@@ -558,6 +558,8 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
       const mongoDb = await getDb();
       await mongoDb.collection('announcements').deleteMany({});
       await mongoDb.collection('receive_email').deleteMany({});
+      await mongoDb.collection('board_meeting_email_logs').deleteMany({});
+      await mongoDb.collection('board_meeting_processing').deleteMany({});
       writeAnnouncements([], { lastTriggeredAt: new Date().toISOString() });
     } catch (e) {
       console.error('[Trigger] Error during midnight wipe:', e.message);
