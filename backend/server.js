@@ -521,6 +521,28 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
 
   console.log(`[Trigger] BSE: ${bseSet.size} codes | NSE: ${nseSet.size} symbols`);
 
+  // --- Midnight Wipe (IST) ---
+  const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+  const getISTDateString = (d) => new Date(d.getTime() + IST_OFFSET).toISOString().slice(0, 10);
+  
+  const existingMeta = readAnnouncements();
+  const lastDate = existingMeta.lastTriggeredAt ? getISTDateString(new Date(existingMeta.lastTriggeredAt)) : null;
+  const todayDate = getISTDateString(new Date());
+
+  if (lastDate && lastDate !== todayDate) {
+    console.log(`[Trigger] New day detected! Wiping MongoDB for fresh start (${lastDate} -> ${todayDate})`);
+    try {
+      const { getDb } = require('./lib/mongoClient');
+      const mongoDb = await getDb();
+      await mongoDb.collection('announcements').deleteMany({});
+      await mongoDb.collection('receive_email').deleteMany({});
+      writeAnnouncements([], { lastTriggeredAt: new Date().toISOString() });
+    } catch (e) {
+      console.error('[Trigger] Error during midnight wipe:', e.message);
+    }
+  }
+  // -----------------------------
+
   try {
     const nseWatchedMap = new Map([...nseSet].map((c) => [c.toUpperCase(), metaMap.get(c) || {}]));
     const [bseAll, nseAll] = await Promise.all([

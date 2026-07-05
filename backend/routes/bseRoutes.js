@@ -631,9 +631,8 @@ router.get('/announcements', verifyToken, async (req, res) => {
       const cur = new Date(`${fromStr.slice(0,4)}-${fromStr.slice(4,6)}-${fromStr.slice(6,8)}`);
       const end = new Date(`${toStr.slice(0,4)}-${toStr.slice(4,6)}-${toStr.slice(6,8)}`);
       while (cur <= end) {
-        if (cur.getDay() !== 0 && cur.getDay() !== 6) {
-          days.push(`${cur.getFullYear()}${String(cur.getMonth()+1).padStart(2,'0')}${String(cur.getDate()).padStart(2,'0')}`);
-        }
+        // Announcements can happen on weekends (e.g. Board meetings on Saturday)
+        days.push(`${cur.getFullYear()}${String(cur.getMonth()+1).padStart(2,'0')}${String(cur.getDate()).padStart(2,'0')}`);
         cur.setDate(cur.getDate() + 1);
       }
       return days;
