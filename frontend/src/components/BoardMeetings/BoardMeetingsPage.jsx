@@ -35,6 +35,7 @@ export default function BoardMeetingsPage() {
   
   const [meetings, setMeetings] = useState([])
   const [announcements, setAnnouncements] = useState([])
+  const [emailLogs, setEmailLogs] = useState({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [isSubscribed, setIsSubscribed] = useState(false)
@@ -66,6 +67,14 @@ export default function BoardMeetingsPage() {
       // 3. Fetch today's announcements from Firestore to check results status
       const cachedAnns = await getAnnouncementsFromDB({ limitCount: 2000 })
       setAnnouncements(cachedAnns)
+
+      // 4. Fetch email logs to see which ones got notified
+      try {
+        const logs = await apiClient('/api/bse/board-meetings/email-logs')
+        setEmailLogs(logs || {})
+      } catch (err) {
+        console.error('Failed to fetch email logs', err)
+      }
 
     } catch (err) {
       console.error(err)
@@ -121,7 +130,8 @@ export default function BoardMeetingsPage() {
       'Purpose': m.PURPOSE_NAME,
       'Meeting Date': m.MEETING_DATE,
       'Industry': m.Industry_name,
-      'Result Out': outcomeByScript[m.scrip_code] ? 'Yes' : 'No'
+      'Result Out': outcomeByScript[m.scrip_code] ? 'Yes' : 'No',
+      'Email Sent': emailLogs[m.scrip_code] ? 'Yes' : 'No'
     }))
     exportToXLSX(exportData, `Board_Meetings_${fromDate}_to_${toDate}`)
   }
@@ -260,19 +270,20 @@ export default function BoardMeetingsPage() {
                 <th className="px-4 py-3 font-medium">Purpose</th>
                 <th className="px-4 py-3 font-medium">Meeting Date</th>
                 <th className="px-4 py-3 font-medium text-center">Result Out?</th>
+                <th className="px-4 py-3 font-medium text-center">Email Sent?</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
               {loading ? (
                 <tr>
-                  <td colSpan="5" className="px-4 py-16 text-center text-textMuted">
+                  <td colSpan="6" className="px-4 py-16 text-center text-textMuted">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-50 text-primary" />
                     <p>Loading board meetings...</p>
                   </td>
                 </tr>
               ) : filteredMeetings.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-4 py-16 text-center text-textMuted">
+                  <td colSpan="6" className="px-4 py-16 text-center text-textMuted">
                     No board meetings found for this date range.
                   </td>
                 </tr>
@@ -320,6 +331,19 @@ export default function BoardMeetingsPage() {
                             </>
                           ) : (
                             <div className="flex items-center gap-1.5 text-xs font-medium text-red-500 bg-red-500/10 px-2.5 py-1 rounded-full border border-red-500/20">
+                              <XCircle className="w-4 h-4" /> No
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex justify-center items-center gap-2">
+                          {emailLogs[m.scrip_code] ? (
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full border border-primary/20">
+                              <CheckCircle2 className="w-4 h-4" /> Yes
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-textMuted bg-white/5 px-2.5 py-1 rounded-full border border-white/10">
                               <XCircle className="w-4 h-4" /> No
                             </div>
                           )}

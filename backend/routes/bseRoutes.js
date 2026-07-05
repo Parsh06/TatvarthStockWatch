@@ -732,6 +732,31 @@ router.get('/companynews', async (req, res) => {
   }
 });
 // ── PROTECTED: BSE Board Meetings ─────────────────────────────────────────────
+router.get('/board-meetings/email-logs', verifyToken, async (req, res) => {
+  try {
+    const { getDb } = require('../lib/mongoClient');
+    const db = await getDb();
+    
+    // Fetch logs for this user that were sent recently (within last 48 hours)
+    const recent = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const logs = await db.collection('board_meeting_email_logs').find({
+      userId: req.uid,
+      status: 'Sent',
+      sentAt: { $gte: recent }
+    }).toArray();
+    
+    const sentMap = {};
+    for (const log of logs) {
+      sentMap[log.companyId] = true;
+    }
+    
+    res.json(sentMap);
+  } catch (err) {
+    console.error('[Email Logs API]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/board-meetings', verifyToken, async (req, res) => {
   const { fromDT, ToDt } = req.query;
   
