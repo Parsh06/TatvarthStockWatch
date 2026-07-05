@@ -4,8 +4,8 @@ import { Plus, Upload, Search, Trash2, Star, Zap, X, ExternalLink, FileText, Mai
 import clsx from 'clsx'
 import { useWatchlist } from '../../hooks/useWatchlist'
 import { useAnnouncements } from '../../hooks/useAnnouncements'
+import { useCronStatus } from '../../hooks/useCronStatus'
 import { useTier } from '../../contexts/TierContext'
-import { useRatesSocket } from '../../hooks/useRatesSocket'
 import { apiClient } from '../../services/apiClient'
 import { getCategoryColor } from '../../utils/formatters'
 import ScriptCard from './ScriptCard'
@@ -90,79 +90,9 @@ export default function WatchlistPage() {
   const [clearConfirm, setClearConfirm]           = useState(false)
   const [bulkRemoveConfirm, setBulkRemoveConfirm] = useState(false)
   const [activeGroup, setActiveGroup]             = useState('')
+  const cronStatus = useCronStatus()
 
-  const [triggering, setTriggering]             = useState(false)
-  const [triggerAnnouncements, setTriggerAnnouncements] = useState(null)
-  const [annFetchedAt, setAnnFetchedAt]         = useState(null)
 
-  const [rates, setRates]               = useState({})
-  const [ratesUpdatedAt, setRatesUpdatedAt] = useState(null)
-  const [ratesFetching, setRatesFetching]   = useState(false)
-  const [ratesCount, setRatesCount]         = useState(0)
-  
-  const pendingRatesRef = useRef(null)
-  const flushTimerRef   = useRef(null)
-
-  const flushPendingRates = useCallback(() => {
-    if (!pendingRatesRef.current) return
-    const { rates: newRates, meta } = pendingRatesRef.current
-    pendingRatesRef.current = null
-    setRates(prev => ({ ...prev, ...newRates }))
-    if (meta.fetchedAt) setRatesUpdatedAt(meta.fetchedAt)
-    setRatesCount(meta.success || Object.keys(newRates).length)
-  }, [])
-
-  function applyRates(d, merge = false) {
-    if (d?.rates && typeof d.rates === 'object' && Object.keys(d.rates).length > 0) {
-      if (merge) {
-        if (!pendingRatesRef.current) pendingRatesRef.current = { rates: {}, meta: d }
-        Object.assign(pendingRatesRef.current.rates, d.rates)
-        pendingRatesRef.current.meta = d
-        if (!flushTimerRef.current) {
-          flushTimerRef.current = setTimeout(() => {
-            flushTimerRef.current = null
-            flushPendingRates()
-          }, 800)
-        }
-      } else {
-        if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null }
-        pendingRatesRef.current = null
-        setRates(d.rates)
-        setRatesUpdatedAt(d.fetchedAt || null)
-        setRatesCount(d.success || Object.keys(d.rates).length)
-      }
-      return true
-    }
-    return false
-  }
-
-  const { liveRates } = useRatesSocket()
-
-  useEffect(() => {
-    if (Object.keys(liveRates).length > 0) {
-      const now = new Date().toISOString()
-      applyRates({ rates: liveRates, fetchedAt: now }, true)
-      setRatesFetching(false)
-      // Since backend cronjob updates both rates and announcements at the exact same time,
-      // sync the UI fetch time so the user knows announcements are also up to date.
-      setAnnFetchedAt(now)
-    }
-  }, [liveRates])
-
-  useEffect(() => {
-    return () => {
-      if (flushTimerRef.current) clearTimeout(flushTimerRef.current)
-    }
-  }, [])
-
-  async function triggerRefresh() {
-    setRatesFetching(true)
-    try {
-      await fetch('/api/rates/refresh', { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
-    } catch {
-      setRatesFetching(false)
-    }
-  }
 
   const { watchlist, loading, removeScript, clearWatchlist, filtered } = useWatchlist({ search, exchange })
   const { isPremium, limits } = useTier()
@@ -217,8 +147,6 @@ export default function WatchlistPage() {
       const countB = new Set([...(announcementsByCode[codeB]?.idSet || []), ...(announcementsByCode[symB]?.idSet || [])]).size
       return countB - countA
     }
-    if (sort === 'topGain')  return (rates[codeB]?.pctChange ?? -999) - (rates[codeA]?.pctChange ?? -999)
-    if (sort === 'topLoss')  return (rates[codeA]?.pctChange ?? 999) - (rates[codeB]?.pctChange ?? 999)
     return new Date(b.addedAt || 0) - new Date(a.addedAt || 0)
   })
 
@@ -308,6 +236,14 @@ export default function WatchlistPage() {
 
   return (
     <PageTransition className="space-y-6">
+      {/* ── Global Cron Status ── */}
+      {cronStatus?.lastRun && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-500/90 shadow-sm animate-fade-in-up">
+          <Clock className="w-3.5 h-3.5 shrink-0" />
+          <span>Announcements fetched by system: <strong>{fmtTime(cronStatus.lastRun)}</strong></span>
+        </div>
+      )}
+
       {/* ── Header ── */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -493,11 +429,10 @@ export default function WatchlistPage() {
                 ? { ...script, ...alertOverrides[script.id] }
                 : script
               return (
-                <ScriptCard
-                  key={script.id}
-                  script={scriptWithAlert}
+                <ScriptCard 
+                  key={script.id} 
+                  script={scriptWithAlert} 
                   annStats={annStats}
-                  rate={rates[code] || null}
                   onOpenDrawer={setDrawerScript}
                   onSetAlert={(s) => setAlertScript(scriptWithAlert)}
                   bulkMode={bulkMode}

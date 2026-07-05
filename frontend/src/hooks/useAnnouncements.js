@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { getAnnouncementsFromDB } from '../services/announcementService'
 import { FIREBASE_ENABLED } from '../services/firebase'
+import { useCronStatus } from './useCronStatus'
 
 const LOCAL_MODE = !FIREBASE_ENABLED
 
@@ -10,6 +11,7 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
   const [error, setError]                 = useState(null)
   const [lastFetched, setLastFetched]     = useState(null)
   const [source, setSource]               = useState(null) // 'local' | 'db'
+  const cronStatus                        = useCronStatus()
 
   // BSE announcements have scriptCode = LTD code (numeric)
   // NSE announcements have scriptCode = Symbol (alphabetic)
@@ -101,7 +103,7 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
 
   useEffect(() => {
     if (autoFetch) fetch()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoFetch, fetch, cronStatus?.lastRun]) 
 
   // Dynamically compute watchlisted status during render to avoid stale closures
   const annotatedAnnouncements = announcements.map((a) => {

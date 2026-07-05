@@ -52,28 +52,12 @@ function ScriptCard({ script, annStats = {}, rate = null, onOpenDrawer, onSetAle
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [removing, setRemoving]       = useState(false)
   const [flashClass, setFlashClass]   = useState('')
-  const prevLtpRef = useRef(rate?.ltp)
-
-  useEffect(() => {
-    if (rate?.ltp && prevLtpRef.current && rate.ltp !== prevLtpRef.current) {
-      if (rate.ltp > prevLtpRef.current) setFlashClass('animate-flash-green')
-      else if (rate.ltp < prevLtpRef.current) setFlashClass('animate-flash-red')
-      
-      const timer = setTimeout(() => setFlashClass(''), 1000)
-      prevLtpRef.current = rate.ltp
-      return () => clearTimeout(timer)
-    }
-    prevLtpRef.current = rate?.ltp
-  }, [rate?.ltp])
-
   const code   = script.ltdCode || script.bseCode || ''
   const symbol = script.symbol  || ''
   const count       = annStats.count      || 0
   const lastDate    = annStats.lastDate   || null
   const lastSubject = annStats.lastSubject || null
-
-  const isUp   = rate?.pctChange != null && rate.pctChange >= 0
-  const isDown = rate?.pctChange != null && rate.pctChange < 0
+  const lastSubject = annStats.lastSubject || null
 
   async function handleRemove() {
     setRemoving(true)
@@ -122,15 +106,7 @@ function ScriptCard({ script, annStats = {}, rate = null, onOpenDrawer, onSetAle
           )}
         </div>
 
-        {/* Top accent bar — green/red based on price direction */}
-        <div className={clsx(
-          'h-1 w-full',
-          rate?.ltp != null
-            ? isUp   ? 'bg-emerald-500'
-            : isDown ? 'bg-red-500'
-            :          'bg-border'
-            :          'bg-border'
-        )} />
+        <div className="h-1 w-full bg-primary/20" />
 
         {/* Card body */}
         <div className="flex flex-col flex-1 p-4 gap-3">
@@ -152,49 +128,6 @@ function ScriptCard({ script, annStats = {}, rate = null, onOpenDrawer, onSetAle
               {script.exchange || 'BSE'}
             </span>
           </div>
-
-          {/* Row 2 — LTP + change */}
-          {rate?.ltp != null ? (
-            <div className="bg-background/60 rounded-xl px-3 py-2.5">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div>
-                  <p className="text-[10px] text-textMuted uppercase tracking-wider mb-0.5">LTP</p>
-                  <p className="text-xl font-bold text-textPrimary tabular-nums">₹{fmt(rate.ltp)}</p>
-                </div>
-                {rate.pctChange != null && (
-                  <div className={clsx(
-                    'flex flex-col items-end',
-                    isUp ? 'text-emerald-400' : 'text-red-400'
-                  )}>
-                    <span className="flex items-center gap-1 text-sm font-bold tabular-nums">
-                      {isUp ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                      {isUp ? '+' : ''}{fmt(rate.pctChange)}%
-                    </span>
-                    <span className="text-xs tabular-nums opacity-80">
-                      {rate.change >= 0 ? '+' : ''}{fmt(rate.change)}
-                    </span>
-                  </div>
-                )}
-              </div>
-              <MiniSparkline rate={rate} isUp={isUp} />
-
-
-              {/* OHLC mini row */}
-              {(rate.open != null || rate.high != null || rate.low != null) && (
-                <div className="flex items-center gap-3 mt-2 pt-2 border-t border-border/50 text-[11px] text-textMuted tabular-nums flex-wrap">
-                  {rate.open  != null && <span><span className="opacity-60">O</span> {fmt(rate.open)}</span>}
-                  {rate.high  != null && <span className="text-emerald-400/80"><span className="opacity-70">H</span> {fmt(rate.high)}</span>}
-                  {rate.low   != null && <span className="text-red-400/80"><span className="opacity-70">L</span> {fmt(rate.low)}</span>}
-                  {rate.prevClose != null && <span><span className="opacity-60">PC</span> {fmt(rate.prevClose)}</span>}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="bg-background/40 rounded-xl px-3 py-2.5 flex items-center gap-2">
-              <RefreshCw className="w-3.5 h-3.5 text-textMuted/40 animate-spin" style={{ animationDuration: '3s' }} />
-              <span className="text-xs text-textMuted/50">Rate not available</span>
-            </div>
-          )}
 
           {/* Row 3 — announcements */}
           <div className="flex-1">

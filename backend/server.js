@@ -1027,6 +1027,19 @@ app.all('/api/cron/trigger', async (req, res) => {
         }
       }
     }
+    
+    // Write meta status to Firestore for real-time frontend updates
+    try {
+      const admin = require('firebase-admin');
+      const db = admin.firestore();
+      await db.collection('system_meta').doc('cron_status').set({
+        lastRun: new Date().toISOString(),
+        matchedAnnouncements: matched.length
+      }, { merge: true });
+    } catch (metaErr) {
+      console.error('[Global Cron] Meta update failed:', metaErr.message);
+    }
+
     res.json({ started: true, scriptsFetched: scripts.length, matchedAnnouncements: matched.length });
   } catch (err) {
     console.error('[Global Cron] Error:', err);
