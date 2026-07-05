@@ -9,7 +9,6 @@ const path    = require('path');
 const { verifyToken }           = require('./lib/authMiddleware');
 const alertStore                = require('./lib/alertStore');
 const prefsStore                = require('./lib/prefsStore');
-const ratesStore                = require('./lib/ratesStore');
 const watchlistStore            = require('./lib/watchlistStore');
 
 const app                = express();
@@ -60,26 +59,6 @@ function readAnnouncements() { return _cache.announcements; }
 
 function writeAnnouncements(announcements, meta = {}) { _cache.announcements = announcements; }
 
-// ── Rates fetch state ─────────────────────────────────────────────────────────
-// _ratesInMemory: grows progressively as batches complete during an active fetch.
-// Clients poll GET /api/rates and receive this growing partial snapshot.
-// On fetch complete → persisted to Redis/JSON via ratesStore.writeRates().
-
-let _ratesFetchInProgress = false;
-let _ratesInMemory = {
-  fetchedAt: null, updatedAt: null,
-  total: 0, success: 0, failed: 0,
-  complete: false, fetching: false, rates: {},
-};
-
-function _resetInMemory() {
-  _ratesInMemory = {
-    fetchedAt: null, updatedAt: null,
-    total: 0, success: 0, failed: 0,
-    complete: false, fetching: false, rates: {},
-  };
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Routes
 // ─────────────────────────────────────────────────────────────────────────────
@@ -99,46 +78,12 @@ app.get('/api/health', async (req, res) => {
     uptime:     Math.floor(process.uptime()),
     timestamp:  new Date().toISOString(),
     authMode:   SECURE_MODE ? 'secure' : 'local',
-    ratesStore: ratesStore.UPSTASH_ENABLED ? 'redis' : 'local',
     emailOk:    !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD),
     telegramOk: !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
     scriptCount,
   });
 });
 
-// ── OPEN: Live rates ──────────────────────────────────────────────────────────
-// During an active fetch: returns growing in-memory partial rates (zero DB reads).
-// When idle: returns last persisted snapshot from Redis/JSON.
-// Clients poll this every 5s during active fetch, 60s otherwise.
-
-app.get('/api/rates', async (req, res) => {
-  // Tell Vercel CDN to cache this response for 15 seconds.
-  // This drastically reduces Upstash Redis GETs even if 1000 users are polling.
-  res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
-
-  if (_ratesFetchInProgress) {
-    return res.json({ ..._ratesInMemory, fetching: true });
-  }
-  try {
-    const stored = await ratesStore.readRates();
-    res.json({ ...stored, fetching: false });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── OPEN: Rates status (tiny response — ~100 bytes, safe to poll frequently) ──
-app.get('/api/rates/status', (req, res) => {
-  res.json({
-    fetching:  _ratesFetchInProgress,
-    complete:  _ratesInMemory.complete,
-    fetchedAt: _ratesInMemory.fetchedAt,
-    total:     _ratesInMemory.total,
-    success:   _ratesInMemory.success,
-    failed:    _ratesInMemory.failed,
-    backend:   ratesStore.UPSTASH_ENABLED ? 'redis' : 'local',
-  });
-});
 
 // ── OPEN: Telegram status ─────────────────────────────────────────────────────
 app.get('/api/telegram-status', (req, res) => {
@@ -536,9 +481,6 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
       nseSet.size > 0 ? fetchAllNSEAnnouncements(nseWatchedMap) : Promise.resolve([]),
     ]);
 
-    // Kick off rates fetch in the background (non-blocking)
-    if (!_ratesFetchInProgress) _triggerRatesFetch(scripts, req.uid);
-    else console.log('[Trigger] Rates fetch already in progress');
 
     const bseMatched = bseAll.filter((a) => bseSet.has(a.scriptCode));
     const nseMatched = nseAll.filter((a) => nseSet.has((a.scriptCode || '').toUpperCase()));
@@ -620,7 +562,6 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
       bseFetched: bseAll.length,    nseFetched: nseAll.length,
       emailSent, emailConfigured: emailOk, emailError,
       telegramSent, telegramConfigured: isTelegramOk(), telegramError,
-      ratesFetching: _ratesFetchInProgress,
     });
   } catch (e) {
     console.error('[Trigger] Error:', e.message);
@@ -628,222 +569,6 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
   }
 });
 
-// ── Shared rates fetch helper ─────────────────────────────────────────────────
-// Called from both /api/trigger and /api/rates/refresh.
-// Progressively updates _ratesInMemory for live polling.
-// Writes to Redis/JSON ONLY on completion (1 write per fetch cycle).
-
-function _triggerRatesFetch(scripts, uid) {
-  const { fetchRatesForScripts }       = require('./lib/bseRates');
-  const { checkPriceAlerts }           = require('./lib/priceAlertChecker');
-  const { sendTelegramPriceAlert: _tg, isConfigured: _tgOk } = require('./lib/telegramNotifier');
-
-  _ratesFetchInProgress = true;
-  _resetInMemory();
-
-  fetchRatesForScripts(scripts, {
-    onProgress: async (snapshot) => {
-      // Merge partial batch into in-memory state (full rates for alert checking)
-      const slimBatch = ratesStore.slimRates(snapshot.rates || {});
-      _ratesInMemory = {
-        fetchedAt: snapshot.fetchedAt,
-        updatedAt: snapshot.updatedAt || new Date().toISOString(),
-        total:     snapshot.total,
-        success:   snapshot.success,
-        failed:    snapshot.failed,
-        complete:  snapshot.complete,
-        fetching:  !snapshot.complete,
-        rates:     { ..._ratesInMemory.rates, ...slimBatch },
-      };
-
-      // Check price alerts against full (unslimmed) rates — needs real ltp values
-      try {
-        const { checkPriceAlerts }    = require('./lib/priceAlertChecker');
-        const { sendPriceAlertEmail } = require('./lib/mailer');
-        const emailOk = !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
-        
-        const evaluateUserAlerts = async (userId, userScripts) => {
-          const prefs = await prefsStore.getPrefs(userId);
-          let userEmail = null;
-          
-          const sendEmailFn = emailOk && prefs.emailEnabled !== false ? async (a) => {
-            if (!userEmail) {
-              const admin = require('firebase-admin');
-              try {
-                const userRecord = await admin.auth().getUser(userId);
-                userEmail = userRecord.email;
-              } catch (err) { console.error('Failed to fetch user email:', err.message); }
-            }
-            if (userEmail) await sendPriceAlertEmail(userEmail, a);
-          } : null;
-
-          const fired = await checkPriceAlerts(
-            userScripts, snapshot.rates, prefs,
-            sendEmailFn,
-            _tgOk() && prefs.telegramEnabled !== false ? (a) => _tg(a) : null
-          );
-          for (const a of fired) await alertStore.appendAlert(userId, a);
-        };
-
-        if (uid === 'GLOBAL_CRON') {
-          // Triggered by global cron — evaluate for all users
-          const admin = require('firebase-admin');
-          let pageToken;
-          do {
-            const result = await admin.auth().listUsers(100, pageToken);
-            for (const user of result.users) {
-              const uScripts = await watchlistStore.getWatchlist(user.uid);
-              if (uScripts && uScripts.length > 0) {
-                 await evaluateUserAlerts(user.uid, uScripts);
-              }
-            }
-            pageToken = result.pageToken;
-          } while (pageToken);
-        } else {
-          // Triggered by a specific user manually
-          await evaluateUserAlerts(uid, scripts);
-        }
-      } catch (e) {
-        console.error('[Rates] Price alert check error:', e.message);
-      }
-
-      // WebSockets removed: clients will now HTTP poll GET /api/rates
-
-      // Persist to Redis/JSON ONLY on completion — avoids write amplification
-      if (snapshot.complete) {
-        try {
-          await ratesStore.writeRates(snapshot);
-          console.log(`[Rates] Persisted: ${snapshot.success}/${snapshot.total} to ${ratesStore.UPSTASH_ENABLED ? 'Redis' : 'local'}`);
-        } catch (e) {
-          console.error('[Rates] Persist error:', e.message);
-        }
-      }
-    },
-  })
-    .catch((e) => console.error('[Rates] Fetch error:', e.message))
-    .finally(() => {
-      _ratesFetchInProgress = false;
-      _ratesInMemory.fetching = false;
-      console.log(`[Rates] Fetch complete — ${_ratesInMemory.success}/${_ratesInMemory.total} ok`);
-    });
-}
-
-const { bseGet, getBseCookies, getYahooFundamentals, sanitizeCode } = require('./lib/apiClients');
-
-app.use("/api/bse", require("./routes/bseRoutes")(verifyToken));
-app.use("/api/nse", require("./routes/nseRoutes")(verifyToken));
-app.get("/api/search/scripts", (req, res) => res.redirect(`/api/bse/search?q=${encodeURIComponent(req.query.q || "")}`));
-
-// ── Portfolio storage (local mode) ────────────────────────────────────────────
-app.get('/api/portfolio', (req, res) => {
-  try {
-    const raw = fs.readFileSync(PORTFOLIO_FILE, 'utf8');
-    res.json(JSON.parse(raw));
-  } catch { res.json({ holdings: [], updatedAt: null }); }
-});
-
-app.put('/api/portfolio', (req, res) => {
-  const { holdings } = req.body;
-  if (!Array.isArray(holdings)) return res.status(400).json({ error: 'holdings must be an array' });
-  const data = { holdings, updatedAt: new Date().toISOString() };
-  try {
-    fs.writeFileSync(PORTFOLIO_FILE, JSON.stringify(data, null, 2), 'utf8');
-    res.json({ ok: true, count: holdings.length });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── In-memory caches for calendar and movers ─────────────────────────────────
-const _calCache   = new Map(); // key: `${from}|${to}|${cat}`, val: { data, exp }
-const CAL_TTL     = 30 * 60 * 1000; // 30 min
-let   _moversCache    = null;
-let   _moversCacheExp = 0;
-const MOVERS_TTL  = 5 * 60 * 1000;  // 5 min
-
-// ── OPEN: BSE top gainers / losers (market-wide, 5-min cache) ────────────────
-app.get('/api/bse/movers', async (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit || '10', 10), 50);
-
-  if (_moversCache && Date.now() < _moversCacheExp) {
-    return res.json({
-      gainers:   _moversCache.gainers.slice(0, limit),
-      losers:    _moversCache.losers.slice(0, limit),
-      fetchedAt: _moversCache.fetchedAt,
-      cached: true,
-    });
-  }
-
-  const _f = (v) => { const n = parseFloat(String(v ?? '').replace(/,/g, '')); return isNaN(n) ? null : n; };
-
-  function parseMovers(r) {
-    if (r.status !== 'fulfilled' || !r.value) return [];
-    const rows = r.value?.Table || r.value?.Table1 || r.value?.Data || (Array.isArray(r.value) ? r.value : []);
-    return rows.map((i) => ({
-      bseCode:   String(i.SCRIP_CODE  || i.scripcode   || i.ScripCode  || '').trim(),
-      company:   (i.SCRIP_NAME  || i.scripname    || i.ScripName  || i.CompanyName || '').trim(),
-      symbol:    (i.NSE_SYMBOL  || i.nseSymbol    || i.Symbol     || '').trim(),
-      ltp:       _f(i.LTP        || i.ltp          || i.CURRENT_VALUE),
-      change:    _f(i.NET_CHANGE || i.NetChange    || i.change     || i.NETCHANGE),
-      pctChange: _f(i.PERCENT_CHG|| i.PercentChg   || i.PctChg     || i.PERCHANGE  || i.perChange),
-      volume:    parseInt(String(i.VOLUME || i.volume || i.TotalTradedQuantity || '0').replace(/,/g,''), 10) || null,
-    })).filter((m) => m.bseCode && m.ltp != null);
-  }
-
-  try {
-    const [grR, lrR] = await Promise.allSettled([
-      bseGet('https://api.bseindia.com/BseIndiaAPI/api/GetTopGainerLoser/w',
-        { Type: 'gainer', CategoryName: 'equity', IndexName: '' }, 12000),
-      bseGet('https://api.bseindia.com/BseIndiaAPI/api/GetTopGainerLoser/w',
-        { Type: 'loser',  CategoryName: 'equity', IndexName: '' }, 12000),
-    ]);
-    const gainers = parseMovers(grR);
-    const losers  = parseMovers(lrR);
-    _moversCache    = { gainers, losers, fetchedAt: new Date().toISOString() };
-    _moversCacheExp = Date.now() + MOVERS_TTL;
-    res.json({ gainers: gainers.slice(0, limit), losers: losers.slice(0, limit), fetchedAt: _moversCache.fetchedAt, cached: false });
-  } catch (e) {
-    console.error('[BSE Movers]', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-
-// ── Background price-alert cron ───────────────────────────────────────────────
-// Every 5 minutes during BSE market hours (Mon–Fri 09:00–15:35 IST) we:
-//   1. Re-fetch live rates for all watchlist scripts
-//   2. Run checkPriceAlerts (cooldown prevents spam — 5 min per direction)
-// This means alerts fire even when the user hasn't clicked "Fetch Latest Data".
-
-const ALERT_CRON_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-
-function _isMarketOpen() {
-  const now = new Date();
-  // Convert to IST (UTC+5:30)
-  const istOffset = 5.5 * 60 * 60 * 1000;
-  const ist = new Date(now.getTime() + istOffset - now.getTimezoneOffset() * 60000);
-  const day = ist.getDay(); // 0=Sun, 6=Sat
-  if (day === 0 || day === 6) return false;
-  const h = ist.getHours(), m = ist.getMinutes();
-  const mins = h * 60 + m;
-  return mins >= 9 * 60 && mins <= 15 * 60 + 35;
-}
-
-async function _runAlertCron() {
-  if (_ratesFetchInProgress) return; // a manual fetch is already running
-  if (!_isMarketOpen()) return;
-
-  const scripts = await watchlistStore.getWatchlist(req.uid).filter((s) => s.alertEnabled && (s.alertAbove != null || s.alertBelow != null));
-  if (scripts.length === 0) return; // nothing to watch
-
-  console.log(`[AlertCron] Market open — checking ${scripts.length} alert script(s)…`);
-  const LOCAL_UID = 'local';
-  _triggerRatesFetch(scripts, LOCAL_UID);
-}
-
-// In Vercel, background intervals don't work. 
-// Instead, external cron services will hit /api/cron/trigger
-// setInterval(_runAlertCron, ALERT_CRON_INTERVAL_MS);
 
 if (require.main === module) {
   app.listen(PORT, async () => {
@@ -854,20 +579,9 @@ if (require.main === module) {
     const appUrl = process.env.APP_URL || `http://localhost:${PORT}`;
     console.log(`  Email preview: ${appUrl}/api/email-preview`);
     console.log(`  Auth mode:     ${SECURE_MODE ? 'SECURE (Firebase token required)' : 'LOCAL (no auth)'}`);
-    console.log(`  Rates store:   ${ratesStore.UPSTASH_ENABLED ? 'Upstash Redis' : 'Local JSON'}`);
     console.log(`  CORS origins:  ${ALLOWED_ORIGINS.join(', ')}`);
     console.log(`  Alert cron:    (Disabled locally, trigger via /api/cron/trigger)`);
     console.log('');
-    
-    try {
-      const stored = await ratesStore.readRates();
-      if (stored && stored.rates) {
-        _ratesInMemory = { ..._ratesInMemory, ...stored };
-        console.log(`[Rates] Loaded ${Object.keys(stored.rates).length} rates from store into memory`);
-      }
-    } catch(e) {
-      console.error('[Rates] Failed to load initial rates:', e.message);
-    }
   });
 }
 

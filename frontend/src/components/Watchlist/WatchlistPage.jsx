@@ -99,7 +99,7 @@ export default function WatchlistPage() {
   const { isPremium, limits } = useTier()
   const atScriptLimit = !isPremium && watchlist.length >= limits.maxScripts
 
-  const { announcements: storedAnnouncements } = useAnnouncements({ watchlist, autoFetch: true })
+  const { announcements: storedAnnouncements, lastFetched } = useAnnouncements({ watchlist, autoFetch: true })
 
   // Build a map of code → { idSet: Set<string>, lastDate, lastSubject }
   // We track IDs so we can deduplicate when a card has both a BSE code and NSE symbol
@@ -235,10 +235,10 @@ export default function WatchlistPage() {
   return (
     <PageTransition className="space-y-6">
       {/* ── Global Cron Status ── */}
-      {cronStatus?.lastRun && (
+      {(cronStatus?.lastRun || lastFetched) && (
         <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-500/90 shadow-sm animate-fade-in-up">
           <Clock className="w-3.5 h-3.5 shrink-0" />
-          <span>Announcements fetched by system: <strong>{fmtTime(cronStatus.lastRun)}</strong></span>
+          <span>Announcements fetched: <strong>{fmtTime(cronStatus?.lastRun || lastFetched)}</strong></span>
         </div>
       )}
 
