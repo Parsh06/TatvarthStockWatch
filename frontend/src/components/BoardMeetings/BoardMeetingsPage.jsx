@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { RefreshCw, Search, Download, CheckCircle2, XCircle, Calendar, FileText } from 'lucide-react'
+import { RefreshCw, Search, Download, CheckCircle2, XCircle, Calendar, FileText, Bell } from 'lucide-react'
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 import { getAnnouncementsFromDB } from '../../services/announcementService'
@@ -37,12 +37,19 @@ export default function BoardMeetingsPage() {
   const [announcements, setAnnouncements] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [isSubscribed, setIsSubscribed] = useState(false)
+  const [updatingPrefs, setUpdatingPrefs] = useState(false)
 
-  // Fetch Board Meetings & Today's Announcements
+  // Fetch Board Meetings & Today's Announcements & Preferences
   const fetchData = async () => {
     setLoading(true)
     setError(null)
     try {
+      // 0. Fetch user preferences
+      apiClient('/api/prefs')
+        .then(prefs => setIsSubscribed(!!prefs.boardMeetingUpdatesEnabled))
+        .catch(err => console.error('Failed to fetch prefs', err))
+
       // 1. Format dates from YYYY-MM-DD to DD/MM/YYYY
       const formatApiDate = (d) => {
         const [y, m, day] = d.split('-')
@@ -119,9 +126,49 @@ export default function BoardMeetingsPage() {
     exportToXLSX(exportData, `Board_Meetings_${fromDate}_to_${toDate}`)
   }
 
+  const toggleSubscription = async () => {
+    try {
+      setUpdatingPrefs(true)
+      const newVal = !isSubscribed
+      await apiClient('/api/prefs', {
+        method: 'PATCH',
+        body: JSON.stringify({ boardMeetingUpdatesEnabled: newVal })
+      })
+      setIsSubscribed(newVal)
+    } catch (err) {
+      console.error(err)
+      alert('Failed to update subscription preference.')
+    } finally {
+      setUpdatingPrefs(false)
+    }
+  }
+
   return (
     <PageTransition className="space-y-6">
       
+      {/* Global Opt-In Alert */}
+      <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+            <Bell className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-textPrimary">Send me Board Meeting Updates</h3>
+            <p className="text-sm text-textMuted">Receive a global email notification for every board meeting outcome published today.</p>
+          </div>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input 
+            type="checkbox" 
+            className="sr-only peer" 
+            checked={isSubscribed}
+            onChange={toggleSubscription}
+            disabled={updatingPrefs}
+          />
+          <div className="w-11 h-6 bg-surface border border-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+        </label>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>

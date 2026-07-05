@@ -477,6 +477,28 @@ app.delete('/api/watchlist/all', verifyToken, async (req, res) => {
   res.json({ success: true });
 });
 
+// ── PROTECTED: Preferences ────────────────────────────────────────────────────
+app.get('/api/prefs', verifyToken, async (req, res) => {
+  try {
+    const { getPrefs } = require('./lib/prefsStore');
+    const prefs = await getPrefs(req.uid);
+    res.json(prefs);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch('/api/prefs', verifyToken, async (req, res) => {
+  try {
+    const { getPrefs, savePrefs } = require('./lib/prefsStore');
+    const existing = await getPrefs(req.uid);
+    const updated = await savePrefs(req.uid, { ...existing, ...req.body });
+    res.json(updated);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.delete('/api/watchlist/:id', verifyToken, async (req, res) => {
   await watchlistStore.removeScript(req.uid, req.params.id);
   res.json({ success: true });
@@ -558,6 +580,7 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
     console.log(`[Trigger] BSE ${bseMatched.length} | NSE ${nseMatched.length}`);
 
     const { saveAnnouncements } = require('./lib/announcementStore');
+    const { processBoardMeetingAnnouncements } = require('./lib/boardMeetingNotifier');
     
     let freshAnnouncements = [];
     if (bseAll.length > 0 || nseAll.length > 0) {
@@ -573,6 +596,14 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
 
       // 1. Save ALL to MongoDB (only writes if genuinely new)
       const { saved, newAnnouncements } = await saveAnnouncements(allFetched);
+      
+      // 1.5 Send Global Board Meeting Email Alerts
+      if (newAnnouncements && newAnnouncements.length > 0) {
+        // Run this in the background to not block the trigger response
+        processBoardMeetingAnnouncements(newAnnouncements).catch(e => {
+          console.error('[Trigger] Error in Board Meeting Notifier:', e.message);
+        });
+      }
       
       // But only alert for the ones in the watchlist!
       const freshAll = newAnnouncements || [];

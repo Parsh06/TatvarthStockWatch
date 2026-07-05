@@ -401,4 +401,90 @@ Tatvarth Stock Watch is an automated market data aggregator. Not financial advic
   console.log(`[Mailer] Price alert email sent for ${name} to ${userEmail}`);
 }
 
-module.exports = { sendAnnouncementEmail, sendAnnouncementEmails, buildEmailHtml, buildSingleEmailHtml, sendPriceAlertEmail };
+// ── Board Meeting Global Email Alert ──────────────────────────────────────────
+
+async function sendBoardMeetingAlertEmail(userEmail, userName, ann) {
+  if (!userEmail) throw new Error('userEmail is required');
+  const transporter = getTransporter();
+
+  const company    = (ann.scriptName  || ann.scriptCode || 'Unknown').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const code       = (ann.scriptCode  || ann.scripCode  || '').replace(/</g, '&lt;');
+  const category   = (ann.category    || 'General').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const subjectStr = (ann.subject     || ann.headline || ann.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const dateStr    = ann.date || 'Unknown Date';
+  const timeStr    = ann.time || 'Unknown Time';
+  const exchange   = ann.exchange     || 'BSE';
+
+  // Format HTML
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Board Meeting Announcement Released – ${company}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f7f6; margin: 0; padding: 0; }
+  .container { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); overflow: hidden; }
+  .header { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 30px; text-align: center; color: #ffffff; }
+  .header h1 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
+  .content { padding: 40px 30px; color: #334155; }
+  .greeting { font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 20px; }
+  .details-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 20px 0; }
+  .detail-row { margin-bottom: 12px; font-size: 14px; }
+  .detail-label { font-weight: 600; color: #64748b; width: 140px; display: inline-block; }
+  .detail-value { font-weight: 700; color: #0f172a; }
+  .summary { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; font-size: 14px; margin-top: 20px; border-radius: 0 8px 8px 0; color: #78350f; }
+  .action-btn { display: inline-block; background: #2563eb; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-size: 15px; font-weight: 600; text-align: center; margin: 30px 0; box-shadow: 0 4px 6px -1px rgba(37,99,235,0.2); }
+  .footer { background: #f1f5f9; padding: 20px 30px; font-size: 12px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; }
+  @media only screen and (max-width:600px){
+    .container { margin: 10px; border-radius: 8px; }
+    .content { padding: 20px; }
+    .detail-label { display: block; margin-bottom: 4px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Board Meeting Update</h1>
+  </div>
+  <div class="content">
+    <div class="greeting">Hello ${userName || 'Investor'},</div>
+    <p style="font-size: 15px; line-height: 1.6;">A new Board Meeting announcement has just been released for one of today's scheduled Board Meetings.</p>
+    
+    <div class="details-box">
+      <div class="detail-row"><span class="detail-label">Company Name:</span> <span class="detail-value">${company} (${code})</span></div>
+      <div class="detail-row"><span class="detail-label">Board Meeting Date:</span> <span class="detail-value">${dateStr}</span></div>
+      <div class="detail-row"><span class="detail-label">Announcement Time:</span> <span class="detail-value">${timeStr}</span></div>
+      <div class="detail-row"><span class="detail-label">Exchange:</span> <span class="detail-value">${exchange}</span></div>
+      <div class="detail-row"><span class="detail-label">Category:</span> <span class="detail-value">${category}</span></div>
+    </div>
+    
+    <div class="summary">
+      <strong>Announcement Summary:</strong><br/>
+      ${subjectStr}
+    </div>
+    
+    <center>
+      <a href="https://tatvarthstockwatch.web.app/board-meetings" class="action-btn">View Full Announcement</a>
+    </center>
+  </div>
+  
+  <div class="footer">
+    <p style="margin: 0 0 10px 0;">You are receiving this email because you enabled <strong>"Send me Board Meeting Updates"</strong> in your account settings on the Board Meeting page.</p>
+    <p style="margin: 0;">You can disable these notifications at any time by unchecking the option on the Board Meeting page.</p>
+  </div>
+</div>
+</body>
+</html>`;
+
+  await transporter.sendMail({
+    from: '"Tatvarth Stock Watch" <tatvarthstockwatch@gmail.com>',
+    to: userEmail,
+    subject: `📢 Board Meeting Announcement Released – ${company}`,
+    html,
+  });
+}
+
+module.exports = { sendAnnouncementEmail, sendAnnouncementEmails, buildEmailHtml, buildSingleEmailHtml, sendPriceAlertEmail, sendBoardMeetingAlertEmail };
