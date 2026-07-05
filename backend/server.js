@@ -405,24 +405,41 @@ app.post('/api/watchlist/catchup', verifyToken, async (req, res) => {
       }
 
       if (userEmail) {
-        await sendAnnouncementEmail(userEmail, userName, toNotify);
-        emailsSent = toNotify.length;
-        
-        // Update receive_email in MongoDB
         const { getDb } = require('./lib/mongoClient');
         const mongoDb = await getDb();
         const receiveEmailCol = mongoDb.collection('receive_email');
-        const bulkOps = toNotify.map(ann => ({
-          updateOne: {
-            filter: { _id: String(ann.id) },
-            update: {
-              $addToSet: { sentTo: req.uid },
-              $setOnInsert: { announcementId: String(ann.id), createdAt: new Date() }
-            },
-            upsert: true
+        const toActuallyNotify = [];
+
+        const getDedupId = (ann, uid) => {
+          const dateStr = new Date().toISOString().slice(0, 10);
+          const company = (ann.scriptName || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 8);
+          let subj = (ann.subject || '').toLowerCase();
+          subj = subj.replace(/outcome of board meeting/g, '').replace(/press release/g, '').replace(/announcement under regulation/g, '').replace(/regarding/g, '').replace(/update/g, '').replace(/copy of newspaper publication/g, '').replace(/newspaper publication/g, '').replace(/[^a-z0-9]/g, '');
+          return `DEDUP_${dateStr}_${company}_${subj.substring(0, 15)}_${uid}`;
+        };
+
+        for (const ann of toNotify) {
+          try {
+            // 1. Try to lock the specific announcement
+            await receiveEmailCol.insertOne({ _id: `${ann.id}_${req.uid}`, announcementId: String(ann.id), userId: req.uid, createdAt: new Date() });
+            
+            // 2. Try to lock the global deduplication hash for cross-exchange spam prevention
+            const dedupId = getDedupId(ann, req.uid);
+            await receiveEmailCol.insertOne({ _id: dedupId, type: 'dedup_lock', userId: req.uid, createdAt: new Date() });
+            
+            toActuallyNotify.push(ann);
+          } catch (e) {
+            // e.code === 11000 means Duplicate Key Error (already locked/sent by another thread or exchange)
+            if (e.code !== 11000) {
+              console.error('[Catchup] Error getting atomic lock:', e.message);
+            }
           }
-        }));
-        await receiveEmailCol.bulkWrite(bulkOps, { ordered: false });
+        }
+
+        if (toActuallyNotify.length > 0) {
+          await sendAnnouncementEmail(userEmail, userName, toActuallyNotify);
+          emailsSent = toActuallyNotify.length;
+        }
       }
     }
     
@@ -837,21 +854,20 @@ app.all('/api/cron/trigger', async (req, res) => {
         const mongoDb = await getDb();
         const receiveEmailCol = mongoDb.collection('receive_email');
         
-        // Fetch existing sent states for these announcements
-        const matchedIds = matched.map(a => String(a.id));
-        const emailStates = await receiveEmailCol.find({ _id: { $in: matchedIds } }).toArray();
-        const emailStateMap = new Map();
-        for (const state of emailStates) {
-           emailStateMap.set(String(state._id), new Set(state.sentTo || []));
-        }
-
+        // The atomic lock eliminates the need to pre-fetch state maps
         const admin = require('firebase-admin');
         const prefsStore = require('./lib/prefsStore');
         const { sendAnnouncementEmails } = require('./lib/mailer');
         const emailOk = !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
         const { sendTelegramAlert, isConfigured: isTelegramOk } = require('./lib/telegramNotifier');
 
-        const updatesToMongo = new Map(); // annId -> Set of new UIDs to add
+        const getDedupId = (ann, uid) => {
+          const dateStr = new Date().toISOString().slice(0, 10);
+          const company = (ann.scriptName || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 8);
+          let subj = (ann.subject || '').toLowerCase();
+          subj = subj.replace(/outcome of board meeting/g, '').replace(/press release/g, '').replace(/announcement under regulation/g, '').replace(/regarding/g, '').replace(/update/g, '').replace(/copy of newspaper publication/g, '').replace(/newspaper publication/g, '').replace(/[^a-z0-9]/g, '');
+          return `DEDUP_${dateStr}_${company}_${subj.substring(0, 15)}_${uid}`;
+        };
 
         let pageToken;
         do {
@@ -873,59 +889,47 @@ app.all('/api/cron/trigger', async (req, res) => {
               return uBse.has(code) || uNse.has(code);
             });
 
-            // Filter out announcements already sent to this user
-            const uPending = uMatched.filter(a => {
-              const sentSet = emailStateMap.get(String(a.id));
-              return !sentSet || !sentSet.has(uid);
-            });
+            if (uMatched.length > 0) {
+              const uActuallyPending = [];
+              for (const ann of uMatched) {
+                try {
+                  // 1. Try to lock the specific announcement
+                  await receiveEmailCol.insertOne({ _id: `${ann.id}_${uid}`, announcementId: String(ann.id), userId: uid, createdAt: new Date() });
+                  
+                  // 2. Try to lock the global deduplication hash for cross-exchange spam prevention
+                  const dedupId = getDedupId(ann, uid);
+                  await receiveEmailCol.insertOne({ _id: dedupId, type: 'dedup_lock', userId: uid, createdAt: new Date() });
+                  
+                  uActuallyPending.push(ann);
+                } catch (e) {
+                  // Duplicate Key Error = already sent or deduplicated
+                  if (e.code !== 11000) console.error(`[Global Cron] Error getting lock for ${uid}:`, e.message);
+                }
+              }
 
-            if (uPending.length > 0) {
-              try {
-                const prefs = await prefsStore.getPrefs(uid);
-                
-                // Email Dispatch
-                if (emailOk && prefs.emailEnabled !== false && user.email) {
-                  await sendAnnouncementEmails(user.email, user.displayName || 'User', uPending);
-                }
-                
-                // Telegram Dispatch
-                if (isTelegramOk() && prefs.telegramEnabled !== false) {
-                  for (const ann of uPending) {
-                    await sendTelegramAlert(ann);
+              if (uActuallyPending.length > 0) {
+                try {
+                  const prefs = await prefsStore.getPrefs(uid);
+                  
+                  // Email Dispatch
+                  if (emailOk && prefs.emailEnabled !== false && user.email) {
+                    await sendAnnouncementEmails(user.email, user.displayName || 'User', uActuallyPending);
                   }
+                  
+                  // Telegram Dispatch
+                  if (isTelegramOk() && prefs.telegramEnabled !== false) {
+                    for (const ann of uActuallyPending) {
+                      await sendTelegramAlert(ann);
+                    }
+                  }
+                } catch (err) {
+                  console.error(`[Global Cron] Error dispatching announcements for ${uid}:`, err.message);
                 }
-                
-                // Mark as sent for this user
-                for (const ann of uPending) {
-                   const aId = String(ann.id);
-                   if (!updatesToMongo.has(aId)) updatesToMongo.set(aId, new Set());
-                   updatesToMongo.get(aId).add(uid);
-                }
-              } catch (err) {
-                console.error(`[Global Cron] Error dispatching announcements for ${uid}:`, err.message);
               }
             }
           }
           pageToken = result.pageToken;
         } while (pageToken);
-
-        // Bulk update MongoDB receive_email collection
-        if (updatesToMongo.size > 0) {
-           const bulkOps = [];
-           for (const [aId, uidsSet] of updatesToMongo.entries()) {
-              bulkOps.push({
-                 updateOne: {
-                    filter: { _id: aId },
-                    update: { 
-                       $addToSet: { sentTo: { $each: Array.from(uidsSet) } },
-                       $setOnInsert: { announcementId: aId, createdAt: new Date() }
-                    },
-                    upsert: true
-                 }
-              });
-           }
-           await receiveEmailCol.bulkWrite(bulkOps, { ordered: false });
-        }
       }
     }
     
