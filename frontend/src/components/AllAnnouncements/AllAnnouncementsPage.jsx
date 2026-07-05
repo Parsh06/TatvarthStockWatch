@@ -8,6 +8,7 @@ import { getCategoryColor } from '../../utils/formatters'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 import { getAnnouncementsFromDB } from '../../services/announcementService'
 import ScriptSearchInput from '../Common/ScriptSearchInput'
+import PageTransition from '../Common/PageTransition'
 
 const today = () => new Date().toISOString().slice(0, 10)
 const toYYYYMMDD  = (d) => d.replace(/-/g, '')
@@ -57,16 +58,16 @@ const KNOWN_CATEGORIES = [
 
 function StatCard({ label, value, sub, color = 'text-textPrimary', icon: Icon, iconColor }) {
   return (
-    <div className="bg-surface border border-border rounded-xl p-4 flex items-center gap-3">
+    <div className="glass-panel border-t-2 border-t-white/10 rounded-2xl p-5 hover:-translate-y-1 transition-transform flex items-center gap-4">
       {Icon && (
-        <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0', iconColor || 'bg-primary/10')}>
-          <Icon className="w-5 h-5 text-primary" />
+        <div className={clsx('w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-inner', iconColor || 'bg-primary/20 text-primary')}>
+          <Icon className="w-6 h-6" />
         </div>
       )}
       <div>
-        <p className="text-xs text-textMuted mb-0.5">{label}</p>
-        <p className={clsx('text-xl font-bold tabular-nums', color)}>{value}</p>
-        {sub && <p className="text-xs text-textMuted">{sub}</p>}
+        <p className="text-[11px] font-semibold tracking-tight text-textMuted uppercase mb-1">{label}</p>
+        <p className={clsx('text-2xl font-bold font-display tabular-nums tracking-tight', color)}>{value}</p>
+        {sub && <p className="text-[10px] font-medium text-textMuted mt-0.5 opacity-80">{sub}</p>}
       </div>
     </div>
   )
@@ -81,6 +82,7 @@ export default function AllAnnouncementsPage() {
   const [codeFilter, setCodeFilter] = useState('')
   const [codeLabel,  setCodeLabel]  = useState('')
   const [search,     setSearch]     = useState('')
+  const [exchange,   setExchange]   = useState('BOTH') // 'BSE', 'NSE', 'BOTH'
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
   const [result,     setResult]     = useState(null)
@@ -147,6 +149,11 @@ export default function AllAnnouncementsPage() {
     if (codeFilter)    list = list.filter((a) => a.bseCode === codeFilter || a.scriptCode === codeFilter)
     if (onlyWatchlist) list = list.filter((a) => watchlistCodes.has(a.bseCode))
     if (catFilter)     list = list.filter((a) => a.category.toLowerCase().includes(catFilter.toLowerCase()))
+    
+    // Exchange filtering
+    if (exchange === 'BSE') list = list.filter(a => a.bseCode || (a.source === 'BSE' || !a.nseSymbol))
+    if (exchange === 'NSE') list = list.filter(a => a.nseSymbol || a.source === 'NSE')
+    
     if (search) {
       const q = search.toLowerCase()
       list = list.filter((a) =>
@@ -157,7 +164,7 @@ export default function AllAnnouncementsPage() {
       )
     }
     return list
-  }, [allItems, codeFilter, catFilter, search, onlyWatchlist, watchlistCodes])
+  }, [allItems, codeFilter, catFilter, search, onlyWatchlist, watchlistCodes, exchange])
 
   // Stats scoped to codeFilter context: if a company is selected, scope watchlist/critical to that
   const baseList         = codeFilter ? allItems.filter((a) => a.bseCode === codeFilter || a.scriptCode === codeFilter) : allItems
@@ -169,9 +176,9 @@ export default function AllAnnouncementsPage() {
   const companyFiltered  = codeFilter && result  // true when showing a specific company's data
 
   return (
-    <div className="space-y-5">
+    <PageTransition className="space-y-6 pb-12">
       {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-textPrimary">All BSE Announcements</h1>
           <p className="text-sm text-textMuted mt-0.5">Browse all corporate filings across every listed company</p>
@@ -186,34 +193,34 @@ export default function AllAnnouncementsPage() {
       </div>
 
       {/* ── Filters card ── */}
-      <div className="bg-surface border border-border rounded-xl p-5 space-y-4">
+      <div className="glass-panel rounded-2xl p-6 space-y-5 shadow-2xl">
         {/* Quick range buttons */}
         <div className="flex flex-wrap gap-2">
           {QUICK_RANGES.map((r) => (
             <button key={r.label} onClick={() => applyQuickRange(r)}
-              className={clsx('text-xs px-3 py-1.5 rounded-lg border transition font-medium',
+              className={clsx('text-[11px] px-4 py-2 rounded-xl font-semibold transition hover:-translate-y-0.5 shadow-sm border',
                 fromDate === r.from() && toDate === r.to()
-                  ? 'bg-primary/15 border-primary/40 text-primary'
-                  : 'border-border text-textMuted hover:border-primary/30 hover:text-textPrimary')}>
+                  ? 'bg-primary/20 border-primary text-primary'
+                  : 'bg-black/20 border-white/5 text-textMuted hover:border-primary/40 hover:text-textPrimary')}>
               {r.label}
             </button>
           ))}
         </div>
 
         {/* Main filter row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <label className="block text-xs font-medium text-textMuted mb-1.5">From Date</label>
+            <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">From Date</label>
             <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60" />
+              className="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner transition-all cursor-pointer" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-textMuted mb-1.5">To Date</label>
+            <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">To Date</label>
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60" />
+              className="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner transition-all cursor-pointer" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-textMuted mb-1.5">Filter by Script</label>
+            <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">Filter by Script</label>
             <ScriptSearchInput
               placeholder="Search company…"
               onSelect={(item) => { setCodeFilter(item ? item.bseCode : ''); setCodeLabel(item ? item.scripName : ''); setResult(null) }}
@@ -221,12 +228,12 @@ export default function AllAnnouncementsPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-textMuted mb-1.5">Category</label>
+            <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">Category</label>
             <div className="relative">
               <select
                 value={catFilter}
                 onChange={(e) => { setCatFilter(e.target.value); setPage(1) }}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60 appearance-none pr-8"
+                className="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner transition-all appearance-none pr-8 cursor-pointer"
               >
                 <option value="">All Categories</option>
                 {result && categoryOptions.length > 0
@@ -238,17 +245,50 @@ export default function AllAnnouncementsPage() {
                     ))
                 }
               </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted pointer-events-none" />
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted pointer-events-none" />
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
-          <button onClick={fetchAnnouncements} disabled={loading}
-            className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-lg text-sm font-semibold transition">
-            <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
-            {loading ? 'Fetching…' : 'Fetch Announcements'}
-          </button>
+        <div className="flex items-center gap-4 flex-wrap justify-between mt-2">
+          <div className="flex items-center gap-4">
+            <button onClick={fetchAnnouncements} disabled={loading}
+              className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/30 transition">
+              <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
+              {loading ? 'Fetching…' : 'Fetch Announcements'}
+            </button>
+            
+            {/* Exchange Switch */}
+            <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 shadow-inner h-[42px]">
+              <button
+                onClick={() => setExchange('BSE')}
+                className={clsx(
+                  "flex items-center justify-center gap-2 px-5 text-sm font-semibold rounded-lg transition-all h-full",
+                  exchange === 'BSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+                )}
+              >
+                BSE
+              </button>
+              <button
+                onClick={() => setExchange('NSE')}
+                className={clsx(
+                  "flex items-center justify-center gap-2 px-5 text-sm font-semibold rounded-lg transition-all h-full",
+                  exchange === 'NSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+                )}
+              >
+                NSE
+              </button>
+              <button
+                onClick={() => setExchange('BOTH')}
+                className={clsx(
+                  "flex items-center justify-center gap-2 px-5 text-sm font-semibold rounded-lg transition-all h-full",
+                  exchange === 'BOTH' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+                )}
+              >
+                BOTH
+              </button>
+            </div>
+          </div>
           {watchlist.length > 0 && result && (
             <button onClick={() => { setOnlyWatchlist((v) => !v); setPage(1) }}
               className={clsx('flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border transition',
@@ -496,24 +536,24 @@ export default function AllAnnouncementsPage() {
       {/* ── Empty initial state ── */}
       {!result && !loading && (
         <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-5">
-            <Bell className="w-8 h-8 text-primary" />
+          <div className="w-20 h-20 glass-panel rounded-3xl flex items-center justify-center mb-6 shadow-2xl">
+            <Bell className="w-10 h-10 text-primary" />
           </div>
-          <p className="text-textPrimary font-semibold mb-1 text-base">Ready to browse announcements</p>
-          <p className="text-sm text-textMuted max-w-xs">
-            Pick a date range above and click <strong>Fetch Announcements</strong>.
+          <p className="text-textPrimary font-bold mb-2 text-xl tracking-tight">Ready to browse announcements</p>
+          <p className="text-sm text-textMuted max-w-sm">
+            Pick a date range above and click <strong className="text-textPrimary">Fetch Announcements</strong>.
             Large ranges (7+ days) may take 30–60 seconds.
           </p>
-          <div className="flex flex-wrap justify-center gap-2 mt-5">
+          <div className="flex flex-wrap justify-center gap-3 mt-6">
             {QUICK_RANGES.map((r) => (
               <button key={r.label} onClick={() => applyQuickRange(r)}
-                className="text-xs px-3 py-1.5 border border-border text-textMuted hover:border-primary/40 hover:text-textPrimary rounded-lg transition">
+                className="text-xs px-4 py-2 border border-white/10 text-textMuted hover:border-primary/40 hover:text-textPrimary rounded-xl transition bg-black/20 hover:bg-primary/10 font-semibold shadow-sm">
                 {r.label}
               </button>
             ))}
           </div>
         </div>
       )}
-    </div>
+    </PageTransition>
   )
 }

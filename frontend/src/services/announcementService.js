@@ -48,9 +48,9 @@ export async function fetchAnnouncements({ exchange, scripCode, fromDate, toDate
 export async function fetchSavedAnnouncements({ exchange, scripCode, limitCount } = {}) {
   const params = new URLSearchParams()
   if (exchange && exchange !== 'ALL') params.set('exchange', exchange)
-  if (scripCode) params.set('scripCode', scripCode)
+  if (scripCode) params.set('scriptCode', scripCode)
   if (limitCount) params.set('limit', String(limitCount))
-  const json = await apiClient(`/api/announcements/saved?${params.toString()}`)
+  const json = await apiClient(`/api/announcements?${params.toString()}`)
   return Array.isArray(json) ? json : (json.data || [])
 }
 

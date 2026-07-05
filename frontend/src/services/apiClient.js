@@ -28,7 +28,10 @@ export async function apiClient(url, options = {}) {
   const token = await getToken()
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(url, { ...options, headers })
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || ''
+  const finalUrl = url.startsWith('/') ? `${backendUrl}${url}` : url;
+
+  const res = await fetch(finalUrl, { ...options, headers })
 
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { TrendingUp, TrendingDown, RefreshCw, AlertCircle, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
+import PageTransition from '../Common/PageTransition'
 
 
 
@@ -78,13 +79,13 @@ export default function GainersLosersPage() {
   }, [type]) // Re-bind on state change
 
   const renderBseTable = () => (
-    <div className="bg-surface border border-border rounded-xl overflow-hidden flex flex-col h-[500px]">
-      <div className="bg-surfaceHover border-b border-border px-4 py-3 font-semibold flex items-center justify-between sticky top-0 z-20">
-        <span>BSE {type === 'gainer' ? 'Gainers' : 'Losers'}</span>
+    <div className="glass-panel rounded-2xl overflow-hidden flex flex-col h-[500px]">
+      <div className="bg-white/5 border-b border-white/5 px-6 py-4 font-semibold flex items-center justify-between sticky top-0 z-20">
+        <span className="text-textPrimary tracking-tight">BSE {type === 'gainer' ? 'Gainers' : 'Losers'}</span>
       </div>
-      <div className="overflow-y-auto overflow-x-auto flex-1 relative">
+      <div className="overflow-y-auto overflow-x-auto flex-1 relative scrollbar-hide">
         <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead className="bg-background border-b border-border text-xs uppercase tracking-wider text-textMuted sticky top-0 z-10">
+          <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
             <tr>
               <th className="px-4 py-3 font-medium">BSE Code</th>
               <th className="px-4 py-3 font-medium">Company Name</th>
@@ -95,9 +96,9 @@ export default function GainersLosersPage() {
               <th className="w-full"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-white/5">
             {bseData.map((item, idx) => (
-              <tr key={`${item.scrip_cd}-${idx}`} className="hover:bg-surfaceHover transition-colors">
+              <tr key={`${item.scrip_cd}-${idx}`} className="hover:bg-white/5 transition-colors group">
                 <td className="px-4 py-3 font-medium">{item.scrip_cd}</td>
                 <td className="px-4 py-3">
                   <a href={item.URL} target="_blank" rel="noreferrer" className="hover:text-primary transition-colors">
@@ -129,13 +130,13 @@ export default function GainersLosersPage() {
   )
 
   const renderNseTable = () => (
-    <div className="bg-surface border border-border rounded-xl overflow-hidden flex flex-col h-[500px]">
-      <div className="bg-surfaceHover border-b border-border px-4 py-3 font-semibold flex items-center justify-between sticky top-0 z-20">
-        <span>NSE {type === 'gainer' ? 'Gainers' : 'Losers'} (All Securities)</span>
+    <div className="glass-panel rounded-2xl overflow-hidden flex flex-col h-[500px]">
+      <div className="bg-white/5 border-b border-white/5 px-6 py-4 font-semibold flex items-center justify-between sticky top-0 z-20">
+        <span className="text-textPrimary tracking-tight">NSE {type === 'gainer' ? 'Gainers' : 'Losers'} (All Securities)</span>
       </div>
-      <div className="overflow-y-auto overflow-x-auto flex-1 relative">
+      <div className="overflow-y-auto overflow-x-auto flex-1 relative scrollbar-hide">
         <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead className="bg-background border-b border-border text-xs uppercase tracking-wider text-textMuted sticky top-0 z-10">
+          <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
             <tr>
               <th className="px-4 py-3 font-medium">Symbol</th>
               <th className="px-4 py-3 font-medium">Series</th>
@@ -146,9 +147,9 @@ export default function GainersLosersPage() {
               <th className="w-full"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-white/5">
             {nseData.map((item, idx) => (
-              <tr key={`${item.symbol}-${idx}`} className="hover:bg-surfaceHover transition-colors">
+              <tr key={`${item.symbol}-${idx}`} className="hover:bg-white/5 transition-colors group">
                 <td className="px-4 py-3 font-medium">{item.symbol}</td>
                 <td className="px-4 py-3 text-textMuted">{item.series}</td>
                 <td className="px-4 py-3 text-right font-medium">{item.ltp?.toFixed(2)}</td>
@@ -176,7 +177,7 @@ export default function GainersLosersPage() {
   )
 
   return (
-    <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <PageTransition className="space-y-6">
       
       {/* Header & Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-border pb-4">
@@ -202,16 +203,16 @@ export default function GainersLosersPage() {
         </div>
       </div>
 
-      {/* Type Toggle & BSE Filters */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-surface p-4 rounded-xl border border-border">
+      {/* Type Toggle & Exchange Filters */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 glass-panel rounded-2xl p-4">
         
         {/* Gainers / Losers Switch */}
-        <div className="flex items-center bg-background border border-border rounded-lg p-1">
+        <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 shadow-inner">
           <button
             onClick={() => setType('gainer')}
             className={clsx(
-              "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-md transition-all",
-              type === 'gainer' ? "bg-green-500/20 text-green-500 shadow-sm" : "text-textMuted hover:text-textPrimary"
+              "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-all",
+              type === 'gainer' ? "bg-emerald-500/20 text-emerald-400 shadow-sm" : "text-textMuted hover:text-textPrimary"
             )}
           >
             <ArrowUpRight className="w-4 h-4" /> Gainers
@@ -219,37 +220,34 @@ export default function GainersLosersPage() {
           <button
             onClick={() => setType('loser')}
             className={clsx(
-              "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-md transition-all",
-              type === 'loser' ? "bg-red-500/20 text-red-500 shadow-sm" : "text-textMuted hover:text-textPrimary"
+              "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-all",
+              type === 'loser' ? "bg-danger/20 text-danger shadow-sm" : "text-textMuted hover:text-textPrimary"
             )}
           >
             <ArrowDownRight className="w-4 h-4" /> Losers
           </button>
         </div>
 
-        {/* Exchange Switch & BSE Filters */}
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-4 bg-surface p-4 rounded-xl border border-border mt-4 w-full justify-between">
-          
-          <div className="flex items-center bg-background border border-border rounded-lg p-1">
-            <button
-              onClick={() => setExchange('BSE')}
-              className={clsx(
-                "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-md transition-all",
-                exchange === 'BSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
-              )}
-            >
-              BSE
-            </button>
-            <button
-              onClick={() => setExchange('NSE')}
-              className={clsx(
-                "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-md transition-all",
-                exchange === 'NSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
-              )}
-            >
-              NSE
-            </button>
-          </div>
+        {/* Exchange Switch */}
+        <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 shadow-inner">
+          <button
+            onClick={() => setExchange('BSE')}
+            className={clsx(
+              "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-all",
+              exchange === 'BSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+            )}
+          >
+            BSE
+          </button>
+          <button
+            onClick={() => setExchange('NSE')}
+            className={clsx(
+              "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-all",
+              exchange === 'NSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+            )}
+          >
+            NSE
+          </button>
         </div>
       </div>
 
@@ -272,6 +270,6 @@ export default function GainersLosersPage() {
           {exchange === 'BSE' ? renderBseTable() : renderNseTable()}
         </div>
       </div>
-    </div>
+    </PageTransition>
   )
 }

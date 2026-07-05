@@ -71,20 +71,20 @@ export default function Sidebar({ collapsed, onToggle }) {
   return (
     <aside
       className={clsx(
-        'fixed top-0 left-0 h-screen bg-surface border-r border-border flex flex-col transition-all duration-300 z-30',
-        collapsed ? 'w-16' : 'w-60'
+        'fixed top-4 left-4 h-[calc(100vh-32px)] glass-panel rounded-2xl flex flex-col transition-all duration-300 z-30',
+        collapsed ? 'w-[72px]' : 'w-64'
       )}
     >
       {/* Logo */}
-      <div className={clsx('flex items-center h-16 border-b border-border px-4', collapsed ? 'justify-center' : 'gap-3')}>
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-[#0F172A]">
+      <div className={clsx('flex items-center h-[72px] border-b border-white/5 px-4', collapsed ? 'justify-center' : 'gap-3')}>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-white/5 shadow-inner border border-white/5">
           <img src="/logo2.png" alt="Logo" className="w-6 h-6 object-contain" />
         </div>
-        {!collapsed && <span className="font-bold text-textPrimary text-lg">TatvarthStockWatch</span>}
+        {!collapsed && <span className="font-bold text-textPrimary text-lg tracking-tight">Tatvarth</span>}
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-4 px-2 overflow-y-auto flex flex-col gap-0.5">
+      <nav className="flex-1 py-6 px-3 overflow-y-auto flex flex-col gap-1 scrollbar-hide">
         {NAV_TOP.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
@@ -97,18 +97,19 @@ export default function Sidebar({ collapsed, onToggle }) {
             }}
             className={({ isActive }) =>
               clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                'group flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200',
                 isActive
-                  ? 'bg-primary/15 text-primary'
-                  : 'text-textMuted hover:bg-[#0F172A]/5 hover:text-textPrimary',
+                  ? 'bg-primary/20 text-primary shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]'
+                  : 'text-textMuted hover:bg-white/5 hover:text-textPrimary hover:-translate-y-[1px]',
                 collapsed && 'justify-center'
               )
             }
+            title={collapsed ? label : undefined}
           >
             <div className="relative flex-shrink-0">
-              <Icon className="w-5 h-5" />
+              <Icon className={clsx("w-[22px] h-[22px] transition-transform group-hover:scale-110", collapsed ? "" : "")} />
               {to === '/announcements' && annCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full text-[10px] font-bold flex items-center justify-center bg-amber-500 text-white leading-none">
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center bg-danger text-white leading-none shadow-[0_0_10px_rgba(244,63,94,0.5)]">
                   {annCount > 99 ? '99+' : annCount}
                 </span>
               )}
@@ -126,48 +127,50 @@ export default function Sidebar({ collapsed, onToggle }) {
             to={to}
             className={({ isActive }) =>
               clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                'group flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200',
                 to === '/premium' && !isPremium && !isActive
-                  ? 'text-amber-400 hover:bg-amber-400/10'
+                  ? 'text-amber-400 hover:bg-amber-400/10 hover:-translate-y-[1px]'
                   : isActive
-                    ? 'bg-primary/15 text-primary'
-                    : 'text-textMuted hover:bg-[#0F172A]/5 hover:text-textPrimary',
+                    ? 'bg-primary/20 text-primary shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]'
+                    : 'text-textMuted hover:bg-white/5 hover:text-textPrimary hover:-translate-y-[1px]',
                 collapsed && 'justify-center'
               )
             }
+            title={collapsed ? label : undefined}
           >
-            <Icon className="w-5 h-5 flex-shrink-0" />
+            <Icon className="w-[22px] h-[22px] flex-shrink-0 transition-transform group-hover:scale-110" />
             {!collapsed && (
               <span className="flex-1">{label}</span>
             )}
             {!collapsed && to === '/premium' && isPremium && (
-              <span className="text-[10px] px-1.5 py-0.5 bg-amber-400/15 text-amber-400 rounded font-semibold">PRO</span>
+              <span className="text-[10px] px-2 py-0.5 bg-gradient-to-r from-amber-400/20 to-amber-500/20 text-amber-400 rounded-md font-bold border border-amber-400/20 shadow-[0_0_8px_rgba(251,191,36,0.2)]">PRO</span>
             )}
           </NavLink>
         ))}
       </nav>
 
       {/* User section */}
-      <div className="border-t border-border p-3">
+      <div className="border-t border-white/5 p-4">
         {!collapsed && (
-          <div className="flex items-center gap-3 px-2 py-2 mb-2">
-            <div className="w-8 h-8 rounded-full bg-primary/30 flex items-center justify-center text-primary text-xs font-bold flex-shrink-0">
+          <div className="flex items-center gap-3 px-2 py-2 mb-3 bg-white/5 rounded-xl border border-white/5">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-primary to-blue-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-lg">
               {initials}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-textPrimary truncate">{currentUser?.displayName || 'User'}</p>
-              <p className="text-xs text-textMuted truncate">{currentUser?.email}</p>
+              <p className="text-[13px] font-semibold text-textPrimary truncate">{currentUser?.displayName || 'User'}</p>
+              <p className="text-[11px] text-textMuted truncate">{currentUser?.email}</p>
             </div>
           </div>
         )}
         <button
           onClick={handleLogout}
           className={clsx(
-            'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-textMuted hover:text-danger hover:bg-danger/10 transition',
+            'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-textMuted hover:text-danger hover:bg-danger/10 transition-all duration-200 group',
             collapsed && 'justify-center'
           )}
+          title={collapsed ? 'Sign out' : undefined}
         >
-          <LogOut className="w-4 h-4 flex-shrink-0" />
+          <LogOut className="w-[22px] h-[22px] flex-shrink-0 group-hover:scale-110 transition-transform" />
           {!collapsed && <span>Sign out</span>}
         </button>
       </div>
@@ -175,9 +178,9 @@ export default function Sidebar({ collapsed, onToggle }) {
       {/* Collapse toggle */}
       <button
         onClick={onToggle}
-        className="absolute -right-3 top-20 w-6 h-6 bg-surface border border-border rounded-full flex items-center justify-center text-textMuted hover:text-textPrimary transition shadow-md"
+        className="absolute -right-3.5 top-1/2 -translate-y-1/2 w-7 h-7 bg-surface border border-white/10 rounded-full flex items-center justify-center text-textMuted hover:text-textPrimary hover:bg-white/10 transition-all shadow-lg z-40"
       >
-        {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
+        {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
     </aside>
   )

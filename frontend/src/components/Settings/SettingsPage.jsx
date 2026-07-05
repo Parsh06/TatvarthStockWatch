@@ -399,16 +399,29 @@ export default function SettingsPage() {
 
       {/* Danger zone */}
       <Section title="Account" icon={AlertTriangle}>
-        <div className="p-4 border border-danger/30 rounded-lg bg-danger/5">
-          <p className="text-sm font-medium text-textPrimary mb-1">Delete Account</p>
-          <p className="text-xs text-textMuted mb-3">Permanently delete your account and all associated data. This cannot be undone.</p>
-          <button
-            onClick={() => setDeleteConfirm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-danger hover:bg-danger/90 text-white rounded-lg text-sm font-medium transition"
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete Account
-          </button>
+        <div className="space-y-4">
+          <div className="p-4 border border-border rounded-lg bg-background">
+            <p className="text-sm font-medium text-textPrimary mb-1">Sign Out</p>
+            <p className="text-xs text-textMuted mb-3">Sign out of your account on this device.</p>
+            <button
+              onClick={logout}
+              className="flex items-center gap-2 px-4 py-2 bg-surface hover:bg-white/5 border border-border text-textPrimary rounded-lg text-sm font-medium transition"
+            >
+              Sign Out
+            </button>
+          </div>
+          
+          <div className="p-4 border border-danger/30 rounded-lg bg-danger/5">
+            <p className="text-sm font-medium text-textPrimary mb-1">Delete Account</p>
+            <p className="text-xs text-textMuted mb-3">Permanently delete your account and all associated data. This cannot be undone.</p>
+            <button
+              onClick={() => setDeleteConfirm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-danger hover:bg-danger/90 text-white rounded-lg text-sm font-medium transition"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Account
+            </button>
+          </div>
         </div>
       </Section>
 

@@ -10,6 +10,7 @@ import EmptyState from '../Common/EmptyState'
 import { SkeletonAnnouncementCard } from '../Common/Loader'
 import { exportToXLSX } from '../../utils/csvParser'
 import { formatRelativeDate } from '../../utils/formatters'
+import PageTransition from '../Common/PageTransition'
 
 const PAGE_SIZE    = 20
 const ANN_READ_KEY = 'ann_read_v1'
@@ -49,7 +50,8 @@ export default function AnnouncementsPage() {
         (a.subject    || a.headline    || '').toLowerCase().includes(s)
       )
     }
-    if (filters.exchange) list = list.filter((a) => a.exchange === filters.exchange)
+    if (filters.exchange === 'BSE') list = list.filter(a => a.bseCode || (a.source === 'BSE' || !a.nseSymbol))
+    if (filters.exchange === 'NSE') list = list.filter(a => a.nseSymbol || a.source === 'NSE')
     if (filters.category) list = list.filter((a) => {
       const cat = (a.category || '').toLowerCase()
       const target = filters.category.toLowerCase()
@@ -72,7 +74,8 @@ export default function AnnouncementsPage() {
         (a.subject    || a.headline    || '').toLowerCase().includes(s)
       )
     }
-    if (filters.exchange) base = base.filter((a) => a.exchange === filters.exchange)
+    if (filters.exchange === 'BSE') base = base.filter(a => a.bseCode || (a.source === 'BSE' || !a.nseSymbol))
+    if (filters.exchange === 'NSE') base = base.filter(a => a.nseSymbol || a.source === 'NSE')
     for (const a of base) {
       const cat = (a.category || 'Other').trim()
       counts[cat] = (counts[cat] || 0) + 1
@@ -108,7 +111,7 @@ export default function AnnouncementsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <PageTransition className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -127,7 +130,7 @@ export default function AnnouncementsPage() {
         <div className="flex items-center gap-2">
           {unreadCount > 0 && (
             <button onClick={markAllRead}
-              className="flex items-center gap-1.5 px-3 py-2 border border-border rounded-lg text-xs text-textMuted hover:text-textPrimary hover:border-primary/40 transition">
+              className="flex items-center gap-1.5 px-3 py-2 border border-white/5 rounded-xl text-xs text-textMuted hover:text-textPrimary hover:border-primary/40 transition bg-black/20 hover:bg-black/40 shadow-sm">
               <CheckCheck className="w-3.5 h-3.5" /> Mark all read
             </button>
           )}
@@ -137,7 +140,7 @@ export default function AnnouncementsPage() {
           <button
             onClick={() => fetch(filters)}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-lg text-sm font-medium transition"
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-xl text-sm font-medium transition shadow-lg shadow-primary/20 hover:shadow-primary/30"
           >
             <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
             Refresh
@@ -145,7 +148,7 @@ export default function AnnouncementsPage() {
           <button
             onClick={handleExport}
             disabled={!filtered.length}
-            className="flex items-center gap-2 px-4 py-2 border border-border text-textMuted hover:text-emerald-400 hover:border-emerald-500/50 disabled:opacity-40 rounded-lg text-sm font-medium transition"
+            className="flex items-center gap-2 px-4 py-2 border border-white/10 text-textMuted hover:text-emerald-400 hover:border-emerald-500/50 disabled:opacity-40 rounded-xl text-sm font-medium transition bg-black/20 hover:bg-black/40 shadow-sm"
             title="Download as Excel (.xlsx)"
           >
             <FileSpreadsheet className="w-4 h-4" />
@@ -157,7 +160,7 @@ export default function AnnouncementsPage() {
 
       {/* Hint before first trigger */}
       {!loading && announcements.length === 0 && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-primary/10 border border-primary/30 rounded-xl text-sm text-primary">
+        <div className="flex items-center gap-3 px-4 py-3 bg-primary/10 border border-primary/30 rounded-xl text-sm text-primary shadow-inner">
           <Zap className="w-4 h-4 flex-shrink-0" />
           <span>
             No announcements yet — go to <strong>Watchlist</strong> and click <strong>Fetch News</strong> to load today's announcements.
@@ -166,11 +169,13 @@ export default function AnnouncementsPage() {
       )}
 
       {/* Filters */}
-      <AnnouncementFilters
+      <div className="glass-panel rounded-2xl p-6 shadow-2xl">
+        <AnnouncementFilters
         filters={filters}
         onChange={handleFilterChange}
         categoryCounts={categoryCounts}
       />
+      </div>
 
       {/* Count summary */}
       {!loading && announcements.length > 0 && (
@@ -204,7 +209,7 @@ export default function AnnouncementsPage() {
             <div className="text-center pt-4">
               <button
                 onClick={() => setPage((p) => p + 1)}
-                className="px-6 py-2.5 border border-border text-textMuted hover:text-textPrimary hover:border-primary/50 rounded-lg text-sm transition"
+                className="px-6 py-2.5 border border-white/5 text-textMuted hover:text-textPrimary hover:border-primary/50 bg-black/20 hover:bg-black/40 rounded-xl text-sm font-medium transition shadow-sm"
               >
                 Load more ({filtered.length - paginated.length} remaining)
               </button>
@@ -212,6 +217,6 @@ export default function AnnouncementsPage() {
           )}
         </div>
       )}
-    </div>
+    </PageTransition>
   )
 }

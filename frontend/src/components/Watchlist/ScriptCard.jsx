@@ -57,7 +57,6 @@ function ScriptCard({ script, annStats = {}, rate = null, onOpenDrawer, onSetAle
   const count       = annStats.count      || 0
   const lastDate    = annStats.lastDate   || null
   const lastSubject = annStats.lastSubject || null
-  const lastSubject = annStats.lastSubject || null
 
   async function handleRemove() {
     setRemoving(true)

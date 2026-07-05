@@ -1201,15 +1201,7 @@ export default function PortfolioPage() {
         </div>
       )}
 
-      {/* Disclaimer */}
-      <div className="flex items-start gap-2.5 px-4 py-3 bg-amber-500/5 border border-amber-500/20 rounded-xl text-xs text-amber-400/80">
-        <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-400" />
-        <p>
-          Portfolio data is securely synced and stored in Firebase Firestore across all your devices.
-          P&amp;L uses live BSE LTP and is for reference only.
-          <strong> Not financial advice.</strong>
-        </p>
-      </div>
+
     </div>
   )
 }

@@ -55,41 +55,54 @@ export default function AnnouncementFilters({ filters, onChange, categoryCounts 
             value={filters.search}
             onChange={update('search')}
             placeholder="Search company, code, subject…"
-            className="w-full bg-surface border border-border rounded-lg pl-10 pr-4 py-2.5 text-textPrimary placeholder-textMuted/50 focus:outline-none focus:ring-1 focus:ring-primary text-sm"
+            className="w-full bg-black/20 border border-white/5 rounded-xl pl-10 pr-4 py-2.5 text-textPrimary placeholder-textMuted/50 focus:outline-none focus:ring-1 focus:ring-primary/50 shadow-inner text-sm transition-all"
           />
         </div>
 
         {/* Exchange toggle pills */}
-        <div className="flex items-center gap-1 bg-background border border-border rounded-lg p-1">
-          {EXCHANGES.map((ex) => (
-            <button
-              key={ex}
-              onClick={() => toggleExchange(ex)}
-              className={clsx(
-                'px-3 py-1.5 rounded-md text-xs font-semibold transition',
-                filters.exchange === ex
-                  ? ex === 'BSE' ? 'bg-blue-500 text-white' : 'bg-orange-500 text-white'
-                  : 'text-textMuted hover:text-textPrimary'
-              )}
-            >
-              {ex}
-            </button>
-          ))}
+        <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 h-[42px] shadow-inner">
+          <button
+            onClick={() => onChange({ ...filters, exchange: 'BSE' })}
+            className={clsx(
+              "flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all h-full",
+              filters.exchange === 'BSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+            )}
+          >
+            BSE
+          </button>
+          <button
+            onClick={() => onChange({ ...filters, exchange: 'NSE' })}
+            className={clsx(
+              "flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all h-full",
+              filters.exchange === 'NSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+            )}
+          >
+            NSE
+          </button>
+          <button
+            onClick={() => onChange({ ...filters, exchange: '' })}
+            className={clsx(
+              "flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all h-full",
+              !filters.exchange ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+            )}
+          >
+            BOTH
+          </button>
         </div>
 
         {/* Date range */}
         <div className="flex items-center gap-2">
           <input type="date" value={filters.fromDate} onChange={update('fromDate')}
-            className="bg-surface border border-border rounded-lg px-3 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary text-sm" />
+            className="bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-sm shadow-inner cursor-pointer transition-all" />
           <span className="text-textMuted text-sm">–</span>
           <input type="date" value={filters.toDate} onChange={update('toDate')}
-            className="bg-surface border border-border rounded-lg px-3 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary text-sm" />
+            className="bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-sm shadow-inner cursor-pointer transition-all" />
         </div>
 
         {hasFilters && (
           <button onClick={clearAll}
-            className="flex items-center gap-1.5 px-3 py-2.5 text-textMuted hover:text-textPrimary border border-border hover:border-textMuted rounded-lg text-sm transition">
-            <X className="w-3.5 h-3.5" /> Clear all
+            className="flex items-center gap-1.5 px-4 py-2.5 text-textMuted hover:text-textPrimary border border-white/5 hover:border-textMuted/50 rounded-xl text-sm transition font-semibold bg-black/20 hover:bg-black/40 shadow-sm">
+            <X className="w-4 h-4" /> Clear all
           </button>
         )}
       </div>

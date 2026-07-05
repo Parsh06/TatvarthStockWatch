@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useWatchlist } from '../../contexts/WatchlistContext'
+import PageTransition from '../Common/PageTransition'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || ''
 
@@ -20,6 +21,13 @@ const CATS = [
   { key: 'Rights Issue',  label: 'Rights',         color: 'bg-orange-500/15 text-orange-400 border-orange-500/30',        dot: 'bg-orange-400' },
   { key: 'Stock Split',   label: 'Split',          color: 'bg-pink-500/15 text-pink-400 border-pink-500/30',              dot: 'bg-pink-400'  },
   { key: 'Buyback',       label: 'Buyback',        color: 'bg-red-500/15 text-red-400 border-red-500/30',                 dot: 'bg-red-400'   },
+]
+
+const QUICK_RANGES = [
+  { label: 'Today',     from: () => new Date().toISOString().slice(0, 10), to: () => new Date().toISOString().slice(0, 10) },
+  { label: 'Tomorrow',  from: () => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10) }, to: () => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10) } },
+  { label: 'Next 7 Days', from: () => new Date().toISOString().slice(0, 10), to: () => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10) } },
+  { label: 'Next 30 Days', from: () => new Date().toISOString().slice(0, 10), to: () => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10) } },
 ]
 
 // Board-meeting sub-purpose filter options
@@ -182,7 +190,7 @@ export default function CorporateCalendarPage() {
   const showPurposeFilter = activeCat === '' || activeCat === 'Board Meeting'
 
   return (
-    <div className="space-y-5">
+    <PageTransition className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div>
@@ -194,7 +202,7 @@ export default function CorporateCalendarPage() {
             Board meetings, results, dividends, AGMs &amp; corporate actions — BSE India
           </p>
         </div>
-
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
             onClick={() => fetchEvents(true)} disabled={loading}
             className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-border rounded-xl text-xs text-textMuted hover:text-textPrimary hover:border-primary/40 disabled:opacity-50 transition"
@@ -206,13 +214,24 @@ export default function CorporateCalendarPage() {
       </div>
 
       {/* Date filter + search + watchlist */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2 bg-surface border border-border rounded-xl px-3 py-1.5 flex-shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap bg-surface/50 p-2 rounded-2xl border border-white/5 shadow-inner">
+        <div className="flex flex-wrap gap-2 mr-2">
+          {QUICK_RANGES.map((r) => (
+            <button key={r.label} onClick={() => { setFromDate(r.from()); setToDate(r.to()) }}
+              className={clsx('text-[11px] px-3 py-1.5 rounded-xl font-semibold transition shadow-sm border',
+                fromDate === r.from() && toDate === r.to()
+                  ? 'bg-primary/20 border-primary text-primary'
+                  : 'bg-black/20 border-white/5 text-textMuted hover:border-primary/40 hover:text-textPrimary')}>
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 flex-shrink-0 shadow-sm transition-colors hover:border-white/20">
           <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
-            className="bg-transparent text-sm text-textPrimary focus:outline-none" />
+            className="bg-transparent text-sm text-textPrimary focus:outline-none cursor-pointer" />
           <span className="text-textMuted text-sm">–</span>
           <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
-            className="bg-transparent text-sm text-textPrimary focus:outline-none" />
+            className="bg-transparent text-sm text-textPrimary focus:outline-none cursor-pointer" />
         </div>
 
         {/* Search */}
@@ -222,7 +241,7 @@ export default function CorporateCalendarPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search company / BSE code…"
-            className="w-full pl-7 pr-7 py-2 bg-surface border border-border rounded-xl text-xs text-textPrimary placeholder:text-textMuted/40 focus:outline-none focus:border-primary/40 transition"
+            className="w-full pl-7 pr-7 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-textPrimary placeholder:text-textMuted/40 focus:outline-none focus:border-primary/40 transition shadow-sm"
           />
           {search && (
             <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-textMuted/50 hover:text-textMuted">
@@ -261,10 +280,10 @@ export default function CorporateCalendarPage() {
               key={key}
               onClick={() => setActiveCat(key)}
               className={clsx(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition',
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition hover:-translate-y-0.5',
                 activeCat === key
                   ? color
-                  : 'bg-surface text-textMuted border-border hover:border-primary/40 hover:text-textPrimary'
+                  : 'bg-white/5 text-textMuted border-white/10 hover:border-primary/40 hover:text-textPrimary shadow-sm'
               )}
             >
               {key && <span className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0', activeCat === key ? dot : 'bg-textMuted/40')} />}
@@ -387,7 +406,7 @@ export default function CorporateCalendarPage() {
           Last fetched {fetchedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
         </p>
       )}
-    </div>
+    </PageTransition>
   )
 }
 
@@ -397,7 +416,7 @@ function EventCard({ event: e, meta, onCompany }) {
   const hasDates = e.exDate || e.recDate || e.bcStart || e.ndStart || e.payDate
 
   return (
-    <div className="bg-surface border border-border hover:border-primary/25 rounded-xl p-4 transition flex flex-col gap-3">
+    <div className="glass-panel hover:-translate-y-1 hover:border-white/20 hover:shadow-2xl rounded-2xl p-5 transition-all flex flex-col gap-3 group">
       {/* Company row */}
       <div className="flex items-start justify-between gap-2">
         <button

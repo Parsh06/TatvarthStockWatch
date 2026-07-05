@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 import { exportToXLSX } from '../../utils/csvParser'
 import ScriptSearchInput from '../Common/ScriptSearchInput'
+import PageTransition from '../Common/PageTransition'
 
 const today        = () => new Date().toISOString().slice(0, 10)
 const toYYYYMMDD   = (d) => d.replace(/-/g, '')
@@ -30,10 +31,10 @@ const COLS = [
 
 function StatCard({ label, value, sub, color = 'text-textPrimary', border }) {
   return (
-    <div className={clsx('bg-surface border rounded-xl p-4', border || 'border-border')}>
-      <p className="text-xs text-textMuted mb-1">{label}</p>
-      <p className={clsx('text-xl font-bold tabular-nums', color)}>{value}</p>
-      {sub && <p className="text-xs text-textMuted mt-0.5">{sub}</p>}
+    <div className={clsx('glass-panel rounded-2xl p-5 hover:-translate-y-1 transition-transform border-t-2', border || 'border-t-white/10')}>
+      <p className="text-[11px] font-medium tracking-tight text-textMuted mb-1 uppercase">{label}</p>
+      <p className={clsx('text-2xl font-bold font-display tabular-nums', color)}>{value}</p>
+      {sub && <p className="text-[11px] font-medium text-textMuted mt-1">{sub}</p>}
     </div>
   )
 }
@@ -171,7 +172,7 @@ export default function BulkBlockPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <PageTransition className="space-y-6">
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -188,35 +189,35 @@ export default function BulkBlockPage() {
       </div>
 
       {/* ── Filters card ── */}
-      <div className="bg-surface border border-border rounded-xl p-5 space-y-4">
+      <div className="glass-panel rounded-2xl p-6 space-y-5">
         {/* Quick ranges */}
         <div className="flex flex-wrap gap-2">
           {QUICK_RANGES.map((r) => (
             <button key={r.label} onClick={() => applyQuickRange(r)}
-              className={clsx('text-xs px-3 py-1.5 rounded-lg border font-medium transition',
+              className={clsx('text-[11px] px-4 py-2 rounded-xl font-semibold transition hover:-translate-y-0.5 shadow-sm border',
                 fromDate === r.from() && toDate === r.to()
-                  ? 'bg-primary/15 border-primary/40 text-primary'
-                  : 'border-border text-textMuted hover:border-primary/30 hover:text-textPrimary')}>
+                  ? 'bg-primary/20 border-primary text-primary'
+                  : 'bg-black/20 border-white/5 text-textMuted hover:border-primary/40 hover:text-textPrimary')}>
               {r.label}
             </button>
           ))}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <label className="block text-xs font-medium text-textMuted mb-1.5">From Date</label>
+            <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">From Date</label>
             <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60" />
+              className="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner cursor-pointer transition-all" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-textMuted mb-1.5">To Date</label>
+            <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">To Date</label>
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60" />
+              className="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner cursor-pointer transition-all" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-textMuted mb-1.5">Deal Type</label>
+            <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">Deal Type</label>
             <select value={dealType} onChange={(e) => setDealType(e.target.value)}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60">
+              className="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner cursor-pointer transition-all">
               {exchange === 'BSE' ? (
                 <>
                   <option value="both">Bulk + Block</option>
@@ -233,7 +234,7 @@ export default function BulkBlockPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-textMuted mb-1.5">Filter by Script</label>
+            <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">Filter by Script</label>
             <ScriptSearchInput
               placeholder="Search company…"
               onSelect={(item) => setCodeFilter(item ? item.bseCode : '')}
@@ -242,18 +243,18 @@ export default function BulkBlockPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap justify-between w-full">
+        <div className="flex items-center gap-4 flex-wrap justify-between w-full mt-2">
           <button onClick={fetchDeals} disabled={loading}
-            className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-lg text-sm font-semibold transition">
+            className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-xl text-sm font-semibold transition shadow-lg shadow-primary/20 hover:shadow-primary/30">
             <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
             {loading ? 'Fetching…' : 'Fetch Deals'}
           </button>
           
-          <div className="flex items-center bg-background border border-border rounded-lg p-1">
+          <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 shadow-inner">
             <button
               onClick={() => setExchange('BSE')}
               className={clsx(
-                "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-md transition-all",
+                "flex items-center gap-2 px-6 py-2 text-sm font-semibold rounded-lg transition-all",
                 exchange === 'BSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
               )}
             >
@@ -262,7 +263,7 @@ export default function BulkBlockPage() {
             <button
               onClick={() => setExchange('NSE')}
               className={clsx(
-                "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-md transition-all",
+                "flex items-center gap-6 py-2 text-sm font-semibold rounded-lg transition-all px-6",
                 exchange === 'NSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
               )}
             >
@@ -305,11 +306,11 @@ export default function BulkBlockPage() {
           </div>
 
           {/* Tab bar */}
-          <div className="flex items-center gap-1 bg-surface border border-border rounded-xl p-1 w-fit">
+          <div className="flex items-center gap-1 glass-panel rounded-xl p-1 w-fit shadow-inner">
             {[['table', 'Deals Table'], ['summary', 'Top Clients']].map(([key, label]) => (
               <button key={key} onClick={() => setActiveTab(key)}
-                className={clsx('px-4 py-1.5 rounded-lg text-sm font-medium transition',
-                  activeTab === key ? 'bg-primary/15 text-primary' : 'text-textMuted hover:text-textPrimary')}>
+                className={clsx('px-5 py-2 rounded-lg text-sm font-semibold transition',
+                  activeTab === key ? 'bg-primary/20 text-primary shadow-sm' : 'text-textMuted hover:text-textPrimary')}>
                 {label}
               </button>
             ))}
@@ -334,11 +335,11 @@ export default function BulkBlockPage() {
             filtered.length === 0 ? (
               <div className="text-center py-12 text-textMuted text-sm">No deals match your filters.</div>
             ) : (
-              <div className="bg-surface border border-border rounded-xl overflow-hidden">
-                <div className="overflow-x-auto">
+              <div className="glass-panel rounded-2xl overflow-hidden shadow-2xl">
+                <div className="overflow-x-auto scrollbar-hide">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-border bg-background/50">
+                      <tr className="border-b border-white/5 bg-black/20 backdrop-blur-md">
                         {COLS.map((col) => (
                           <th key={col.key}
                             className={clsx('px-4 py-3 text-xs font-semibold text-textMuted whitespace-nowrap',
@@ -477,6 +478,6 @@ export default function BulkBlockPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageTransition>
   )
 }
