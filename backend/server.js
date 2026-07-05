@@ -392,7 +392,14 @@ app.post('/api/watchlist/catchup', verifyToken, async (req, res) => {
     // 3. Check dailyEmailState to see if we should send an email today
     const dailyEmailStateRef = db.collection('users').doc(req.uid).collection('dailyEmailState').doc(scriptCode);
     const dailyStateDoc = await dailyEmailStateRef.get();
-    const hasSentEmailToday = dailyStateDoc.exists && dailyStateDoc.data().state === 1;
+    let hasSentEmailToday = false;
+    if (dailyStateDoc.exists && dailyStateDoc.data().state === 1) {
+      const todayStr = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const docDateStr = dailyStateDoc.data().updatedAt ? new Date(dailyStateDoc.data().updatedAt.toDate().getTime() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0] : null;
+      if (docDateStr === todayStr) {
+        hasSentEmailToday = true;
+      }
+    }
 
     let emailsSent = 0;
     if (!hasSentEmailToday) {
@@ -876,36 +883,7 @@ app.all('/api/cron/trigger', async (req, res) => {
 
   try {
     // ── Step 0: Daily Midnight Cleanup ──────────────────────────────────────────
-    const admin = require('firebase-admin');
-    const db = admin.firestore();
-    const todayStr = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0]; // IST Date
-    const stateRef = db.collection('system').doc('announcements-state');
-    const stateDoc = await stateRef.get();
-    const lastClearedDate = stateDoc.exists ? stateDoc.data().lastClearedDate : null;
-
-    if (lastClearedDate !== todayStr) {
-      console.log(`[Global Cron] New day detected (${todayStr}). Wiping old global dailyEmailState...`);
-      let batch = db.batch();
-      
-      const emailStateSnap = await db.collectionGroup('dailyEmailState').select().get();
-      let stateCount = 0;
-      const BATCH_LIMIT = 400;
-      for (const doc of emailStateSnap.docs) {
-        batch.delete(doc.ref);
-        stateCount++;
-        if (stateCount % BATCH_LIMIT === 0) {
-          await batch.commit();
-          batch = db.batch();
-        }
-      }
-      
-      if (stateCount % BATCH_LIMIT !== 0) {
-        await batch.commit();
-      }
-      
-      await stateRef.set({ lastClearedDate: todayStr }, { merge: true });
-      console.log(`[Global Cron] Successfully wiped ${stateCount} user states.`);
-    }
+    // Removed: We now check 'updatedAt' dynamically to prevent massive quota spikes.
 
     const watchlistStore = require('./lib/watchlistStore');
     const scripts = await watchlistStore.getAllTrackedScripts();

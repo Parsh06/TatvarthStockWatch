@@ -169,41 +169,7 @@ async function runCron() {
   };
 
   // ── Step 0: Daily Midnight Cleanup ──────────────────────────────────────────
-  try {
-    const todayStr = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0]; // IST Date
-    const stateRef = db.collection('system').doc('announcements-state');
-    const stateDoc = await stateRef.get();
-    const lastClearedDate = stateDoc.exists ? stateDoc.data().lastClearedDate : null;
-
-    if (lastClearedDate !== todayStr) {
-      console.log(`[Cron] New day detected (${todayStr}). Wiping old global dailyEmailState...`);
-      let batch = db.batch();
-      
-      // We ONLY wipe dailyEmailState now, we DO NOT wipe announcements since they live in MongoDB.
-      const emailStateSnap = await db.collectionGroup('dailyEmailState').select().get();
-      let stateCount = 0;
-      const BATCH_LIMIT = 400;
-      for (const doc of emailStateSnap.docs) {
-        batch.delete(doc.ref);
-        stateCount++;
-        if (stateCount % BATCH_LIMIT === 0) {
-          await batch.commit();
-          batch = db.batch();
-        }
-      }
-      
-      if (stateCount % BATCH_LIMIT !== 0) {
-        await batch.commit();
-      }
-      
-      await stateRef.set({ lastClearedDate: todayStr }, { merge: true });
-      summary.wipedOldData = true;
-      console.log(`[Cron] Successfully wiped ${stateCount} user states.`);
-    }
-  } catch (err) {
-    console.error(`[Cron] Failed to wipe old data: ${err.message}`);
-    summary.errors.push({ step: 'cleanup', error: err.message });
-  }
+  // Removed: We now check 'updatedAt' dynamically to prevent massive quota spikes.
 
   const { users, bseCodeToUids, nseSymbolToUids, watchedBSECodes, watchedNSESymbols }
     = await loadUsersAndBuildIndex(db);
@@ -304,9 +270,17 @@ async function runCron() {
           states = states.concat(chunkStates);
         }
         
+        const todayStr = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
         const stateMap = {};
         states.forEach((doc, idx) => {
-          stateMap[uniqueScripts[idx]] = doc.exists ? doc.data().state : 0;
+          let hasSentToday = 0;
+          if (doc.exists && doc.data().state === 1) {
+            const docDateStr = doc.data().updatedAt ? new Date(doc.data().updatedAt.toDate().getTime() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0] : null;
+            if (docDateStr === todayStr) {
+              hasSentToday = 1;
+            }
+          }
+          stateMap[uniqueScripts[idx]] = hasSentToday;
         });
         
         annsToEmail = anns.filter(a => stateMap[a.scriptCode] !== 1);
