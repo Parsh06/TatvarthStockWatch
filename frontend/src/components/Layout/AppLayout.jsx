@@ -142,25 +142,27 @@ export default function AppLayout({ children }) {
 
       {/* Mobile bottom nav */}
       {!isMd && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-surface/90 backdrop-blur-xl border-t border-border h-16 flex items-center px-2 z-20 pb-safe shadow-[0_-4px_24px_rgba(0,0,0,0.1)] overflow-x-auto scrollbar-hide">
-          <div className="flex items-center gap-1 min-w-max">
-            {mobileNav.map(({ to, icon: Icon, label }) => (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) =>
-                  clsx(
-                    'flex flex-col items-center justify-center gap-1 p-2 w-[72px] h-12 rounded-xl transition-all flex-shrink-0',
-                    isActive ? 'text-primary bg-primary/10' : 'text-textMuted hover:text-textPrimary hover:bg-black/5 dark:hover:bg-white/5'
-                  )
-                }
-              >
-                <Icon className={clsx("w-5 h-5 transition-transform", window.location.pathname === to ? "scale-110" : "")} />
-                <span className="text-[10px] font-medium whitespace-nowrap">{label}</span>
-              </NavLink>
-            ))}
-          </div>
-        </nav>
+        <div className="fixed bottom-0 left-0 right-0 z-20 bg-surface/95 backdrop-blur-md border-t border-border pb-safe shadow-lg">
+          <nav className="w-full overflow-x-auto overflow-y-hidden scrollbar-hide" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="flex items-center gap-1 px-2 h-16 min-w-max">
+              {mobileNav.map(({ to, icon: Icon, label }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex flex-col items-center justify-center gap-1 p-2 w-[72px] h-12 rounded-xl transition-all',
+                      isActive ? 'text-primary bg-primary/10 font-semibold' : 'text-textMuted hover:text-textPrimary hover:bg-black/5 dark:hover:bg-white/5 font-medium'
+                    )
+                  }
+                >
+                  <Icon className={clsx("w-5 h-5 transition-transform", window.location.pathname === to ? "scale-110" : "")} />
+                  <span className="text-[10px] whitespace-nowrap">{label}</span>
+                </NavLink>
+              ))}
+            </div>
+          </nav>
+        </div>
       )}
     </div>
   )

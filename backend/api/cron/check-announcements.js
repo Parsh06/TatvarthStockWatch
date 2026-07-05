@@ -134,38 +134,7 @@ async function saveUserNotifications(db, admin, uid, announcements) {
   }
 }
 
-async function updateWatchlistCounts(db, admin, uid, announcements) {
-  const countByCode  = {};
-  const latestByCode = {};
 
-  for (const ann of announcements) {
-    const code = (ann.scriptCode || '').toUpperCase();
-    if (!code) continue;
-    countByCode[code]  = (countByCode[code] || 0) + 1;
-    if (!latestByCode[code] || ann.announcementDate > latestByCode[code]) {
-      latestByCode[code] = ann.announcementDate;
-    }
-  }
-
-  const codes = Object.keys(countByCode);
-  if (!codes.length) return;
-
-  const codeSet = new Set(codes);
-  const wlSnap  = await db.collection('users').doc(uid).collection('watchlist').get();
-  if (wlSnap.empty) return;
-
-  const batch = db.batch();
-  wlSnap.forEach((d) => {
-    const code = (d.data().bseCode || d.data().ltdCode || '').toUpperCase();
-    if (!codeSet.has(code)) return;
-    batch.update(d.ref, {
-      announcementCount:  admin.firestore.FieldValue.increment(countByCode[code]),
-      lastAnnouncementAt: latestByCode[code],
-      lastCheckedAt:      admin.firestore.FieldValue.serverTimestamp(),
-    });
-  });
-  await batch.commit();
-}
 
 async function getUserEmail(admin, uid, userData) {
   if (userData.email) return { email: userData.email, name: userData.displayName || 'Investor' };
@@ -316,7 +285,6 @@ async function runCron() {
       await saveUserNotifications(db, admin, uid, anns);
       summary.notificationsCreated += anns.length;
 
-      await updateWatchlistCounts(db, admin, uid, anns);
       summary.usersNotified++;
 
       // Filter anns by dailyEmailState
