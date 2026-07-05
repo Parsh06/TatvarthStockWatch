@@ -87,6 +87,7 @@ export default function WatchlistPage() {
   const [alertOverrides, setAlertOverrides] = useState({})
   const [bulkMode, setBulkMode]       = useState(false)
   const [selected, setSelected]       = useState(new Set())
+  const [triggering, setTriggering]   = useState(false)
   const [clearConfirm, setClearConfirm]           = useState(false)
   const [bulkRemoveConfirm, setBulkRemoveConfirm] = useState(false)
   const [activeGroup, setActiveGroup]             = useState('')
@@ -186,8 +187,7 @@ export default function WatchlistPage() {
     const triggerTime = new Date().toISOString()
     try {
       const data = await apiClient(`/api/trigger${silent === true ? '?silent=1' : ''}`, { method: 'POST' })
-      setTriggerAnnouncements(data.announcements || [])
-      setAnnFetchedAt(new Date().toISOString())
+
 
       window.dispatchEvent(new CustomEvent('announcements-fetched'))
       
@@ -231,8 +231,6 @@ export default function WatchlistPage() {
       return `${date} ${time}`
     } catch { return null }
   }
-
-  const ratesHaveData = ratesCount > 0
 
   return (
     <PageTransition className="space-y-6">
@@ -445,37 +443,9 @@ export default function WatchlistPage() {
         </>
       )}
 
-      {/* ── Announcements panel ── */}
-      {triggerAnnouncements !== null && (
-        <div className="glass-panel rounded-2xl overflow-hidden shadow-2xl">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-            <div className="flex items-center gap-3 flex-wrap">
-              <Zap className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="font-semibold text-textPrimary text-sm">Today's Announcements</span>
-              <span className={clsx('px-2.5 py-0.5 text-xs font-medium rounded-full',
-                triggerAnnouncements.length > 0 ? 'bg-amber-400/15 text-amber-400' : 'bg-white/5 text-textMuted')}>
-                {triggerAnnouncements.length} found
-              </span>
-            </div>
-            <button onClick={() => setTriggerAnnouncements(null)} className="text-textMuted hover:text-textPrimary transition">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          {triggerAnnouncements.length === 0 ? (
-            <div className="px-6 py-12 text-center text-textMuted text-sm">
-              No new announcements for your watchlist today.
-            </div>
-          ) : (
-            <div className="divide-y divide-white/5 max-h-[480px] overflow-y-auto scrollbar-hide">
-              {triggerAnnouncements.map((ann) => <AnnouncementRow key={ann.id} ann={ann} />)}
-            </div>
-          )}
-        </div>
-      )}
 
       <SetAlertModal
         script={alertScript}
-        rate={alertScript ? (rates[alertScript.ltdCode || alertScript.bseCode || ''] || null) : null}
         onClose={() => setAlertScript(null)}
         onSaved={(updated) => {
           setAlertOverrides((prev) => ({ ...prev, [updated.id]: {
