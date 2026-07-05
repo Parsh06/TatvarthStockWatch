@@ -24,16 +24,16 @@ import { motion } from 'framer-motion'
 function StatCard({ label, value, sub, icon: Icon, colorClass, loading }) {
   return (
     <motion.div 
-      whileHover={{ y: -2 }}
-      className="relative overflow-hidden glass-panel rounded-2xl p-6 group transition-colors hover:border-white/20"
+      whileHover={{ y: -4 }}
+      className="relative overflow-hidden glass-panel rounded-2xl p-6 group transition-all duration-300 hover:shadow-premium-hover"
     >
       {/* Background soft glow based on color class - we use a hack to match the color */}
-      <div className={clsx("absolute -top-10 -right-10 w-24 h-24 blur-3xl opacity-20 rounded-full", colorClass.replace('text-', 'bg-'))} />
+      <div className={clsx("absolute -top-10 -right-10 w-32 h-32 blur-3xl opacity-20 rounded-full transition-opacity group-hover:opacity-30", colorClass.replace('text-', 'bg-'))} />
       
       <div className="flex items-center justify-between mb-4 relative z-10">
         <span className="text-sm font-medium text-textMuted tracking-tight">{label}</span>
-        <div className={clsx('w-9 h-9 rounded-xl flex items-center justify-center bg-white/5 border border-white/5 shadow-inner transition-transform group-hover:scale-110', colorClass)}>
-          <Icon className="w-[18px] h-[18px] opacity-90" />
+        <div className={clsx('w-10 h-10 rounded-xl flex items-center justify-center bg-black/5 dark:bg-white/5 border border-border shadow-inner transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3', colorClass)}>
+          <Icon className="w-5 h-5 opacity-90" />
         </div>
       </div>
       

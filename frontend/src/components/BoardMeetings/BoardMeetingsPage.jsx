@@ -10,15 +10,18 @@ const today = () => new Date().toISOString().slice(0, 10)
 
 function StatCard({ label, value, sub, color = 'text-textPrimary', icon: Icon, iconColor }) {
   return (
-    <div className="glass-panel hover:-translate-y-1 hover:border-white/20 transition-all rounded-2xl p-5 flex items-center gap-4 group">
+    <div className="glass-panel hover:-translate-y-1 hover:shadow-premium-hover transition-all duration-300 rounded-2xl p-5 flex items-center gap-4 group relative overflow-hidden">
+      {/* Background soft glow hack */}
+      <div className={clsx("absolute -top-10 -right-10 w-24 h-24 blur-3xl opacity-20 rounded-full transition-opacity group-hover:opacity-30", iconColor || 'bg-primary')} />
+      
       {Icon && (
-        <div className={clsx('w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-inner', iconColor || 'bg-white/5')}>
-          <Icon className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
+        <div className={clsx('w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-inner z-10 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3', iconColor || 'bg-black/5 dark:bg-white/5')}>
+          <Icon className="w-5 h-5 text-primary" />
         </div>
       )}
-      <div>
+      <div className="z-10">
         <p className="text-[11px] font-medium tracking-tight text-textMuted mb-0.5 uppercase">{label}</p>
-        <p className={clsx('text-2xl font-bold font-display tabular-nums', color)}>{value}</p>
+        <p className={clsx('text-2xl font-bold font-display tabular-nums tracking-tight', color)}>{value}</p>
         {sub && <p className="text-xs text-textMuted mt-1">{sub}</p>}
       </div>
     </div>

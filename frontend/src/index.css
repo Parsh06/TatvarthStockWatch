@@ -4,14 +4,14 @@
 
 @layer base {
   :root {
-    --bg-base: #f4f4f5;
+    --bg-base: #f8f9fa; /* Sleek, cool white */
     --bg-surface: #ffffff;
-    --bg-surface-hover: #f4f4f5;
-    --border: #e4e4e7;
-    --text-primary: #18181b;
-    --text-muted: #71717a;
+    --bg-surface-hover: rgba(255, 255, 255, 0.6);
+    --border: rgba(99, 102, 241, 0.15); /* Soft indigo border */
+    --text-primary: #111827;
+    --text-muted: #4B5563;
     --glass-bg: rgba(255, 255, 255, 0.7);
-    --glass-border: rgba(0, 0, 0, 0.1);
+    --glass-border: rgba(255, 255, 255, 0.9);
   }
 
   .dark {
@@ -28,7 +28,17 @@
   body {
     font-family: 'Inter', sans-serif;
     background-color: var(--bg-base);
+    background-image: 
+      radial-gradient(circle at 10% 20%, rgba(99,102,241,0.15) 0%, transparent 40%), 
+      radial-gradient(circle at 90% 80%, rgba(16,185,129,0.1) 0%, transparent 40%),
+      radial-gradient(circle at 50% 50%, rgba(139,92,246,0.1) 0%, transparent 50%);
+    background-attachment: fixed;
     color: var(--text-primary);
+  }
+
+  .dark body {
+    background-color: var(--bg-base);
+    background-image: none;
   }
 
   * {
@@ -43,9 +53,19 @@
 @layer components {
   .glass-panel {
     background-color: var(--glass-bg);
-    backdrop-filter: blur(12px);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--glass-border);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+    box-shadow: 
+      0 4px 6px -1px rgba(0, 0, 0, 0.05), 
+      0 2px 4px -1px rgba(0, 0, 0, 0.03),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6); /* Inner highlight */
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .dark .glass-panel {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--glass-border);
   }
 }
 

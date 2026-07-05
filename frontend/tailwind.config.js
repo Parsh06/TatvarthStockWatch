@@ -17,6 +17,10 @@ export default {
         warning: '#F59E0B',
         danger: '#F43F5E', // Vibrant Rose
       },
+      boxShadow: {
+        'premium': '0 10px 40px -10px rgba(99,102,241,0.1)',
+        'premium-hover': '0 20px 40px -10px rgba(99,102,241,0.15), 0 0 20px 0 rgba(99,102,241,0.05)',
+      },
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
@@ -35,11 +39,16 @@ export default {
           '0%, 100%': { backgroundColor: 'transparent' },
           '50%': { backgroundColor: 'rgba(239, 68, 68, 0.2)' },
         },
+        'float': {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-5px)' },
+        }
       },
       animation: {
         'fade-in-up': 'fade-in-up 0.5s ease-out forwards',
         'flash-green': 'flash-green 1s ease-out',
         'flash-red': 'flash-red 1s ease-out',
+        'float': 'float 3s ease-in-out infinite',
       }
     },
   },

@@ -56,7 +56,7 @@ export default function Topbar({ sidebarWidth, onSearch, theme, toggleTheme }) {
 
   return (
     <header
-      className="fixed top-0 right-0 h-24 bg-background/40 backdrop-blur-md border-b border-white/5 flex items-end pb-4 px-8 z-20 transition-all duration-300"
+      className="fixed top-0 right-0 h-24 bg-surface/70 backdrop-blur-2xl border-b border-border flex items-end pb-4 px-8 z-20 transition-all duration-300 shadow-[0_4px_30px_rgba(0,0,0,0.02)]"
       style={{ left: `calc(${sidebarWidth}px + 2rem)` }}
     >
       <h1 className="text-2xl font-bold tracking-tight text-textPrimary flex-1">{pageTitle}</h1>
