@@ -260,7 +260,7 @@ async function sendAnnouncementEmails(userEmail, userName, announcements) {
     const category = ann.category   || 'General';
     
     // A clean, professional subject line without spammy brackets or emojis
-    const subject  = `Tatvarth Stock Watch: New Update for ${company} (${ann.exchange || 'BSE'})`;
+    const subject  = `${company} (${ann.exchange || 'BSE'}): New Update from Tatvarth Stock Watch`;
     
     const html     = buildSingleEmailHtml(userName, ann);
     
