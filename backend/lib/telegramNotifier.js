@@ -177,7 +177,8 @@ async function sendTelegramPriceAlert(alert, userChatId) {
     await sendMessage(text, userChatId);
     return { sent: true };
   } catch (e) {
-    return { sent: false, error: e.message };
+    const errorDetail = e.response?.data?.description || e.message;
+    return { sent: false, error: errorDetail };
   }
 }
 
