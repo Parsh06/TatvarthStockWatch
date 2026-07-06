@@ -58,11 +58,10 @@ async function generateAnnouncementSummary(ann) {
       return null;
     }
     
-    // We use gemini-2.5-flash as it is the standard fast model in the new API
-    // If the user's snippet uses gemini-3.5-flash, let's use gemini-2.5-flash which we know exists, 
-    // or gemini-1.5-flash. The @google/genai library supports model: 'gemini-1.5-flash'
+    // We use gemini-1.5-flash as it has a high free tier limit (1500 per day, 15 RPM)
+    // gemini-2.5-flash currently has a strict 20/day limit on the free tier
     const response = await client.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: [
         {
           role: 'user',

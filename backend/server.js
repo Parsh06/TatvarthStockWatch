@@ -889,8 +889,11 @@ app.all('/api/cron/trigger', async (req, res) => {
         const { getDb } = require('./lib/mongoClient');
         const mongoDb = await getDb();
         
-        await Promise.all(newMatched.map(async (ann) => {
+        // Process sequentially to respect Gemini API rate limits (15 RPM for free tier)
+        for (const ann of newMatched) {
           if (ann.pdfUrl) {
+            // Slight delay to prevent bursting the API
+            await new Promise(resolve => setTimeout(resolve, 2000));
             const summary = await generateAnnouncementSummary(ann);
             if (summary) {
               ann.aiSummary = summary;
@@ -900,7 +903,7 @@ app.all('/api/cron/trigger', async (req, res) => {
               );
             }
           }
-        }));
+        }
         console.log(`[Global Cron] AI Summarization complete!`);
       }
       
