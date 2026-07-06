@@ -912,42 +912,6 @@ app.all('/api/cron/trigger', async (req, res) => {
       });
       
       if (newMatched.length > 0) {
-        console.log(`[Global Cron] Running AI Summarizer on ${newMatched.length} new watchlist announcements...`);
-        const { generateAnnouncementSummary } = require('./lib/aiSummarizer');
-        const { getDb } = require('./lib/mongoClient');
-        const mongoDb = await getDb();
-        // Run summaries in chunks of 5, but limit the entire process to 8 seconds
-        // Vercel Serverless (Hobby) enforces a strict 10s timeout regardless of maxDuration.
-        // We MUST break early to ensure emails are actually dispatched!
-        const chunkSize = 5;
-        const startTime = Date.now();
-        const maxTime = 7500; // 7.5 seconds
-        for (let i = 0; i < newMatched.length; i += chunkSize) {
-          if (Date.now() - startTime > maxTime) {
-            console.log('[Global Cron] Vercel timeout approaching! Skipping remaining AI Summaries to guarantee email delivery.');
-            break;
-          }
-          const chunk = newMatched.slice(i, i + chunkSize);
-          await Promise.all(chunk.map(async (ann) => {
-            if (ann.pdfUrl) {
-              const summary = await generateAnnouncementSummary(ann);
-              if (summary) {
-                ann.aiSummary = summary;
-                await mongoDb.collection('announcements').updateOne(
-                  { _id: String(ann.id) },
-                  { $set: { aiSummary: summary, aiSummaryStatus: 'completed' } }
-                );
-              }
-            }
-          }));
-          if (i + chunkSize < newMatched.length && (Date.now() - startTime < maxTime)) {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-          }
-        }
-        console.log(`[Global Cron] AI Summarization complete!`);
-      }
-      
-      if (newMatched.length > 0) {
         const { getDb } = require('./lib/mongoClient');
         const mongoDb = await getDb();
         const receiveEmailCol = mongoDb.collection('receive_email');
@@ -1018,7 +982,18 @@ app.all('/api/cron/trigger', async (req, res) => {
                   const isTelegramOk = () => !!(process.env.TELEGRAM_BOT_TOKEN && (prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID));
                   if (isTelegramOk() && prefs.telegramEnabled !== false) {
                     for (const ann of uActuallyPending) {
-                      await sendTelegramAlert([ann], prefs.telegramChatId);
+                      const targetChat = prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID;
+                      const tgRes = await sendTelegramAlert([ann], targetChat);
+                      if (tgRes.sent && tgRes.messageIds && tgRes.messageIds.length > 0) {
+                        try {
+                          await mongoDb.collection('announcements').updateOne(
+                            { _id: String(ann.id) },
+                            { $push: { telegramMessages: { userId: uid, chatId: targetChat, messageId: tgRes.messageIds[0] } } }
+                          );
+                        } catch (err) {
+                          console.error('[Global Cron] Failed to save telegram message ID:', err);
+                        }
+                      }
                     }
                   }
                   
@@ -1098,6 +1073,25 @@ app.all('/api/cron/generate-summaries', async (req, res) => {
           { $set: { aiSummary: summaryJson, aiSummaryStatus: 'completed' } }
         );
         successCount++;
+        
+        // --- Edit existing Telegram Messages ---
+        if (ann.telegramMessages && ann.telegramMessages.length > 0) {
+          try {
+            const { editTelegramMessage, rebuildSingleAlertText } = require('./lib/telegramNotifier');
+            ann.aiSummary = summaryJson; // ensure rebuilding uses the new summary
+            const updatedText = rebuildSingleAlertText(ann);
+            
+            for (const tgMsg of ann.telegramMessages) {
+               try {
+                 await editTelegramMessage(tgMsg.messageId, updatedText, tgMsg.chatId);
+               } catch (editErr) {
+                 console.error(`[AI Cron] Failed to edit telegram message ${tgMsg.messageId}:`, editErr.message);
+               }
+            }
+          } catch (outerErr) {
+            console.error(`[AI Cron] Failed to process telegram edits for ${ann._id}:`, outerErr.message);
+          }
+        }
       } else {
         await annCol.updateOne(
           { _id: ann._id },

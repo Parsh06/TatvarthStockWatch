@@ -113,6 +113,21 @@ async function sendMessage(text, userChatId) {
     parse_mode:               'HTML',
     disable_web_page_preview: true,
   }, { timeout: 10000 });
+  return res.data; // { ok: true, result: { message_id: 1234 } }
+}
+
+async function editTelegramMessage(messageId, text, userChatId) {
+  const url = `https://api.telegram.org/bot${BOT_TOKEN()}/editMessageText`;
+  const targetChatId = userChatId || CHAT_ID();
+  if (!targetChatId) throw new Error('No Telegram Chat ID configured');
+  
+  const res = await axios.post(url, {
+    chat_id:                  targetChatId,
+    message_id:               messageId,
+    text,
+    parse_mode:               'HTML',
+    disable_web_page_preview: true,
+  }, { timeout: 10000 });
   return res.data;
 }
 
@@ -145,10 +160,15 @@ async function sendTelegramAlert(announcements, userChatId) {
 
   let sentCount = 0;
   const errors  = [];
+  const messageIds = [];
+  
   for (const msg of messages) {
     try {
-      await sendMessage(msg, userChatId);
+      const result = await sendMessage(msg, userChatId);
       sentCount++;
+      if (result && result.ok && result.result && result.result.message_id) {
+        messageIds.push(result.result.message_id);
+      }
       // Small delay between messages to avoid Telegram rate limits
       if (messages.length > 1) await new Promise((r) => setTimeout(r, 500));
     } catch (e) {
@@ -158,7 +178,17 @@ async function sendTelegramAlert(announcements, userChatId) {
 
   const success = sentCount > 0;
   console.log(`[Telegram] ${success ? `Sent ${sentCount} message(s)` : 'Failed'} — ${announcements.length} announcements`);
-  return { sent: success, messagesSent: sentCount, errors };
+  return { sent: success, messagesSent: sentCount, messageIds, errors };
+}
+
+function rebuildSingleAlertText(a) {
+  const ex = a.exchange || 'BSE';
+  const breakdown = ` (1 ${ex})`;
+  // We use the announcement's own timestamp or a generic header to avoid timestamp mismatches
+  const header = `⚡️ <b>StockWatch Premium Alert</b>\n🗓 <i>${esc(a.datetimeIST || a.date || '')}</i>\n\n<b>1 New Update${breakdown}</b>`;
+  const block = buildAnnouncementBlock(a);
+  const msgs = splitIntoMessages(header, [block]);
+  return msgs[0]; // Guaranteed to be 1 message for a single block
 }
 
 /**
@@ -201,4 +231,13 @@ async function sendTelegramPriceAlert(alert, userChatId) {
   }
 }
 
-module.exports = { sendTelegramAlert, sendTelegramPriceAlert, sendTelegramTest, isConfigured };
+module.exports = { 
+  sendTelegramAlert, 
+  sendTelegramPriceAlert, 
+  sendTelegramTest, 
+  editTelegramMessage,
+  isConfigured,
+  buildAnnouncementBlock,
+  splitIntoMessages,
+  rebuildSingleAlertText
+};
