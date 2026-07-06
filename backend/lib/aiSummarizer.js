@@ -58,10 +58,9 @@ async function generateAnnouncementSummary(ann) {
       return null;
     }
     
-    // We use gemini-3.5-flash which is fully supported and fast
-    // The free tier allows high throughput.
+    // We use gemini-3.1-flash-lite which has a 500 RPD and 15 RPM limit on the free tier.
     const response = await client.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.1-flash-lite',
       contents: [
         {
           role: 'user',

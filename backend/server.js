@@ -888,7 +888,7 @@ app.all('/api/cron/trigger', async (req, res) => {
         const { generateAnnouncementSummary } = require('./lib/aiSummarizer');
         const { getDb } = require('./lib/mongoClient');
         const mongoDb = await getDb();
-        // Run summaries in chunks of 5 to avoid API rate limits, with a 1.5s delay between chunks
+        // Run summaries in chunks of 5 to avoid API rate limits, with a 3s delay between chunks
         // Vercel maxDuration is set to 60s, which gives us plenty of time.
         const chunkSize = 5;
         for (let i = 0; i < newMatched.length; i += chunkSize) {
@@ -906,7 +906,7 @@ app.all('/api/cron/trigger', async (req, res) => {
             }
           }));
           if (i + chunkSize < newMatched.length) {
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            await new Promise(resolve => setTimeout(resolve, 3000));
           }
         }
         console.log(`[Global Cron] AI Summarization complete!`);
