@@ -58,10 +58,10 @@ async function generateAnnouncementSummary(ann) {
       return null;
     }
     
-    // We use gemini-2.5-flash as it is the standard fast model
-    // The free tier allows 20 Requests Per Minute.
+    // We use gemini-3.5-flash which is fully supported and fast
+    // The free tier allows high throughput.
     const response = await client.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash',
       contents: [
         {
           role: 'user',

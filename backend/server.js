@@ -888,20 +888,27 @@ app.all('/api/cron/trigger', async (req, res) => {
         const { generateAnnouncementSummary } = require('./lib/aiSummarizer');
         const { getDb } = require('./lib/mongoClient');
         const mongoDb = await getDb();
-        // Run summaries concurrently to ensure we do not hit Vercel's strict serverless timeout (10-15s)
-        // Gemini 1.5 Flash supports up to 15 concurrent requests per minute, so Promise.all is safe.
-        await Promise.all(newMatched.map(async (ann) => {
-          if (ann.pdfUrl) {
-            const summary = await generateAnnouncementSummary(ann);
-            if (summary) {
-              ann.aiSummary = summary;
-              await mongoDb.collection('announcements').updateOne(
-                { _id: String(ann.id) },
-                { $set: { aiSummary: summary, aiSummaryStatus: 'completed' } }
-              );
+        // Run summaries in chunks of 5 to avoid API rate limits, with a 1.5s delay between chunks
+        // Vercel maxDuration is set to 60s, which gives us plenty of time.
+        const chunkSize = 5;
+        for (let i = 0; i < newMatched.length; i += chunkSize) {
+          const chunk = newMatched.slice(i, i + chunkSize);
+          await Promise.all(chunk.map(async (ann) => {
+            if (ann.pdfUrl) {
+              const summary = await generateAnnouncementSummary(ann);
+              if (summary) {
+                ann.aiSummary = summary;
+                await mongoDb.collection('announcements').updateOne(
+                  { _id: String(ann.id) },
+                  { $set: { aiSummary: summary, aiSummaryStatus: 'completed' } }
+                );
+              }
             }
+          }));
+          if (i + chunkSize < newMatched.length) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
           }
-        }));
+        }
         console.log(`[Global Cron] AI Summarization complete!`);
       }
       
