@@ -9,6 +9,7 @@ import ConfirmDialog from '../Common/ConfirmDialog'
 import toast from 'react-hot-toast'
 import { auth } from '../../services/firebase'
 import { useWebPush } from '../../hooks/useWebPush'
+import { apiClient } from '../../services/apiClient'
 
 function Section({ title, icon: Icon, children }) {
   return (
@@ -63,8 +64,7 @@ export default function SettingsPage() {
   const [health, setHealth] = useState(null)
 
   useEffect(() => {
-    fetch('/api/telegram-status')
-      .then((r) => r.json())
+    apiClient('/api/telegram-status')
       .then(setTelegramStatus)
       .catch(() => setTelegramStatus({ configured: false, hasBotToken: false, hasChatId: false }))
     fetch('/api/health')
@@ -76,12 +76,11 @@ export default function SettingsPage() {
   async function handleTelegramTest() {
     setTelegramTesting(true)
     try {
-      const res  = await fetch('/api/telegram-test', { 
+      const data = await apiClient('/api/telegram-test', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegramChatId: notifPrefs.telegramChatId })
       })
-      const data = await res.json()
       if (data.sent) toast.success('Test message sent! Check your Telegram.')
       else toast.error(data.message || data.error || 'Failed to send test message')
     } catch {
@@ -358,8 +357,8 @@ export default function SettingsPage() {
                   await savePrefs(currentUser?.uid, notifPrefs)
                   toast.success('Chat ID saved successfully!')
                   // Refresh status
-                  const res = await fetch('/api/telegram-status')
-                  setTelegramStatus(await res.json())
+                  const status = await apiClient('/api/telegram-status')
+                  setTelegramStatus(status)
                 } catch {
                   toast.error('Failed to save Chat ID')
                 } finally {
@@ -377,14 +376,12 @@ export default function SettingsPage() {
 
         {/* Setup instructions */}
         <div className="space-y-3 text-sm">
-          <p className="text-textMuted font-medium">How to set up Telegram alerts:</p>
+          <p className="text-textMuted font-medium">How to get your Chat ID:</p>
           <ol className="space-y-2.5 text-textMuted list-none">
             {[
-              { n: 1, text: 'Open Telegram and search for ', link: { label: '@BotFather', href: 'https://t.me/BotFather' }, after: ' — the official bot creator.' },
-              { n: 2, text: 'Send /newbot, give it a name, get your Bot Token (looks like 123456:ABC-DEF...).' },
-              { n: 3, text: 'Search for ', link: { label: '@userinfobot', href: 'https://t.me/userinfobot' }, after: ' — start it and it replies with your Chat ID.' },
-              { n: 4, text: 'Add both to your backend .env file (see below).' },
-              { n: 5, text: 'Restart the backend — the status above will turn green.' },
+              { n: 1, text: 'Open Telegram and search for ', link: { label: '@userinfobot', href: 'https://t.me/userinfobot' }, after: ' — start it and it replies with your Chat ID.' },
+              { n: 2, text: 'Copy your ID and paste it in the box above.' },
+              { n: 3, text: 'Click Save, then click Send Test.' },
             ].map(({ n, text, link, after }) => (
               <li key={n} className="flex gap-2.5">
                 <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center">{n}</span>
@@ -396,14 +393,6 @@ export default function SettingsPage() {
               </li>
             ))}
           </ol>
-
-          {/* .env snippet */}
-          <div className="mt-4 rounded-lg bg-background border border-border overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-              <span className="text-xs font-semibold text-textMuted">backend/.env</span>
-            </div>
-            <pre className="px-4 py-3 text-xs text-emerald-400 font-mono overflow-x-auto">{`TELEGRAM_BOT_TOKEN=123456789:ABCdefGhijKlmNoPQRstuVWXyz\nTELEGRAM_CHAT_ID=987654321`}</pre>
-          </div>
           <p className="text-xs text-textMuted/70">
             For a group chat: add the bot to the group, send a message, then use the group's Chat ID (starts with <code className="text-textMuted bg-background px-1 rounded">-</code> for groups).
           </p>
