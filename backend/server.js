@@ -1063,7 +1063,15 @@ app.all('/api/cron/generate-summaries', async (req, res) => {
     }
 
     let successCount = 0;
+    const startTime = Date.now();
+    const maxTime = 8000; // 8 seconds maximum (Vercel hobby limit is 10s)
+
     for (const ann of pending) {
+      if (Date.now() - startTime > maxTime) {
+        console.log('[AI Cron] Vercel timeout approaching! Breaking early.');
+        break;
+      }
+
       console.log(`[AI Cron] Summarizing ${ann._id} (${ann.scriptName})`);
       const summaryJson = await generateAnnouncementSummary(ann);
       
