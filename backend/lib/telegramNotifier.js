@@ -41,21 +41,28 @@ function buildAnnouncementBlock(a) {
   const name     = esc(a.scriptName || a.companyName || a.scriptCode || '');
   const code     = esc(a.scriptCode || a.scripCode || '');
   const category = esc(a.category || 'General');
-  const subject  = esc((a.subject || a.headline || '').slice(0, 200));
+  const subject  = esc((a.subject || a.headline || '').trim());
+  const aiSum    = esc(a.aiSummary || a.summary || a.ai_summary || '');
   const dateStr  = esc(a.datetimeIST || a.date || '');
   const exIcon   = exchangeIcon(a.exchange);
   const catIcon  = categoryIcon(a.category);
 
-  let block = `${exIcon} <b>${name}</b>`;
-  if (code) block += ` <code>${code}</code>`;
-  block += `\n${catIcon} <i>${category}</i>`;
-  if (subject) block += `\n${subject}`;
-  if (dateStr) block += `\n🕐 <i>${dateStr}</i>`;
+  let block = `🏢 <b>${name}</b> ${code ? `(<code>${code}</code>)` : ''}\n`;
+  block += `${catIcon} <b>${category}</b>\n\n`;
+
+  if (aiSum) {
+    block += `✨ <b>AI Summary:</b>\n<i>${aiSum}</i>\n\n`;
+    block += `📝 <b>Original Subject:</b>\n${subject.slice(0, 250)}${subject.length > 250 ? '...' : ''}\n\n`;
+  } else if (subject) {
+    block += `📝 <b>Details:</b>\n${subject.slice(0, 400)}${subject.length > 400 ? '...' : ''}\n\n`;
+  }
+
+  block += `🕒 <i>${dateStr}</i>  |  ${exIcon} ${esc(a.exchange || 'BSE')}\n`;
 
   const links = [];
-  if (a.pdfUrl)    links.push(`<a href="${esc(a.pdfUrl)}">📄 PDF</a>`);
-  if (a.sourceUrl) links.push(`<a href="${esc(a.sourceUrl)}">🔗 ${esc(a.exchange || 'BSE')}</a>`);
-  if (links.length) block += `\n${links.join('  ·  ')}`;
+  if (a.pdfUrl)    links.push(`<a href="${esc(a.pdfUrl)}">📄 View PDF</a>`);
+  if (a.sourceUrl) links.push(`<a href="${esc(a.sourceUrl)}">🔗 Open on Exchange</a>`);
+  if (links.length) block += `\n${links.join('   •   ')}`;
 
   return block;
 }
@@ -63,7 +70,7 @@ function buildAnnouncementBlock(a) {
 // Split array of announcement blocks into messages ≤ 4000 chars each
 function splitIntoMessages(header, blocks) {
   const LIMIT   = 4000;
-  const divider = '\n\n─────────────────────\n\n';
+  const divider = '\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
   const messages = [];
   let current = header;
 
@@ -119,7 +126,7 @@ async function sendTelegramAlert(announcements, userChatId) {
   const breakdown = parts.length ? ` (${parts.join(' · ')})` : '';
 
   const now    = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
-  const header = `📢 <b>StockWatch Alert</b>\n🗓 <i>${now} IST</i>\n\n<b>${announcements.length} new announcement${announcements.length !== 1 ? 's' : ''}${breakdown}</b>`;
+  const header = `⚡️ <b>StockWatch Premium Alert</b>\n🗓 <i>${now} IST</i>\n\n<b>${announcements.length} New Update${announcements.length !== 1 ? 's' : ''}${breakdown}</b>`;
 
   const blocks   = announcements.map(buildAnnouncementBlock);
   const messages = splitIntoMessages(header, blocks);
