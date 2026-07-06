@@ -888,10 +888,17 @@ app.all('/api/cron/trigger', async (req, res) => {
         const { generateAnnouncementSummary } = require('./lib/aiSummarizer');
         const { getDb } = require('./lib/mongoClient');
         const mongoDb = await getDb();
-        // Run summaries in chunks of 5 to avoid API rate limits, with a 3s delay between chunks
-        // Vercel maxDuration is set to 60s, which gives us plenty of time.
+        // Run summaries in chunks of 5, but limit the entire process to 8 seconds
+        // Vercel Serverless (Hobby) enforces a strict 10s timeout regardless of maxDuration.
+        // We MUST break early to ensure emails are actually dispatched!
         const chunkSize = 5;
+        const startTime = Date.now();
+        const maxTime = 7500; // 7.5 seconds
         for (let i = 0; i < newMatched.length; i += chunkSize) {
+          if (Date.now() - startTime > maxTime) {
+            console.log('[Global Cron] Vercel timeout approaching! Skipping remaining AI Summaries to guarantee email delivery.');
+            break;
+          }
           const chunk = newMatched.slice(i, i + chunkSize);
           await Promise.all(chunk.map(async (ann) => {
             if (ann.pdfUrl) {
@@ -905,8 +912,8 @@ app.all('/api/cron/trigger', async (req, res) => {
               }
             }
           }));
-          if (i + chunkSize < newMatched.length) {
-            await new Promise(resolve => setTimeout(resolve, 3000));
+          if (i + chunkSize < newMatched.length && (Date.now() - startTime < maxTime)) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
           }
         }
         console.log(`[Global Cron] AI Summarization complete!`);
