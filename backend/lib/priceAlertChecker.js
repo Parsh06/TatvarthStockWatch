@@ -26,7 +26,7 @@ function markFired(key) {
  *
  * @param {object[]} scripts   - watchlist scripts (each may have alertAbove, alertBelow, alertEnabled)
  * @param {object}   ratesMap  - { [bseCode]: { ltp, ... } }
- * @param {object}   prefs     - { emailEnabled, telegramEnabled }
+ * @param {object}   prefs     - { telegramEnabled }
  * @param {Function} sendEmail - async fn(alert)
  * @param {Function} sendTelegram - async fn(alert)
  * @returns {object[]} fired alerts
@@ -73,12 +73,6 @@ async function checkPriceAlerts(scripts, ratesMap, prefs, sendEmail, sendTelegra
 
       markFired(cooldownKey);
 
-      // Fire notifications
-      if (prefs?.emailEnabled !== false && sendEmail) {
-        try { await sendEmail(alert); alert.notified.push('email'); } catch (e) {
-          console.error('[PriceAlert] Email failed:', e.message);
-        }
-      }
       if (prefs?.telegramEnabled !== false && sendTelegram) {
         try { await sendTelegram(alert); alert.notified.push('telegram'); } catch (e) {
           console.error('[PriceAlert] Telegram failed:', e.message);

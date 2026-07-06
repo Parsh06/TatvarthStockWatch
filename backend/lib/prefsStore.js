@@ -1,7 +1,6 @@
 'use strict';
 
 const DEFAULT_PREFS = {
-  emailEnabled:    true,
   telegramEnabled: true,
   inAppEnabled:    true,
   frequency:       'realtime',

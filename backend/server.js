@@ -101,7 +101,6 @@ app.get('/api/health', async (req, res) => {
     timestamp:  new Date().toISOString(),
     authMode:   SECURE_MODE ? 'secure' : 'local',
     ratesStore: ratesStore.UPSTASH_ENABLED ? 'redis' : 'local',
-    emailOk:    !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD),
     telegramOk: !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
     scriptCount,
   });
@@ -171,28 +170,7 @@ app.post('/api/telegram-test', verifyToken, async (req, res) => {
   res.json(await sendTelegramTest(userChatId));
 });
 
-// ── PROTECTED: Email preview ──────────────────────────────────────────────────
-app.get('/api/email-preview', verifyToken, (req, res) => {
-  const { buildEmailHtml } = require('./lib/mailer');
-  const stored  = readAnnouncements();
-  const preview = stored.length > 0 ? stored.slice(0, 20) : [
-    {
-      id: 'SAMPLE-001', exchange: 'BSE', scriptName: 'Reliance Industries Ltd',
-      scriptCode: '500325', category: 'Board Meeting',
-      subject: 'Board Meeting to consider Quarterly Financial Results',
-      announcementDate: new Date().toISOString(), date: '15 Jun 2026', time: '14:30:00',
-      datetimeIST: '15 Jun 2026 14:30:00 IST', pdfUrl: null,
-      sourceUrl: 'https://www.bseindia.com/corporates/ann.html?scripcd=500325', critical: false,
-    },
-  ];
-  try {
-    const html = buildEmailHtml('Investor', preview);
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(html);
-  } catch (e) {
-    res.status(500).send(`<pre>Error: ${e.message}</pre>`);
-  }
-});
+
 
 // ── PROTECTED: Announcements ──────────────────────────────────────────────────
 app.get('/api/announcements', verifyToken, async (req, res) => {
@@ -340,7 +318,6 @@ app.post('/api/watchlist/catchup', verifyToken, async (req, res) => {
     if (!scriptCode) return res.status(400).json({ error: 'scriptCode required' });
 
     const { db, admin } = require('./lib/firebaseAdmin');
-    const { sendAnnouncementEmail } = require('./lib/mailer');
     const { invalidateWatchlistCache } = require('./lib/watchlistStore');
     
     // Invalidate the cache so the cron background jobs pick up this new script immediately
@@ -398,60 +375,7 @@ app.post('/api/watchlist/catchup', verifyToken, async (req, res) => {
       return res.json({ sent: 0, skipped: announcements.length, reason: 'already notified' });
     }
 
-    let emailsSent = 0;
-    if (toNotify.length > 0) {
-      let userEmail = null, userName = 'Investor';
-      const userDoc = await db.collection('users').doc(req.uid).get();
-      if (userDoc.exists && userDoc.data().email) {
-        userEmail = userDoc.data().email;
-        userName = userDoc.data().displayName || 'Investor';
-      } else {
-        try {
-          const record = await admin.auth().getUser(req.uid);
-          userEmail = record.email;
-          userName = record.displayName || 'Investor';
-        } catch (e) {}
-      }
 
-      if (userEmail) {
-        const { getDb } = require('./lib/mongoClient');
-        const mongoDb = await getDb();
-        const receiveEmailCol = mongoDb.collection('receive_email');
-        const toActuallyNotify = [];
-
-        const getDedupId = (ann, uid) => {
-          const dateStr = new Date().toISOString().slice(0, 10);
-          const company = (ann.scriptName || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 8);
-          let subj = (ann.subject || '').toLowerCase();
-          subj = subj.replace(/outcome of board meeting/g, '').replace(/press release/g, '').replace(/announcement under regulation/g, '').replace(/regarding/g, '').replace(/update/g, '').replace(/copy of newspaper publication/g, '').replace(/newspaper publication/g, '').replace(/[^a-z0-9]/g, '');
-          return `DEDUP_${dateStr}_${company}_${subj.substring(0, 15)}_${uid}`;
-        };
-
-        for (const ann of toNotify) {
-          try {
-            // 1. Try to lock the specific announcement
-            await receiveEmailCol.insertOne({ _id: `${ann.id}_${req.uid}`, announcementId: String(ann.id), userId: req.uid, createdAt: new Date() });
-            
-            // 2. Try to lock the global deduplication hash for cross-exchange spam prevention
-            const dedupId = getDedupId(ann, req.uid);
-            await receiveEmailCol.insertOne({ _id: dedupId, type: 'dedup_lock', userId: req.uid, createdAt: new Date() });
-            
-            toActuallyNotify.push(ann);
-          } catch (e) {
-            // e.code === 11000 means Duplicate Key Error (already locked/sent by another thread or exchange)
-            if (e.code !== 11000) {
-              console.error('[Catchup] Error getting atomic lock:', e.message);
-            }
-          }
-        }
-
-        if (toActuallyNotify.length > 0) {
-          await sendAnnouncementEmail(userEmail, userName, toActuallyNotify);
-          emailsSent = toActuallyNotify.length;
-        }
-      }
-    }
-    
     // 4. Update watchlist count for this script
     // Note: The frontend just added it, so it might not be in the 'watchlist' subcollection yet if they used bulkAdd
     // But it will eventually be.
@@ -814,8 +738,6 @@ if (require.main === module) {
     console.log('');
     console.log('  StockWatch Backend');
     console.log(`  API:           http://localhost:${PORT}/api/watchlist`);
-    const appUrl = process.env.APP_URL || `http://localhost:${PORT}`;
-    console.log(`  Email preview: ${appUrl}/api/email-preview`);
     console.log(`  Auth mode:     ${SECURE_MODE ? 'SECURE (Firebase token required)' : 'LOCAL (no auth)'}`);
     console.log(`  CORS origins:  ${ALLOWED_ORIGINS.join(', ')}`);
     console.log(`  Alert cron:    (Disabled locally, trigger via /api/cron/trigger)`);
