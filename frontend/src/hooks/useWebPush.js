@@ -38,6 +38,13 @@ export function useWebPush() {
     return outputArray;
   };
 
+  const withTimeout = (promise, ms, message) => {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms))
+    ]);
+  };
+
   const subscribe = useCallback(async () => {
     if (!isSupported) {
       toast.error('Web Push is not supported in this browser.');
@@ -47,7 +54,12 @@ export function useWebPush() {
     setLoading(true);
     try {
       // 1. Request Permission
-      const perm = await Notification.requestPermission();
+      const perm = await withTimeout(
+        Notification.requestPermission(),
+        10000,
+        'Permission request timed out. Please check your browser notification settings.'
+      );
+      
       setPermission(perm);
       if (perm !== 'granted') {
         throw new Error('Notification permission denied by user.');
@@ -55,10 +67,19 @@ export function useWebPush() {
 
       // 2. Register Service Worker
       const registration = await navigator.serviceWorker.register('/sw.js');
-      await navigator.serviceWorker.ready;
+      await withTimeout(
+        navigator.serviceWorker.ready,
+        10000,
+        'Service Worker activation timed out. If you are in Private/Incognito mode, push notifications are blocked.'
+      );
 
       // 3. Get Public Key from Backend
-      const { publicKey } = await apiClient('/api/push/public-key');
+      const { publicKey } = await withTimeout(
+        apiClient('/api/push/public-key'),
+        10000,
+        'Network timeout while fetching encryption keys.'
+      );
+      
       if (!publicKey) {
         throw new Error('VAPID public key not found on server. Did you add it to Vercel env?');
       }

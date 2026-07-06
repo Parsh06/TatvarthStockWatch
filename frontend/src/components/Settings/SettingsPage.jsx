@@ -38,6 +38,7 @@ export default function SettingsPage() {
   const [notifPrefs, setNotifPrefs] = useState({
     emailEnabled: true,
     telegramEnabled: true,
+    telegramChatId: '',
     inAppEnabled: true,
     frequency: 'realtime',
   })
@@ -75,7 +76,11 @@ export default function SettingsPage() {
   async function handleTelegramTest() {
     setTelegramTesting(true)
     try {
-      const res  = await fetch('/api/telegram-test', { method: 'POST' })
+      const res  = await fetch('/api/telegram-test', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegramChatId: notifPrefs.telegramChatId })
+      })
       const data = await res.json()
       if (data.sent) toast.success('Test message sent! Check your Telegram.')
       else toast.error(data.message || data.error || 'Failed to send test message')
@@ -333,6 +338,41 @@ export default function SettingsPage() {
               Send Test
             </button>
           )}
+        </div>
+        
+        {/* Personal Chat ID Input */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-textPrimary mb-1.5">Your Telegram Chat ID</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={notifPrefs.telegramChatId || ''}
+              onChange={(e) => setNotifPrefs(p => ({ ...p, telegramChatId: e.target.value }))}
+              placeholder="e.g. 123456789"
+              className="bg-background border border-border rounded-lg px-4 py-2 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary text-sm flex-1 max-w-sm"
+            />
+            <button
+              onClick={async () => {
+                setSavingPrefs(true)
+                try {
+                  await savePrefs(currentUser?.uid, notifPrefs)
+                  toast.success('Chat ID saved successfully!')
+                  // Refresh status
+                  const res = await fetch('/api/telegram-status')
+                  setTelegramStatus(await res.json())
+                } catch {
+                  toast.error('Failed to save Chat ID')
+                } finally {
+                  setSavingPrefs(false)
+                }
+              }}
+              disabled={savingPrefs}
+              className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-lg text-sm font-medium transition"
+            >
+              {savingPrefs ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+          <p className="text-xs text-textMuted mt-1.5">Leave blank to use the global admin Chat ID.</p>
         </div>
 
         {/* Setup instructions */}

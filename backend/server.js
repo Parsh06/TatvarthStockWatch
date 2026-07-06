@@ -142,25 +142,33 @@ app.get('/api/rates/status', (req, res) => {
 });
 
 // ── OPEN: Telegram status ─────────────────────────────────────────────────────
-app.get('/api/telegram-status', (req, res) => {
+app.get('/api/telegram-status', verifyToken, async (req, res) => {
   const { isConfigured } = require('./lib/telegramNotifier');
+  let userChatId = null;
+  try {
+    const prefs = await prefsStore.getPrefs(req.uid);
+    userChatId = prefs.telegramChatId;
+  } catch (e) {}
+
   res.json({
-    configured:  isConfigured(),
+    configured:  isConfigured(userChatId),
     hasBotToken: !!process.env.TELEGRAM_BOT_TOKEN,
-    hasChatId:   !!process.env.TELEGRAM_CHAT_ID,
+    hasChatId:   !!(userChatId || process.env.TELEGRAM_CHAT_ID),
   });
 });
 
 // ── PROTECTED: Telegram test ──────────────────────────────────────────────────
 app.post('/api/telegram-test', verifyToken, async (req, res) => {
   const { sendTelegramTest, isConfigured } = require('./lib/telegramNotifier');
-  if (!isConfigured()) {
+  const userChatId = req.body.telegramChatId;
+  
+  if (!isConfigured(userChatId)) {
     return res.status(400).json({
       sent: false, reason: 'not_configured',
-      message: 'TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set in .env',
+      message: 'TELEGRAM_BOT_TOKEN must be set globally, and Chat ID must be set in your settings.',
     });
   }
-  res.json(await sendTelegramTest());
+  res.json(await sendTelegramTest(userChatId));
 });
 
 // ── PROTECTED: Email preview ──────────────────────────────────────────────────
@@ -1007,9 +1015,10 @@ app.all('/api/cron/trigger', async (req, res) => {
                   }
                   
                   // Telegram Dispatch
+                  const isTelegramOk = () => !!(process.env.TELEGRAM_BOT_TOKEN && (prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID));
                   if (isTelegramOk() && prefs.telegramEnabled !== false) {
                     for (const ann of uActuallyPending) {
-                      await sendTelegramAlert(ann);
+                      await sendTelegramAlert([ann], prefs.telegramChatId);
                     }
                   }
                   

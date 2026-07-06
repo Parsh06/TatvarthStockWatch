@@ -5,8 +5,8 @@ const axios = require('axios');
 const BOT_TOKEN = () => process.env.TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID   = () => process.env.TELEGRAM_CHAT_ID   || '';
 
-function isConfigured() {
-  return !!(BOT_TOKEN() && CHAT_ID());
+function isConfigured(userChatId) {
+  return !!(BOT_TOKEN() && (userChatId || CHAT_ID()));
 }
 
 // ── HTML helpers ──────────────────────────────────────────────────────────────
@@ -82,10 +82,14 @@ function splitIntoMessages(header, blocks) {
 
 // ── Send via Bot API ──────────────────────────────────────────────────────────
 
-async function sendMessage(text) {
+async function sendMessage(text, userChatId) {
   const url = `https://api.telegram.org/bot${BOT_TOKEN()}/sendMessage`;
+  const targetChatId = userChatId || CHAT_ID();
+  
+  if (!targetChatId) throw new Error('No Telegram Chat ID configured');
+  
   const res  = await axios.post(url, {
-    chat_id:                  CHAT_ID(),
+    chat_id:                  targetChatId,
     text,
     parse_mode:               'HTML',
     disable_web_page_preview: true,
@@ -99,8 +103,8 @@ async function sendMessage(text) {
  * Send announcement digest to Telegram.
  * Splits automatically if > 4000 chars.
  */
-async function sendTelegramAlert(announcements) {
-  if (!isConfigured()) {
+async function sendTelegramAlert(announcements, userChatId) {
+  if (!isConfigured(userChatId)) {
     return { sent: false, reason: 'not_configured' };
   }
   if (!announcements || announcements.length === 0) {
@@ -124,7 +128,7 @@ async function sendTelegramAlert(announcements) {
   const errors  = [];
   for (const msg of messages) {
     try {
-      await sendMessage(msg);
+      await sendMessage(msg, userChatId);
       sentCount++;
       // Small delay between messages to avoid Telegram rate limits
       if (messages.length > 1) await new Promise((r) => setTimeout(r, 500));
@@ -141,13 +145,14 @@ async function sendTelegramAlert(announcements) {
 /**
  * Send a test message to verify credentials.
  */
-async function sendTelegramTest() {
-  if (!isConfigured()) {
+async function sendTelegramTest(userChatId) {
+  if (!isConfigured(userChatId)) {
     return { sent: false, reason: 'not_configured' };
   }
   try {
     await sendMessage(
-      '✅ <b>StockWatch — Telegram Connected!</b>\n\nYour bot is configured correctly. You will receive announcement alerts here when news is fetched for your watchlist.'
+      '✅ <b>StockWatch — Telegram Connected!</b>\n\nYour bot is configured correctly. You will receive announcement alerts here when news is fetched for your watchlist.',
+      userChatId
     );
     return { sent: true };
   } catch (e) {
@@ -159,8 +164,8 @@ async function sendTelegramTest() {
 /**
  * Send a price alert notification to Telegram.
  */
-async function sendTelegramPriceAlert(alert) {
-  if (!isConfigured()) return { sent: false, reason: 'not_configured' };
+async function sendTelegramPriceAlert(alert, userChatId) {
+  if (!isConfigured(userChatId)) return { sent: false, reason: 'not_configured' };
   const dir  = alert.direction === 'above' ? '📈 ABOVE' : '📉 BELOW';
   const pct  = alert.pctChange != null ? ` (${alert.pctChange >= 0 ? '+' : ''}${alert.pctChange.toFixed(2)}%)` : '';
   const text = `🚨 <b>Price Alert — ${esc(alert.scriptName)}</b>\n` +
@@ -169,7 +174,7 @@ async function sendTelegramPriceAlert(alert) {
     `Current LTP: <b>₹${alert.ltp}</b>${pct}\n\n` +
     `🕐 ${new Date(alert.triggeredAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`;
   try {
-    await sendMessage(text);
+    await sendMessage(text, userChatId);
     return { sent: true };
   } catch (e) {
     return { sent: false, error: e.message };
