@@ -313,11 +313,9 @@ export default function SettingsPage() {
             </p>
             {telegramStatus && !telegramStatus.configured && (
               <p className="text-xs text-textMuted mt-0.5">
-                {!telegramStatus.hasBotToken && !telegramStatus.hasChatId
-                  ? 'Both TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are missing'
-                  : !telegramStatus.hasBotToken
-                    ? 'TELEGRAM_BOT_TOKEN is missing in .env'
-                    : 'TELEGRAM_CHAT_ID is missing in .env'}
+                {!telegramStatus.hasBotToken
+                  ? 'TELEGRAM_BOT_TOKEN is missing on the server'
+                  : 'You have not set your Chat ID yet. Please enter it below.'}
               </p>
             )}
             {telegramStatus?.configured && (
