@@ -32,7 +32,8 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ── Simple in-memory rate limiter (120 req / min per IP) ─────────────────────
 const _rlMap    = new Map();

@@ -38,19 +38,28 @@ export default function BulkUploadModal({ isOpen, onClose }) {
     if (!accepted.length) return
     const f = accepted[0]
     setFile(f)
-    let parsed
-    if (f.name.endsWith('.csv')) parsed = await parseCSV(f)
-    else parsed = await parseExcel(f)
-    const checked = checkDuplicates(parsed.data, watchlist)
-    const allRows = [
-      ...checked.valid.map((r) => ({ ...r, _status: 'valid' })),
-      ...checked.intraFileDuplicates.map((r) => ({ ...r, _status: 'intra' })),
-      ...checked.crossFileDuplicates.map((r) => ({ ...r, _status: 'cross' })),
-      ...checked.errors.map((r) => ({ ...r, _status: 'error' })),
-    ].sort((a, b) => a._index - b._index)
-    setRows(allRows)
-    setResult(checked)
-    setStep(2)
+    
+    try {
+      let parsed
+      if (f.name.endsWith('.csv')) parsed = await parseCSV(f)
+      else parsed = await parseExcel(f)
+      
+      const checked = checkDuplicates(parsed.data, watchlist)
+      const allRows = [
+        ...checked.valid.map((r) => ({ ...r, _status: 'valid' })),
+        ...checked.intraFileDuplicates.map((r) => ({ ...r, _status: 'intra' })),
+        ...checked.crossFileDuplicates.map((r) => ({ ...r, _status: 'cross' })),
+        ...checked.errors.map((r) => ({ ...r, _status: 'error' })),
+      ].sort((a, b) => a._index - b._index)
+      
+      setRows(allRows)
+      setResult(checked)
+      setStep(2)
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to parse file. Please ensure it is a valid CSV or Excel file.')
+      setFile(null)
+    }
   }, [watchlist])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -71,9 +80,9 @@ export default function BulkUploadModal({ isOpen, onClose }) {
       setImportResult(res)
       setStep(3)
       toast.success(`${res.added} scripts imported!`)
-    } catch {
+    } catch (e) {
       clearInterval(interval)
-      toast.error('Import failed')
+      toast.error(e.message || 'Import failed')
     } finally {
       setImporting(false)
     }
