@@ -28,8 +28,8 @@ async function runTest() {
     // 1. Fetch subscribed users
     console.log('Fetching subscribed users from Firestore...');
     const dbFirebase = admin.firestore();
-    const snapshot = await dbFirebase.collection('user_prefs')
-      .where('boardMeetingUpdatesEnabled', '==', true)
+    const snapshot = await dbFirebase.collection('users')
+      .where('prefs.emailEnabled', '==', true)
       .get();
       
     if (snapshot.empty) {

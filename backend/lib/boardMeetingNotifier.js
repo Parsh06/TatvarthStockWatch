@@ -65,8 +65,8 @@ async function getSubscribedUsers() {
   const users = [];
   try {
     const db = admin.firestore();
-    const snapshot = await db.collection('user_prefs')
-      .where('boardMeetingUpdatesEnabled', '==', true)
+    const snapshot = await db.collection('users')
+      .where('prefs.boardMeetingUpdatesEnabled', '==', true)
       .get();
       
     if (snapshot.empty) return users;
