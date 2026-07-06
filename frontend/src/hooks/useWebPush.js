@@ -107,12 +107,32 @@ export function useWebPush() {
       setLoading(false);
     }
   }, [isSupported]);
+  const unsubscribe = useCallback(async () => {
+    setLoading(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        await subscription.unsubscribe();
+      }
+      setIsSubscribed(false);
+      toast.success('Unsubscribed from browser notifications.');
+      return true;
+    } catch (err) {
+      console.error('Failed to unsubscribe:', err);
+      toast.error('Failed to unsubscribe');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   return {
     isSupported,
     permission,
     isSubscribed,
     loading,
-    subscribe
+    subscribe,
+    unsubscribe
   };
 }

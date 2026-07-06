@@ -28,7 +28,7 @@ function Section({ title, icon: Icon, children }) {
 export default function SettingsPage() {
   const { currentUser, logout } = useAuth()
   const { watchlist, clearWatchlist } = useWatchlist()
-  const { isSupported, isSubscribed, loading: pushLoading, subscribe } = useWebPush()
+  const { isSupported, isSubscribed, loading: pushLoading, subscribe, unsubscribe } = useWebPush()
   const [displayName, setDisplayName] = useState(currentUser?.displayName || '')
   const [savingProfile, setSavingProfile] = useState(false)
 
@@ -247,15 +247,22 @@ export default function SettingsPage() {
                 <p className="text-xs text-textMuted">Receive OS-level system notifications in background</p>
               </div>
               {isSubscribed ? (
-                <div className="text-xs font-semibold text-primary px-2 py-1 bg-primary/10 rounded-md">Subscribed</div>
-              ) : (
-                <button 
+                <button
                   type="button"
-                  onClick={(e) => { e.preventDefault(); subscribe(); }}
+                  onClick={unsubscribe}
                   disabled={pushLoading}
-                  className="text-xs font-medium bg-surface text-textPrimary border border-border px-3 py-1.5 rounded-lg hover:bg-border/50 disabled:opacity-50"
+                  className="px-3 py-1.5 bg-danger/10 hover:bg-danger/20 text-danger text-xs font-semibold rounded-md transition disabled:opacity-50"
                 >
-                  {pushLoading ? 'Subscribing...' : 'Enable'}
+                  {pushLoading ? 'Disabling...' : 'Disable'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={subscribe}
+                  disabled={pushLoading}
+                  className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold rounded-md transition disabled:opacity-50"
+                >
+                  {pushLoading ? 'Enabling...' : 'Enable'}
                 </button>
               )}
             </label>
