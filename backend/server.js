@@ -864,8 +864,19 @@ app.all('/api/cron/trigger', async (req, res) => {
             });
 
             if (uMatched.length > 0) {
+              let prefs = {};
+              try {
+                prefs = await prefsStore.getPrefs(uid) || {};
+              } catch (err) {
+                console.error(`[Global Cron] Failed to get prefs for ${uid}:`, err.message);
+              }
+              const blocked = prefs.blockedCategories || [];
+
               const uActuallyPending = [];
               for (const ann of uMatched) {
+                const isBlocked = blocked.includes((ann.category || '').trim()) || blocked.includes((ann.subCategory || '').trim());
+                if (isBlocked) continue;
+
                 try {
                   await alertDedupLocksCol.insertOne({ _id: `${ann.id}_${uid}`, announcementId: String(ann.id), userId: uid, createdAt: new Date() });
                   const dedupId = getDedupId(ann, uid);
@@ -879,8 +890,6 @@ app.all('/api/cron/trigger', async (req, res) => {
 
               if (uActuallyPending.length > 0) {
                 try {
-                  const prefs = await prefsStore.getPrefs(uid);
-                  
                   // Telegram Dispatch
                   const isTelegramOk = () => !!(process.env.TELEGRAM_BOT_TOKEN && (prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID));
                   if (isTelegramOk() && prefs.telegramEnabled !== false) {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { User, Lock, Bell, Download, Trash2, AlertTriangle, Send, CheckCircle, XCircle, Save, Activity } from 'lucide-react'
+import { User, Lock, Bell, Download, Trash2, AlertTriangle, Send, CheckCircle, XCircle, Save, Activity, Filter, ChevronDown, ChevronRight } from 'lucide-react'
 import { updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser } from 'firebase/auth'
 import { useAuth } from '../../contexts/AuthContext'
 import { useWatchlist } from '../../contexts/WatchlistContext'
@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import { auth } from '../../services/firebase'
 import { useWebPush } from '../../hooks/useWebPush'
 import { apiClient } from '../../services/apiClient'
+import { ALERT_CATEGORIES } from '../../utils/bseCategories'
 
 function Section({ title, icon: Icon, children }) {
   return (
@@ -41,6 +42,7 @@ export default function SettingsPage() {
     telegramChatId: '',
     inAppEnabled: true,
     frequency: 'realtime',
+    blockedCategories: [],
   })
   const [savingPrefs, setSavingPrefs] = useState(false)
 
@@ -55,6 +57,21 @@ export default function SettingsPage() {
 
   const [clearConfirm, setClearConfirm]   = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [expandedCats, setExpandedCats] = useState({})
+
+  const toggleBlockedCategory = (name) => {
+    setNotifPrefs((prev) => {
+      const blocked = prev.blockedCategories || []
+      const isBlocked = blocked.includes(name)
+      return {
+        ...prev,
+        blockedCategories: isBlocked 
+          ? blocked.filter(c => c !== name) 
+          : [...blocked, name]
+      }
+    })
+  }
+
 
   // Telegram status
   const [telegramStatus, setTelegramStatus] = useState(null)
@@ -299,6 +316,97 @@ export default function SettingsPage() {
             Save Preferences
           </button>
         </div>
+      </Section>
+
+      {/* Alert Categories */}
+      <Section title="Alert Categories" icon={Filter}>
+        <div className="mb-4 p-4 bg-primary/5 border border-primary/20 rounded-lg flex items-start gap-3">
+          <div className="flex-shrink-0 mt-0.5">
+            <Filter className="w-4 h-4 text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-primary mb-1">Customize Your Notifications</p>
+            <p className="text-xs text-textMuted">
+              Check to receive alerts. Uncheck to block. <br/>
+              <span className="text-emerald-500 font-semibold">Green = Active</span> | <span className="text-red-500 font-semibold">Red = Blocked</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3 mb-6 border border-border rounded-lg p-2 bg-background">
+          {Object.entries(ALERT_CATEGORIES).map(([catName, subCats]) => {
+            const isCatBlocked = (notifPrefs.blockedCategories || []).includes(catName)
+            const isExpanded = expandedCats[catName]
+            
+            return (
+              <div key={catName} className="rounded-md border border-border/50 overflow-hidden bg-surface">
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <button 
+                      type="button"
+                      onClick={() => setExpandedCats(p => ({ ...p, [catName]: !p[catName] }))}
+                      className="p-1 hover:bg-white/5 rounded transition text-textMuted hover:text-textPrimary disabled:opacity-30"
+                      disabled={subCats.length === 0}
+                    >
+                      {subCats.length > 0 ? (isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />) : <div className="w-4 h-4" />}
+                    </button>
+                    
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <div 
+                        onClick={() => toggleBlockedCategory(catName)}
+                        className={`w-5 h-5 rounded flex items-center justify-center transition-colors border ${!isCatBlocked ? 'bg-emerald-500/20 border-emerald-500/50' : 'bg-red-500/10 border-red-500/30'}`}
+                      >
+                        {!isCatBlocked ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> : <XCircle className="w-3 h-3 text-red-500/70" />}
+                      </div>
+                      <span className={`text-sm font-medium transition-colors ${!isCatBlocked ? 'text-textPrimary' : 'text-textMuted'}`}>{catName}</span>
+                    </label>
+                  </div>
+                </div>
+                
+                {isExpanded && subCats.length > 0 && (
+                  <div className="px-12 py-2 pb-4 space-y-2 border-t border-border/50 bg-background/50">
+                    {subCats.map(subCat => {
+                      const isSubBlocked = (notifPrefs.blockedCategories || []).includes(subCat) || isCatBlocked
+                      return (
+                        <label key={subCat} className="flex items-center gap-2 cursor-pointer select-none py-1">
+                          <div 
+                            onClick={() => !isCatBlocked && toggleBlockedCategory(subCat)}
+                            className={`w-4 h-4 rounded flex items-center justify-center transition-colors border ${isCatBlocked ? 'opacity-50 cursor-not-allowed' : ''} ${!isSubBlocked ? 'bg-emerald-500/20 border-emerald-500/50' : 'bg-red-500/10 border-red-500/30'}`}
+                          >
+                            {!isSubBlocked ? <CheckCircle className="w-3 h-3 text-emerald-500" /> : <XCircle className="w-2.5 h-2.5 text-red-500/70" />}
+                          </div>
+                          <span className={`text-xs transition-colors ${!isSubBlocked ? 'text-textPrimary' : 'text-textMuted'}`}>{subCat}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <button
+          onClick={async () => {
+            setSavingPrefs(true)
+            try {
+              await savePrefs(currentUser?.uid, notifPrefs)
+              toast.success('Categories saved')
+            } catch {
+              toast.error('Failed to save categories')
+            } finally {
+              setSavingPrefs(false)
+            }
+          }}
+          disabled={savingPrefs}
+          className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-lg text-sm font-medium transition"
+        >
+          {savingPrefs
+            ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            : <Save className="w-3.5 h-3.5" />
+          }
+          Save Alert Categories
+        </button>
       </Section>
 
       {/* Telegram */}

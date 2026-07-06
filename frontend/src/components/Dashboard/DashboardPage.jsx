@@ -11,7 +11,8 @@ import clsx from 'clsx'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 import { useTier } from '../../contexts/TierContext'
 import { useAnnouncements } from '../../hooks/useAnnouncements'
-import { getAlerts } from '../../services/alertService'
+import { exportToCSV } from '../../utils/csvParser'
+import { getAlerts, getPrefs } from '../../services/alertService'
 import { useAuth } from '../../contexts/AuthContext'
 import AnnouncementCard from '../Announcements/AnnouncementCard'
 import PageTransition from '../Common/PageTransition'
@@ -106,8 +107,15 @@ export default function DashboardPage() {
   const [indices, setIndices]             = useState(null)
   const [indicesLoading, setIndicesLoading] = useState(true)
 
+  const [blockedCategories, setBlockedCategories] = useState([])
+
   useEffect(() => {
     getAlerts(currentUser?.uid, 200).then((a) => setAlertCount(a.length)).catch(() => {})
+    if (currentUser?.uid) {
+      getPrefs(currentUser.uid).then(p => {
+        if (p && p.blockedCategories) setBlockedCategories(p.blockedCategories)
+      }).catch(() => {})
+    }
   }, [currentUser])
 
   function loadMarket() {
@@ -155,7 +163,13 @@ export default function DashboardPage() {
     })
   }, [announcements])
 
-  const uniqueWatchlisted = useMemo(() => uniqueAnnouncements.filter((a) => a.isWatchlisted), [uniqueAnnouncements])
+  const uniqueWatchlisted = useMemo(() => {
+    return uniqueAnnouncements.filter((a) => {
+      if (!a.isWatchlisted) return false
+      const isBlocked = blockedCategories.includes((a.category || '').trim()) || blockedCategories.includes((a.subCategory || '').trim())
+      return !isBlocked
+    })
+  }, [uniqueAnnouncements, blockedCategories])
 
   const todayAnn = useMemo(() =>
     uniqueAnnouncements.filter((a) => isAfter(new Date(a.announcementDate || a.date || 0), today)),
