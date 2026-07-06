@@ -888,12 +888,10 @@ app.all('/api/cron/trigger', async (req, res) => {
         const { generateAnnouncementSummary } = require('./lib/aiSummarizer');
         const { getDb } = require('./lib/mongoClient');
         const mongoDb = await getDb();
-        
-        // Process sequentially to respect Gemini API rate limits (15 RPM for free tier)
-        for (const ann of newMatched) {
+        // Run summaries concurrently to ensure we do not hit Vercel's strict serverless timeout (10-15s)
+        // Gemini 1.5 Flash supports up to 15 concurrent requests per minute, so Promise.all is safe.
+        await Promise.all(newMatched.map(async (ann) => {
           if (ann.pdfUrl) {
-            // Slight delay to prevent bursting the API
-            await new Promise(resolve => setTimeout(resolve, 2000));
             const summary = await generateAnnouncementSummary(ann);
             if (summary) {
               ann.aiSummary = summary;
@@ -903,7 +901,7 @@ app.all('/api/cron/trigger', async (req, res) => {
               );
             }
           }
-        }
+        }));
         console.log(`[Global Cron] AI Summarization complete!`);
       }
       
