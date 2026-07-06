@@ -58,10 +58,10 @@ async function generateAnnouncementSummary(ann) {
       return null;
     }
     
-    // We use gemini-1.5-flash as it has a high free tier limit (1500 per day, 15 RPM)
-    // gemini-2.5-flash currently has a strict 20/day limit on the free tier
+    // We use gemini-2.5-flash as it is the standard fast model
+    // The free tier allows 20 Requests Per Minute.
     const response = await client.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       contents: [
         {
           role: 'user',
