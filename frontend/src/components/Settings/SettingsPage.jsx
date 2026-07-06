@@ -223,7 +223,6 @@ export default function SettingsPage() {
       <Section title="Notification Preferences" icon={Bell}>
         <div className="space-y-4">
           {[
-            { key: 'emailEnabled',    label: 'Email Notifications',    desc: 'Receive announcement & price alerts via email' },
             { key: 'telegramEnabled', label: 'Telegram Notifications',  desc: 'Send alerts to your configured Telegram bot' },
             { key: 'inAppEnabled',    label: 'In-App Notifications',    desc: 'Show toast notifications inside the app' },
           ].map(({ key, label, desc }) => (
@@ -432,7 +431,6 @@ export default function SettingsPage() {
               { label: 'Backend',       ok: true,              value: `Online · ${Math.floor(health.uptime / 60)}m uptime` },
               { label: 'Auth Mode',     ok: true,              value: health.authMode === 'secure' ? 'Firebase (Secure)' : 'Local (Dev)' },
               { label: 'Rates Store',   ok: true,              value: health.ratesStore === 'redis' ? 'Upstash Redis' : 'Local JSON' },
-              { label: 'Email (Gmail)', ok: health.emailOk,    value: health.emailOk ? 'Configured' : 'Not configured' },
               { label: 'Telegram',      ok: health.telegramOk, value: health.telegramOk ? 'Configured' : 'Not configured' },
               { label: 'Watchlist',     ok: true,              value: `${health.scriptCount} scripts` },
             ].map(({ label, ok, value }) => (

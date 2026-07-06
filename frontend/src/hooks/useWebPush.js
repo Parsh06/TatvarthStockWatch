@@ -115,6 +115,12 @@ export function useWebPush() {
       if (subscription) {
         await subscription.unsubscribe();
       }
+      
+      // Tell backend to remove it from DB
+      await apiClient('/api/push/unsubscribe', { method: 'POST' }).catch(err => {
+        console.error('Backend unsubscribe failed:', err);
+      });
+      
       setIsSubscribed(false);
       toast.success('Unsubscribed from browser notifications.');
       return true;
