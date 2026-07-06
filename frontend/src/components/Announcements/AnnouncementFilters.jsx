@@ -55,12 +55,12 @@ export default function AnnouncementFilters({ filters, onChange, categoryCounts 
             value={filters.search}
             onChange={update('search')}
             placeholder="Search company, code, subject…"
-            className="w-full bg-black/20 border border-white/5 rounded-xl pl-10 pr-4 py-2.5 text-textPrimary placeholder-textMuted/50 focus:outline-none focus:ring-1 focus:ring-primary/50 shadow-inner text-sm transition-all"
+            className="w-full bg-surface border border-border rounded-xl pl-10 pr-4 py-2 sm:py-2.5 text-textPrimary placeholder-textMuted/50 focus:outline-none focus:ring-1 focus:ring-primary/50 shadow-inner text-sm transition-all"
           />
         </div>
 
         {/* Exchange toggle pills */}
-        <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 h-[42px] shadow-inner">
+        <div className="flex items-center bg-surface border border-border rounded-xl p-1 h-[40px] sm:h-[42px] shadow-inner">
           <button
             onClick={() => onChange({ ...filters, exchange: 'BSE' })}
             className={clsx(
@@ -91,12 +91,12 @@ export default function AnnouncementFilters({ filters, onChange, categoryCounts 
         </div>
 
         {/* Date range */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <input type="date" value={filters.fromDate} onChange={update('fromDate')}
-            className="bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-sm shadow-inner cursor-pointer transition-all" />
-          <span className="text-textMuted text-sm">–</span>
+            className="bg-surface border border-border rounded-xl px-2 py-1.5 sm:px-4 sm:py-2 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-xs sm:text-sm shadow-inner cursor-pointer transition-all" />
+          <span className="text-textMuted text-xs sm:text-sm">–</span>
           <input type="date" value={filters.toDate} onChange={update('toDate')}
-            className="bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-sm shadow-inner cursor-pointer transition-all" />
+            className="bg-surface border border-border rounded-xl px-2 py-1.5 sm:px-4 sm:py-2 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-xs sm:text-sm shadow-inner cursor-pointer transition-all" />
         </div>
 
         {hasFilters && (

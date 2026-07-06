@@ -190,6 +190,41 @@ app.get('/api/announcements', verifyToken, async (req, res) => {
   }
 });
 
+// ── PROTECTED: Announcement stats (no limit) ─────────────────────────────────
+app.get('/api/announcements/stats', verifyToken, async (req, res) => {
+  try {
+    const { getDb } = require('./lib/mongoClient');
+    const mongoDb = await getDb();
+    const col = mongoDb.collection('announcements');
+    const [total, bseCount, nseCount] = await Promise.all([
+      col.countDocuments(),
+      col.countDocuments({ exchange: 'BSE' }),
+      col.countDocuments({ exchange: 'NSE' }),
+    ]);
+    res.json({ total, bse: bseCount, nse: nseCount });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+// ── PROTECTED: Fetch NSE live & save to DB ────────────────────────────────────
+app.post('/api/announcements/fetch-nse', verifyToken, async (req, res) => {
+  try {
+    const { fetchAllNSEAnnouncements } = require('./lib/nseScraper');
+    const { saveAnnouncements } = require('./lib/announcementStore');
+    const nseAll = await fetchAllNSEAnnouncements(new Map());
+    if (nseAll.length > 0) {
+      const result = await saveAnnouncements(nseAll);
+      console.log(`[FetchNSE] Saved ${result.saved} new NSE announcements`);
+      res.json({ fetched: nseAll.length, saved: result.saved });
+    } else {
+      res.json({ fetched: 0, saved: 0 });
+    }
+  } catch (e) {
+    console.error('[FetchNSE] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── PROTECTED: Alert history ──────────────────────────────────────────────────
 app.get('/api/alerts', verifyToken, async (req, res) => {
   try {
@@ -551,7 +586,7 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
     const nseWatchedMap = new Map([...nseSet].map((c) => [c.toUpperCase(), metaMap.get(c) || {}]));
     const [bseAll, nseAll] = await Promise.all([
       bseSet.size > 0 ? fetchAllBSEAnnouncements() : Promise.resolve([]),
-      nseSet.size > 0 ? fetchAllNSEAnnouncements(nseWatchedMap) : Promise.resolve([]),
+      fetchAllNSEAnnouncements(nseWatchedMap), // Always fetch NSE for All Announcements page
     ]);
 
 
@@ -800,7 +835,7 @@ app.all('/api/cron/trigger', async (req, res) => {
     const nseWatchedMap = new Map([...nseSet].map((c) => [c.toUpperCase(), metaMap.get(c) || {}]));
     const [bseAll, nseAll] = await Promise.all([
       fetchAllBSEAnnouncements(),
-      nseSet.size > 0 ? fetchAllNSEAnnouncements(nseWatchedMap) : Promise.resolve([]),
+      fetchAllNSEAnnouncements(nseWatchedMap), // Always fetch NSE — data needs to be in DB for All Announcements page
     ]);
 
     const allFetched = [];

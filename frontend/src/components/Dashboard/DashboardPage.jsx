@@ -108,6 +108,7 @@ export default function DashboardPage() {
   const [indicesLoading, setIndicesLoading] = useState(true)
 
   const [blockedCategories, setBlockedCategories] = useState([])
+  const [dbStats, setDbStats] = useState(null)
 
   useEffect(() => {
     getAlerts(currentUser?.uid, 200).then((a) => setAlertCount(a.length)).catch(() => {})
@@ -116,6 +117,8 @@ export default function DashboardPage() {
         if (p && p.blockedCategories) setBlockedCategories(p.blockedCategories)
       }).catch(() => {})
     }
+    // Fetch real DB stats (total BSE/NSE counts)
+    apiClient('/api/announcements/stats').then(s => setDbStats(s)).catch(() => {})
   }, [currentUser])
 
   function loadMarket() {
@@ -275,11 +278,13 @@ export default function DashboardPage() {
           icon={Star} colorClass="text-primary" loading={watchlistLoading}
         />
         <StatCard
-          label="Today's Announcements" value={todayAnn.length}
-          sub={todayAnn.length > 0
-            ? `${todayAnn.filter(a => a.exchange === 'BSE').length} BSE · ${todayAnn.filter(a => a.exchange === 'NSE').length} NSE`
-            : 'Fetch news to update'}
-          icon={Bell} colorClass="text-emerald-400" loading={announcementsLoading}
+          label="Today's Announcements" value={dbStats ? dbStats.total : todayAnn.length}
+          sub={dbStats
+            ? `${dbStats.bse.toLocaleString()} BSE · ${dbStats.nse.toLocaleString()} NSE`
+            : todayAnn.length > 0
+              ? `${todayAnn.filter(a => a.exchange === 'BSE').length} BSE · ${todayAnn.filter(a => a.exchange === 'NSE').length} NSE`
+              : 'Fetch news to update'}
+          icon={Bell} colorClass="text-emerald-400" loading={announcementsLoading && !dbStats}
         />
         <Link to="/alerts" className="block">
           <StatCard
@@ -444,34 +449,40 @@ export default function DashboardPage() {
       </div>
 
       {/* Exchange breakdown bar */}
-      {(bseCount + nseCount) > 0 && (
-        <div className="glass-panel rounded-2xl p-6 mb-6">
-          <h2 className="text-sm font-medium text-textPrimary mb-3">Exchange Breakdown</h2>
-          <div className="flex items-center gap-6">
-            <div className="flex-1 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-textMuted">BSE</span>
-                <span className="font-semibold text-blue-400">{bseCount}</span>
+      {(() => {
+        const bTotal = dbStats ? dbStats.bse : bseCount
+        const nTotal = dbStats ? dbStats.nse : nseCount
+        const grand  = bTotal + nTotal
+        if (grand <= 0) return null
+        return (
+          <div className="glass-panel rounded-2xl p-6 mb-6">
+            <h2 className="text-sm font-medium text-textPrimary mb-3">Exchange Breakdown</h2>
+            <div className="flex items-center gap-6">
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-textMuted">BSE</span>
+                  <span className="font-semibold text-blue-400">{bTotal.toLocaleString()}</span>
+                </div>
+                <div className="h-2 bg-background rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-500 rounded-full transition-all"
+                    style={{ width: `${(bTotal / grand) * 100}%` }} />
+                </div>
               </div>
-              <div className="h-2 bg-background rounded-full overflow-hidden">
-                <div className="h-full bg-blue-500 rounded-full transition-all"
-                  style={{ width: `${(bseCount / (bseCount + nseCount)) * 100}%` }} />
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-textMuted">NSE</span>
+                  <span className="font-semibold text-orange-400">{nTotal.toLocaleString()}</span>
+                </div>
+                <div className="h-2 bg-background rounded-full overflow-hidden">
+                  <div className="h-full bg-orange-500 rounded-full transition-all"
+                    style={{ width: `${(nTotal / grand) * 100}%` }} />
+                </div>
               </div>
+              <span className="text-sm font-bold text-textPrimary whitespace-nowrap">{grand.toLocaleString()} total</span>
             </div>
-            <div className="flex-1 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-textMuted">NSE</span>
-                <span className="font-semibold text-orange-400">{nseCount}</span>
-              </div>
-              <div className="h-2 bg-background rounded-full overflow-hidden">
-                <div className="h-full bg-orange-500 rounded-full transition-all"
-                  style={{ width: `${(nseCount / (bseCount + nseCount)) * 100}%` }} />
-              </div>
-            </div>
-            <span className="text-sm font-bold text-textPrimary whitespace-nowrap">{bseCount + nseCount} total</span>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">

@@ -5,8 +5,8 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: '#6366F1', // Electric Indigo
-        primaryHover: '#4F46E5',
+        primary: '#3B82F6', // Blue 500
+        primaryHover: '#2563EB', // Blue 600
         background: 'var(--bg-base)', 
         surface: 'var(--bg-surface)', 
         surfaceHover: 'var(--bg-surface-hover)', 

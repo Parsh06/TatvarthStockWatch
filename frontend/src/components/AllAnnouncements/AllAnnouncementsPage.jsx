@@ -105,7 +105,13 @@ export default function AllAnnouncementsPage() {
     setLoading(true); setError(null); setPage(1); setSearch('')
     try {
       if (fromDate === today() && toDate === today()) {
-        const data = await getAnnouncementsFromDB({ limitCount: 1500 }) // Fetch enough to cover all today's announcements
+        // Fetch NSE live first (saves to DB), then read all from DB
+        try {
+          await apiClient('/api/announcements/fetch-nse', { method: 'POST' })
+        } catch (nseErr) {
+          console.warn('[AllAnnouncements] NSE fetch failed (non-blocking):', nseErr.message)
+        }
+        const data = await getAnnouncementsFromDB({ limitCount: 5000 }) // All today's BSE+NSE from DB
         setResult({
           from: fromDate,
           to: toDate,
@@ -194,8 +200,8 @@ export default function AllAnnouncementsPage() {
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-textPrimary">All BSE Announcements</h1>
-          <p className="text-sm text-textMuted mt-0.5">Browse all corporate filings across every listed company</p>
+          <h1 className="text-xl font-semibold text-textPrimary">All Announcements</h1>
+          <p className="text-sm text-textMuted mt-0.5">Browse all corporate filings across every listed company (BSE + NSE)</p>
         </div>
         {result && (
           <button onClick={() => exportToXLSX(filtered, `bse_announcements_${toYYYYMMDD(fromDate)}_${toYYYYMMDD(toDate)}.xlsx`)}
@@ -212,42 +218,42 @@ export default function AllAnnouncementsPage() {
         <div className="flex flex-wrap gap-2">
           {QUICK_RANGES.map((r) => (
             <button key={r.label} onClick={() => applyQuickRange(r)}
-              className={clsx('text-[11px] px-4 py-2 rounded-xl font-semibold transition hover:-translate-y-0.5 shadow-sm border',
+              className={clsx('text-[11px] px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl font-semibold transition hover:-translate-y-0.5 shadow-sm border',
                 fromDate === r.from() && toDate === r.to()
                   ? 'bg-primary/20 border-primary text-primary'
-                  : 'bg-black/20 border-white/5 text-textMuted hover:border-primary/40 hover:text-textPrimary')}>
+                  : 'bg-surface border-border text-textMuted hover:border-primary/40 hover:text-textPrimary')}>
               {r.label}
             </button>
           ))}
         </div>
 
         {/* Main filter row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div>
-            <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">From Date</label>
+            <label className="block text-[10px] sm:text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">From Date</label>
             <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
-              className="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner transition-all cursor-pointer" />
+              className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner transition-all cursor-pointer" />
           </div>
           <div>
-            <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">To Date</label>
+            <label className="block text-[10px] sm:text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">To Date</label>
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
-              className="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner transition-all cursor-pointer" />
+              className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner transition-all cursor-pointer" />
           </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">Filter by Script</label>
+          <div className="col-span-2 sm:col-span-1">
+            <label className="block text-[10px] sm:text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">Filter by Script</label>
             <ScriptSearchInput
               placeholder="Search company…"
               onSelect={(item) => { setCodeFilter(item ? item.bseCode : ''); setCodeLabel(item ? item.scripName : ''); setResult(null) }}
               onClear={() => { setCodeFilter(''); setCodeLabel(''); setResult(null) }}
             />
           </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">Category</label>
+          <div className="col-span-2 sm:col-span-1">
+            <label className="block text-[10px] sm:text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">Category</label>
             <div className="relative">
               <select
                 value={catFilter}
                 onChange={(e) => { setCatFilter(e.target.value); setPage(1) }}
-                className="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner transition-all appearance-none pr-8 cursor-pointer"
+                className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner transition-all appearance-none pr-8 cursor-pointer"
               >
                 <option value="">All Categories</option>
                 {result && categoryOptions.length > 0
@@ -273,7 +279,7 @@ export default function AllAnnouncementsPage() {
             </button>
             
             {/* Exchange Switch */}
-            <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 shadow-inner h-[42px]">
+            <div className="flex items-center bg-surface border border-border rounded-xl p-1 shadow-inner h-[40px] sm:h-[42px]">
               <button
                 onClick={() => setExchange('BSE')}
                 className={clsx(

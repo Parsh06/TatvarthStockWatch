@@ -29,7 +29,7 @@ const COLS = [
 ]
 
 export default function InsiderTradingPage() {
-  const [fromDate,   setFromDate]   = useState(() => dateNDaysAgo(2))
+  const [fromDate,   setFromDate]   = useState(today())
   const [toDate,     setToDate]     = useState(today())
   const [codeFilter, setCodeFilter] = useState('')
   const [loading,    setLoading]    = useState(false)
@@ -124,19 +124,19 @@ export default function InsiderTradingPage() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           <div>
-            <label className="block text-xs font-medium text-textMuted mb-1.5">From Date</label>
+            <label className="block text-[10px] sm:text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">From Date</label>
             <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-textMuted mb-1.5">To Date</label>
+            <label className="block text-[10px] sm:text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">To Date</label>
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60" />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-textMuted mb-1.5">Filter by Script (Optional)</label>
+          <div className="col-span-2 sm:col-span-1">
+            <label className="block text-[10px] sm:text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">Filter by Script (Optional)</label>
             <ScriptSearchInput
               placeholder="Search company…"
               onSelect={(item) => setCodeFilter(item ? item.bseCode : '')}

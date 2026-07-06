@@ -85,7 +85,7 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
         const data = await getAnnouncementsFromDB({
           exchange:   opts.exchange,
           scripCode:  opts.scripCode,
-          limitCount: 500, // Increased to support 1200+ announcements for today
+          limitCount: 5000, // Fetch all announcements stored in DB for today
         })
         setAnnouncements(data)
         setSource('db')
