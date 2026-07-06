@@ -1012,6 +1012,18 @@ app.all('/api/cron/trigger', async (req, res) => {
                       await sendTelegramAlert(ann);
                     }
                   }
+                  
+                  // Web Push Dispatch
+                  if (prefs.pushSubscription) {
+                    const { sendWebPush } = require('./lib/webPushNotifier');
+                    for (const ann of uActuallyPending) {
+                      await sendWebPush(prefs.pushSubscription, {
+                        title: `${ann.scriptName || ann.scriptCode} (${ann.exchange || 'BSE'})`,
+                        body: `[${ann.category || 'Announcement'}] ${ann.subject || 'New update'}`,
+                        url: ann.pdfUrl || `https://tatvarthstockwatch.web.app/`
+                      });
+                    }
+                  }
                 } catch (err) {
                   console.error(`[Global Cron] Error dispatching announcements for ${uid}:`, err.message);
                 }

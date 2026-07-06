@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../services/apiClient';
+import toast from 'react-hot-toast';
 
 export function useWebPush() {
   const [isSupported, setIsSupported] = useState(false);
@@ -12,6 +13,13 @@ export function useWebPush() {
   useEffect(() => {
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       setIsSupported(true);
+      
+      // Check if already subscribed on mount
+      navigator.serviceWorker.ready.then(reg => {
+        reg.pushManager.getSubscription().then(sub => {
+          if (sub) setIsSubscribed(true);
+        }).catch(err => console.error('Error checking subscription:', err));
+      });
     }
   }, []);
 
@@ -31,7 +39,10 @@ export function useWebPush() {
   };
 
   const subscribe = useCallback(async () => {
-    if (!isSupported) return false;
+    if (!isSupported) {
+      toast.error('Web Push is not supported in this browser.');
+      return false;
+    }
     
     setLoading(true);
     try {
@@ -39,7 +50,7 @@ export function useWebPush() {
       const perm = await Notification.requestPermission();
       setPermission(perm);
       if (perm !== 'granted') {
-        throw new Error('Notification permission denied');
+        throw new Error('Notification permission denied by user.');
       }
 
       // 2. Register Service Worker
@@ -48,7 +59,9 @@ export function useWebPush() {
 
       // 3. Get Public Key from Backend
       const { publicKey } = await apiClient('/api/push/public-key');
-      if (!publicKey) throw new Error('VAPID public key not configured on server');
+      if (!publicKey) {
+        throw new Error('VAPID public key not found on server. Did you add it to Vercel env?');
+      }
 
       // 4. Subscribe to PushManager
       const subscription = await registration.pushManager.subscribe({
@@ -63,9 +76,11 @@ export function useWebPush() {
       });
 
       setIsSubscribed(true);
+      toast.success('Successfully subscribed to browser notifications!');
       return true;
     } catch (err) {
       console.error('Failed to subscribe to web push:', err);
+      toast.error(`Subscription failed: ${err.message}`);
       return false;
     } finally {
       setLoading(false);
