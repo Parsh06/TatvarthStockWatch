@@ -567,6 +567,20 @@ app.post('/api/push/subscribe', verifyToken, async (req, res) => {
   }
 });
 
+app.post('/api/push/unsubscribe', verifyToken, async (req, res) => {
+  try {
+    const { getPrefs, savePrefs } = require('./lib/prefsStore');
+    const existing = await getPrefs(req.uid);
+    const updated = await savePrefs(req.uid, { 
+      ...existing, 
+      pushSubscription: null 
+    });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── PROTECTED: Trigger — fetch BSE/NSE announcements + kick off rates ─────────
 app.post('/api/trigger', verifyToken, async (req, res) => {
   const scripts = await watchlistStore.getWatchlist(req.uid);
@@ -577,7 +591,6 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
 
   const { fetchAllBSEAnnouncements } = require('./lib/bseScraper');
   const { fetchAllNSEAnnouncements } = require('./lib/nseScraper');
-  const { sendAnnouncementEmail }    = require('./lib/mailer');
 
   const bseSet = new Set(), nseSet = new Set(), metaMap = new Map();
   for (const s of scripts) {
@@ -645,14 +658,6 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
       // 1. Save ALL to MongoDB (only writes if genuinely new)
       const { saved, newAnnouncements } = await saveAnnouncements(allFetched);
       
-      // 1.5 Send Global Board Meeting Email Alerts
-      if (newAnnouncements && newAnnouncements.length > 0) {
-        // Run this in the background to not block the trigger response
-        processBoardMeetingAnnouncements(newAnnouncements).catch(e => {
-          console.error('[Trigger] Error in Board Meeting Notifier:', e.message);
-        });
-      }
-      
       // But only alert for the ones in the watchlist!
       const freshAll = newAnnouncements || [];
       freshAnnouncements = freshAll.filter((a) => bseSet.has(a.scriptCode) || nseSet.has((a.scriptCode || '').toUpperCase()));
@@ -696,32 +701,6 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
     }
 
     const { sendTelegramAlert, isConfigured: isTelegramOk } = require('./lib/telegramNotifier');
-    const emailOk     = !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
-    let targetEmail   = process.env.NOTIFY_EMAIL || process.env.GMAIL_USER;
-    let targetName    = 'Investor';
-
-    // Fetch actual user email if authenticated
-    if (req.uid && req.uid !== 'local') {
-      try {
-        const { admin } = require('./lib/firebaseAdmin');
-        const userRecord = await admin.auth().getUser(req.uid);
-        if (userRecord.email) {
-          targetEmail = userRecord.email;
-          targetName = userRecord.displayName || targetName;
-        }
-      } catch (err) {
-        console.error('[Trigger] Failed to fetch user email for UID', req.uid, err.message);
-      }
-    }
-
-    const silent = req.query.silent === '1';
-    let emailSent = false, emailError = null;
-    
-    // ONLY send notifications for TRULY FRESH announcements
-    if (emailOk && targetEmail && freshAnnouncements.length > 0) {
-      try { await sendAnnouncementEmail(targetEmail, targetName, freshAnnouncements); emailSent = true; }
-      catch (e) { emailError = e.message; console.error('[Trigger] Email failed:', e.message); }
-    }
 
     let telegramSent = false, telegramError = null;
     if (isTelegramOk() && freshAnnouncements.length > 0) {
@@ -736,7 +715,6 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
       announcements: matched, total: matched.length,
       bseMatched: bseMatched.length, nseMatched: nseMatched.length,
       bseFetched: bseAll.length,    nseFetched: nseAll.length,
-      emailSent, emailConfigured: emailOk, emailError,
       telegramSent, telegramConfigured: isTelegramOk(), telegramError,
     });
   } catch (e) {
@@ -858,12 +836,8 @@ app.all('/api/cron/trigger', async (req, res) => {
   }
 
   try {
-    // ── Step 0: Daily Midnight Cleanup ──────────────────────────────────────────
-    // Removed: We now check 'updatedAt' dynamically to prevent massive quota spikes.
-
     const watchlistStore = require('./lib/watchlistStore');
     const scripts = await watchlistStore.getAllTrackedScripts();
-    // Do NOT abort if scripts.length === 0, we still want to fetch BSE announcements globally
 
     const { fetchAllBSEAnnouncements } = require('./lib/bseScraper');
     const { fetchAllNSEAnnouncements } = require('./lib/nseScraper');
@@ -878,10 +852,9 @@ app.all('/api/cron/trigger', async (req, res) => {
 
     console.log('[Global Cron] Triggering for BSE: ' + bseSet.size + ' codes | NSE: ' + nseSet.size + ' symbols');
 
-    // 1. Fetch Announcements
     const nseWatchedMap = new Map([...nseSet].map((c) => [c.toUpperCase(), metaMap.get(c) || {}]));
     const [bseAll, nseAll] = await Promise.all([
-      fetchAllBSEAnnouncements(), // Fetch ALL BSE announcements unconditionally
+      fetchAllBSEAnnouncements(),
       nseSet.size > 0 ? fetchAllNSEAnnouncements(nseWatchedMap) : Promise.resolve([]),
     ]);
 
@@ -895,14 +868,12 @@ app.all('/api/cron/trigger', async (req, res) => {
       }
     }
 
-    // Match against watchlists for notifications
     const bseMatched = allFetched.filter((a) => bseSet.has(a.scriptCode));
     const nseMatched = allFetched.filter((a) => nseSet.has((a.scriptCode || '').toUpperCase()));
     const matched = [...bseMatched, ...nseMatched];
 
     if (allFetched.length > 0) {
       const { saveAnnouncements } = require('./lib/announcementStore');
-      // Save ALL announcements to global DB (MongoDB)
       const saveResult = await saveAnnouncements(allFetched);
       const newAnns = saveResult.newAnnouncements || [];
       
@@ -916,12 +887,9 @@ app.all('/api/cron/trigger', async (req, res) => {
         const mongoDb = await getDb();
         const receiveEmailCol = mongoDb.collection('receive_email');
         
-        // The atomic lock eliminates the need to pre-fetch state maps
         const admin = require('firebase-admin');
         const prefsStore = require('./lib/prefsStore');
-        const { sendAnnouncementEmails } = require('./lib/mailer');
-        const emailOk = !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
-        const { sendTelegramAlert, isConfigured: isTelegramOk } = require('./lib/telegramNotifier');
+        const { sendTelegramAlert } = require('./lib/telegramNotifier');
 
         const getDedupId = (ann, uid) => {
           const dateStr = new Date().toISOString().slice(0, 10);
@@ -945,7 +913,6 @@ app.all('/api/cron/trigger', async (req, res) => {
               if (s.symbol || s.nseSymbol) uNse.add((s.symbol || s.nseSymbol).trim().toUpperCase());
             }
 
-            // Find matching newly-discovered announcements for this user
             const uMatched = newMatched.filter((a) => {
               const code = (a.scriptCode || '').toUpperCase();
               return uBse.has(code) || uNse.has(code);
@@ -955,16 +922,12 @@ app.all('/api/cron/trigger', async (req, res) => {
               const uActuallyPending = [];
               for (const ann of uMatched) {
                 try {
-                  // 1. Try to lock the specific announcement
                   await receiveEmailCol.insertOne({ _id: `${ann.id}_${uid}`, announcementId: String(ann.id), userId: uid, createdAt: new Date() });
-                  
-                  // 2. Try to lock the global deduplication hash for cross-exchange spam prevention
                   const dedupId = getDedupId(ann, uid);
                   await receiveEmailCol.insertOne({ _id: dedupId, type: 'dedup_lock', userId: uid, createdAt: new Date() });
                   
                   uActuallyPending.push(ann);
                 } catch (e) {
-                  // Duplicate Key Error = already sent or deduplicated
                   if (e.code !== 11000) console.error(`[Global Cron] Error getting lock for ${uid}:`, e.message);
                 }
               }
@@ -972,11 +935,6 @@ app.all('/api/cron/trigger', async (req, res) => {
               if (uActuallyPending.length > 0) {
                 try {
                   const prefs = await prefsStore.getPrefs(uid);
-                  
-                  // Email Dispatch
-                  if (emailOk && prefs.emailEnabled !== false && user.email) {
-                    await sendAnnouncementEmails(user.email, user.displayName || 'User', uActuallyPending);
-                  }
                   
                   // Telegram Dispatch
                   const isTelegramOk = () => !!(process.env.TELEGRAM_BOT_TOKEN && (prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID));
