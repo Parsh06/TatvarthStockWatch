@@ -69,11 +69,11 @@ export async function bulkAddScripts(uid, scripts) {
   const res = await apiClient('/api/watchlist/bulk', {
     method: 'POST',
     body:   JSON.stringify({ scripts: toAdd }),
-  })
+  });
 
   // Trigger email catch-up for today's announcements in the background sequentially
   // to avoid hitting Vercel serverless concurrent memory/connection limits (Exit code 128)
-  (async () => {
+  ;(async () => {
     for (const item of toAdd) {
       try {
         await apiClient('/api/watchlist/catchup', {
