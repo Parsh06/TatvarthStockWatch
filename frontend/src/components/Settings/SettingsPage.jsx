@@ -8,6 +8,7 @@ import { getPrefs, savePrefs } from '../../services/alertService'
 import ConfirmDialog from '../Common/ConfirmDialog'
 import toast from 'react-hot-toast'
 import { auth } from '../../services/firebase'
+import { useWebPush } from '../../hooks/useWebPush'
 
 function Section({ title, icon: Icon, children }) {
   return (
@@ -26,6 +27,7 @@ function Section({ title, icon: Icon, children }) {
 export default function SettingsPage() {
   const { currentUser, logout } = useAuth()
   const { watchlist, clearWatchlist } = useWatchlist()
+  const { isSupported, isSubscribed, loading: pushLoading, subscribe } = useWebPush()
   const [displayName, setDisplayName] = useState(currentUser?.displayName || '')
   const [savingProfile, setSavingProfile] = useState(false)
 
@@ -234,6 +236,26 @@ export default function SettingsPage() {
               </div>
             </label>
           ))}
+          {isSupported && (
+            <label className="flex items-center justify-between cursor-pointer">
+              <div>
+                <p className="text-sm font-medium text-textPrimary">Browser Notifications</p>
+                <p className="text-xs text-textMuted">Receive OS-level system notifications in background</p>
+              </div>
+              {isSubscribed ? (
+                <div className="text-xs font-semibold text-primary px-2 py-1 bg-primary/10 rounded-md">Subscribed</div>
+              ) : (
+                <button 
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); subscribe(); }}
+                  disabled={pushLoading}
+                  className="text-xs font-medium bg-surface text-textPrimary border border-border px-3 py-1.5 rounded-lg hover:bg-border/50 disabled:opacity-50"
+                >
+                  {pushLoading ? 'Subscribing...' : 'Enable'}
+                </button>
+              )}
+            </label>
+          )}
           <div>
             <label className="block text-sm font-medium text-textPrimary mb-1.5">Alert Frequency</label>
             <select

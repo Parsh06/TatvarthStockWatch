@@ -540,6 +540,25 @@ app.patch('/api/watchlist/:id/alert', verifyToken, async (req, res) => {
 
 
 
+// ── Web Push Notifications ────────────────────────────────────────────────────
+app.get('/api/push/public-key', (req, res) => {
+  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' });
+});
+
+app.post('/api/push/subscribe', verifyToken, async (req, res) => {
+  try {
+    const { getPrefs, savePrefs } = require('./lib/prefsStore');
+    const existing = await getPrefs(req.uid);
+    const updated = await savePrefs(req.uid, { 
+      ...existing, 
+      pushSubscription: req.body 
+    });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── PROTECTED: Trigger — fetch BSE/NSE announcements + kick off rates ─────────
 app.post('/api/trigger', verifyToken, async (req, res) => {
   const scripts = await watchlistStore.getWatchlist(req.uid);

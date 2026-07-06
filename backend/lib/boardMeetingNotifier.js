@@ -79,10 +79,19 @@ async function getSubscribedUsers() {
       const result = await admin.auth().getUsers(batch);
       for (const record of result.users) {
         if (record.email) {
+          // get the pref doc to find pushSubscription
+          let pushSub = null;
+          snapshot.forEach(doc => {
+            if (doc.id === record.uid) {
+              pushSub = doc.data().pushSubscription;
+            }
+          });
+          
           users.push({
             uid: record.uid,
             email: record.email,
-            name: record.displayName || 'Investor'
+            name: record.displayName || 'Investor',
+            pushSubscription: pushSub
           });
         }
       }
@@ -173,6 +182,16 @@ async function processBoardMeetingAnnouncements(newAnnouncements) {
           try {
             await sendBoardMeetingAlertEmail(user.email, user.name, ann);
             sentCount++;
+            
+            // Web Push notification
+            if (user.pushSubscription) {
+              const { sendWebPush } = require('./webPushNotifier');
+              await sendWebPush(user.pushSubscription, {
+                title: `Tatvarth Stock Watch - ${ann.scriptName || ann.scriptCode}`,
+                body: `Board Meeting Outcome: ${ann.subject || 'Results Published'}`,
+                url: `https://tatvarthstockwatch.web.app/board-meetings`
+              });
+            }
           } catch (e) {
             status = 'Failed';
             reason = e.message;
