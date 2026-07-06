@@ -37,7 +37,6 @@ export default function SettingsPage() {
   const [savingPw, setSavingPw] = useState(false)
 
   const [notifPrefs, setNotifPrefs] = useState({
-    emailEnabled: true,
     telegramEnabled: true,
     telegramChatId: '',
     inAppEnabled: true,

@@ -84,7 +84,7 @@ export async function ensureUserProfile(uid, { displayName, email }) {
         email:       email || '',
         tier:        'free',
         createdAt:   serverTimestamp(),
-        prefs: { emailEnabled: true, telegramEnabled: true, inAppEnabled: true, frequency: 'realtime' },
+        prefs: { telegramEnabled: true, inAppEnabled: true, frequency: 'realtime' },
         ltdCodesIndex: [],
       })
     }
