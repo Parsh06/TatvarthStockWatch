@@ -27,7 +27,7 @@ const mobileNav = [
   { to: '/news',              icon: Newspaper,       label: 'Market'    },
   { to: '/bulk-block',        icon: Layers,          label: 'Deals'     },
   { to: '/insider',           icon: Eye,             label: 'Insider'   },
-  { to: '/alerts',            icon: BellRing,        label: 'Alerts'    },
+
   { to: '/premium',           icon: Crown,           label: 'Premium'   },
   { to: '/settings',          icon: Settings,        label: 'Settings'  },
 ]

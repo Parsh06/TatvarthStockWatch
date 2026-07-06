@@ -540,9 +540,6 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
       const { getDb } = require('./lib/mongoClient');
       const mongoDb = await getDb();
       await mongoDb.collection('announcements').deleteMany({});
-      await mongoDb.collection('receive_email').deleteMany({});
-      await mongoDb.collection('board_meeting_email_logs').deleteMany({});
-      await mongoDb.collection('board_meeting_processing').deleteMany({});
       writeAnnouncements([], { lastTriggeredAt: new Date().toISOString() });
     } catch (e) {
       console.error('[Trigger] Error during midnight wipe:', e.message);
@@ -758,6 +755,32 @@ app.all('/api/cron/trigger', async (req, res) => {
   }
 
   try {
+    const admin = require('firebase-admin');
+    const dbAdmin = admin.firestore();
+    const metaRef = dbAdmin.collection('system_meta').doc('cron_status');
+    const metaSnap = await metaRef.get();
+    
+    // Get current date in IST
+    const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+    const todayDateStr = nowIST.toISOString().split('T')[0];
+    
+    let lastWipeDate = '';
+    if (metaSnap.exists) {
+      lastWipeDate = metaSnap.data().lastWipeDate || '';
+    }
+    
+    // If we've crossed midnight IST, wipe the database clean
+    if (lastWipeDate !== todayDateStr) {
+      console.log(`[Global Cron] New day detected (${todayDateStr})! Wiping legacy announcements...`);
+      const { getDb } = require('./lib/mongoClient');
+      const mongoDb = await getDb();
+      await mongoDb.collection('announcements').deleteMany({});
+      await mongoDb.collection('alert_dedup_locks').deleteMany({});
+      
+      await metaRef.set({ lastWipeDate: todayDateStr }, { merge: true });
+      console.log('[Global Cron] Midnight wipe complete.');
+    }
+
     const watchlistStore = require('./lib/watchlistStore');
     const scripts = await watchlistStore.getAllTrackedScripts();
 
@@ -807,7 +830,7 @@ app.all('/api/cron/trigger', async (req, res) => {
       if (newMatched.length > 0) {
         const { getDb } = require('./lib/mongoClient');
         const mongoDb = await getDb();
-        const receiveEmailCol = mongoDb.collection('receive_email');
+        const alertDedupLocksCol = mongoDb.collection('alert_dedup_locks');
         
         const admin = require('firebase-admin');
         const prefsStore = require('./lib/prefsStore');
@@ -844,9 +867,9 @@ app.all('/api/cron/trigger', async (req, res) => {
               const uActuallyPending = [];
               for (const ann of uMatched) {
                 try {
-                  await receiveEmailCol.insertOne({ _id: `${ann.id}_${uid}`, announcementId: String(ann.id), userId: uid, createdAt: new Date() });
+                  await alertDedupLocksCol.insertOne({ _id: `${ann.id}_${uid}`, announcementId: String(ann.id), userId: uid, createdAt: new Date() });
                   const dedupId = getDedupId(ann, uid);
-                  await receiveEmailCol.insertOne({ _id: dedupId, type: 'dedup_lock', userId: uid, createdAt: new Date() });
+                  await alertDedupLocksCol.insertOne({ _id: dedupId, type: 'dedup_lock', userId: uid, createdAt: new Date() });
                   
                   uActuallyPending.push(ann);
                 } catch (e) {
