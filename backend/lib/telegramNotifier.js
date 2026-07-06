@@ -42,7 +42,12 @@ function buildAnnouncementBlock(a) {
   const code     = esc(a.scriptCode || a.scripCode || '');
   const category = esc(a.category || 'General');
   const subject  = esc((a.subject || a.headline || '').trim());
-  const aiSum    = esc(a.aiSummary || a.summary || a.ai_summary || '');
+  
+  const aiRaw = a.aiSummary || a.summary || a.ai_summary;
+  const aiSumText = esc(typeof aiRaw === 'string' ? aiRaw : (aiRaw?.summary || ''));
+  const sentiment = aiRaw?.sentiment ? esc(aiRaw.sentiment) : '';
+  const importance = aiRaw?.importance ? esc(aiRaw.importance) : '';
+  
   const dateStr  = esc(a.datetimeIST || a.date || '');
   const exIcon   = exchangeIcon(a.exchange);
   const catIcon  = categoryIcon(a.category);
@@ -50,8 +55,15 @@ function buildAnnouncementBlock(a) {
   let block = `🏢 <b>${name}</b> ${code ? `(<code>${code}</code>)` : ''}\n`;
   block += `${catIcon} <b>${category}</b>\n\n`;
 
-  if (aiSum) {
-    block += `✨ <b>AI Summary:</b>\n<i>${aiSum}</i>\n\n`;
+  if (aiSumText) {
+    let aiHeader = '✨ <b>AI Summary:</b>';
+    if (sentiment || importance) {
+       const tags = [];
+       if (importance) tags.push(`Priority: ${importance}`);
+       if (sentiment) tags.push(`Sentiment: ${sentiment}`);
+       aiHeader = `✨ <b>AI Insights</b> <i>(${tags.join(' | ')})</i><b>:</b>`;
+    }
+    block += `${aiHeader}\n<i>${aiSumText}</i>\n\n`;
     block += `📝 <b>Original Subject:</b>\n${subject.slice(0, 250)}${subject.length > 250 ? '...' : ''}\n\n`;
   } else if (subject) {
     block += `📝 <b>Details:</b>\n${subject.slice(0, 400)}${subject.length > 400 ? '...' : ''}\n\n`;
