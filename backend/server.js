@@ -515,16 +515,29 @@ app.get('/api/push/public-key', (req, res) => {
 app.post('/api/push/subscribe', verifyToken, async (req, res) => {
   try {
     const pushStore = require('./lib/pushStore');
-    const { subscription, deviceId, platform, browser, userAgent } = req.body;
+    
+    // Backwards compatibility for old frontends (where req.body IS the subscription)
+    let subscription = req.body.subscription;
+    let deviceId = req.body.deviceId;
+    let platform = req.body.platform || 'unknown';
+    let browser = req.body.browser || 'unknown';
+    let userAgent = req.body.userAgent || '';
+
+    if (!subscription && req.body.endpoint) {
+      // Old frontend sent the subscription object directly
+      subscription = req.body;
+      deviceId = 'legacy_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+      browser = 'unknown (legacy client)';
+    }
 
     if (!subscription || !deviceId) {
       return res.status(400).json({ error: 'subscription and deviceId are required' });
     }
 
     await pushStore.registerDevice(req.uid, deviceId, subscription, {
-      platform: platform || 'unknown',
-      browser:  browser  || 'unknown',
-      userAgent: userAgent || '',
+      platform,
+      browser,
+      userAgent,
     });
 
     // Also migrate any legacy prefs.pushSubscription if present
