@@ -997,33 +997,12 @@ app.all('/api/cron/trigger', async (req, res) => {
               } catch (err) {
                 console.error(`[Global Cron] Failed to get prefs for ${uid}:`, err.message);
               }
-              const blocked = prefs.blockedCategories || [];
-              const { resolveCategoryGroup } = require('./lib/alertCategories');
+              const { shouldNotify } = require('./lib/notificationFilter');
 
               const uActuallyPending = [];
               for (const ann of uMatched) {
-                const catRaw = (ann.category || '').trim();
-                const subCatRaw = (ann.subCategory || '').trim();
-                const catGroup = resolveCategoryGroup(catRaw);
-                const subCatGroup = resolveCategoryGroup(subCatRaw);
-                
-                // 1. Master Switch: Are any parent groups blocked?
-                const parents = new Set([catGroup, subCatGroup].filter(Boolean));
-                const anyParentBlocked = Array.from(parents).some(p => blocked.includes(p));
-                
-                // 2. Specific Categories: Is at least one enabled? (Option A)
-                const specifics = new Set([catRaw, subCatRaw].filter(Boolean));
-                const specificsArr = Array.from(specifics);
-                let anySpecificEnabled = true;
-                
-                if (specificsArr.length > 0) {
-                  anySpecificEnabled = specificsArr.some(c => !blocked.includes(c));
-                }
-                
-                // Notification is sent ONLY if NO parents are blocked AND AT LEAST ONE specific category is enabled
-                const isBlocked = anyParentBlocked || !anySpecificEnabled;
-                
-                if (isBlocked) continue;
+                const { shouldNotify: allow } = shouldNotify({ prefs, announcement: ann, uid });
+                if (!allow) continue;
 
                 try {
                   await alertDedupLocksCol.insertOne({ _id: `${ann.id}_${uid}`, announcementId: String(ann.id), userId: uid, createdAt: new Date() });
