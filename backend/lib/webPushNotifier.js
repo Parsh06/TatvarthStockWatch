@@ -125,7 +125,41 @@ async function sendWebPushToUser(uid, payload) {
   return { sent, failed, expired, total: devices.length };
 }
 
+/**
+ * Send a push notification to a specific device.
+ * Automatically cleans up if the subscription is expired.
+ */
+async function sendWebPushToDevice(uid, deviceId, payload) {
+  if (!initWebPush()) return { sent: 0, failed: 0, expired: 0, total: 0 };
+  if (!uid || !deviceId) return { sent: 0, failed: 0, expired: 0, total: 0 };
+
+  const pushStore = require('./pushStore');
+  const device = await pushStore.getDevice(uid, deviceId);
+
+  if (!device || !device.subscription) {
+    return { sent: 0, failed: 1, expired: 0, total: 1 };
+  }
+
+  const result = await sendWebPush(device.subscription, payload);
+
+  if (result.expired) {
+    try {
+      await pushStore.removeDevice(uid, deviceId);
+      console.log(`[WebPush] Auto-removed expired device ${deviceId} for user ${uid}`);
+    } catch (e) {}
+    return { sent: 0, failed: 0, expired: 1, total: 1 };
+  }
+
+  return { 
+    sent: result.sent ? 1 : 0, 
+    failed: result.sent ? 0 : 1, 
+    expired: 0, 
+    total: 1 
+  };
+}
+
 module.exports = {
   sendWebPush,
   sendWebPushToUser,
+  sendWebPushToDevice,
 };

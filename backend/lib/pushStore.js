@@ -236,12 +236,28 @@ async function touchDevice(uid, deviceId) {
   }
 }
 
+/**
+ * Get a specific device by its deviceId.
+ */
+async function getDevice(uid, deviceId) {
+  if (!uid || !deviceId) return null;
+  const db = getDb();
+  try {
+    const snap = await db.collection('users').doc(uid).collection('pushDevices').doc(deviceId).get();
+    if (!snap.exists) return null;
+    return { deviceId: snap.id, ...snap.data() };
+  } catch (e) {
+    return null;
+  }
+}
+
 module.exports = {
   registerDevice,
   removeDevice,
   removeDeviceByEndpoint,
   getAllDevices,
   getDeviceCount,
+  getDevice,
   removeStaleDevices,
   migrateLegacySubscription,
   touchDevice,

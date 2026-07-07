@@ -567,16 +567,27 @@ app.post('/api/push/unsubscribe', verifyToken, async (req, res) => {
   }
 });
 
-// Send a test push notification to all devices of the current user
+// Send a test push notification
 app.post('/api/push/test', verifyToken, async (req, res) => {
   try {
-    const { sendWebPushToUser } = require('./lib/webPushNotifier');
-    const result = await sendWebPushToUser(req.uid, {
+    const { sendWebPushToUser, sendWebPushToDevice } = require('./lib/webPushNotifier');
+    const { deviceId } = req.body || {};
+    
+    const payload = {
       title: 'Tatvarth Stock Watch — Test',
       body: '✅ Push notifications are working! You will receive alerts on this device.',
       url: 'https://tatvarthstockwatch.web.app/settings',
       tag: 'test-notification',
-    });
+    };
+
+    let result;
+    if (deviceId) {
+      result = await sendWebPushToDevice(req.uid, deviceId, payload);
+    } else {
+      // Fallback for old frontend that doesn't send deviceId
+      result = await sendWebPushToUser(req.uid, payload);
+    }
+    
     res.json({ success: true, ...result });
   } catch (e) {
     console.error('[Push Test]', e.message);

@@ -244,15 +244,19 @@ export function useWebPush() {
   }, []);
 
   /**
-   * Send a test notification to all devices of the current user.
+   * Send a test notification to the current device.
    */
   const sendTest = useCallback(async () => {
     try {
-      const result = await apiClient('/api/push/test', { method: 'POST' });
+      const deviceId = getDeviceId();
+      const result = await apiClient('/api/push/test', { 
+        method: 'POST',
+        body: JSON.stringify({ deviceId }) 
+      });
       if (result.sent > 0) {
-        toast.success(`Test notification sent to ${result.sent} device(s)!`);
+        toast.success(`Test notification sent to this device!`);
       } else {
-        toast.error('No devices received the test notification. Try re-enabling push.');
+        toast.error('Could not send notification. Try re-enabling push.');
       }
       return result;
     } catch (err) {
