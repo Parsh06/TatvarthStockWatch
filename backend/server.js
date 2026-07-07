@@ -749,13 +749,38 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
     }
 
     const { sendTelegramAlert, isConfigured: isTelegramOk } = require('./lib/telegramNotifier');
+    const { sendWebPushToUser } = require('./lib/webPushNotifier');
+    const { shouldNotify } = require('./lib/notificationFilter');
 
+    // Per-user filtered notification dispatch (same as cron)
     let telegramSent = false, telegramError = null;
-    if (isTelegramOk() && freshAnnouncements.length > 0) {
+    if (freshAnnouncements.length > 0) {
       try {
-        const r = await sendTelegramAlert(freshAnnouncements);
-        telegramSent  = r.sent;
-        if (!r.sent) telegramError = r.errors?.join(', ') || r.reason;
+        const prefs = await prefsStore.getPrefs(req.uid) || {};
+        const filteredForUser = freshAnnouncements.filter(ann => {
+          const { shouldNotify: allow } = shouldNotify({ prefs, announcement: ann, uid: req.uid });
+          return allow;
+        });
+
+        if (filteredForUser.length > 0) {
+          // Telegram
+          if (isTelegramOk() && prefs.telegramEnabled !== false) {
+            const targetChat = prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID;
+            const r = await sendTelegramAlert(filteredForUser, targetChat);
+            telegramSent = r.sent;
+            if (!r.sent) telegramError = r.errors?.join(', ') || r.reason;
+          }
+
+          // Web Push (multi-device)
+          for (const ann of filteredForUser) {
+            await sendWebPushToUser(req.uid, {
+              title: `${ann.scriptName || ann.scriptCode} (${ann.exchange || 'BSE'})`,
+              body: `[${ann.category || 'Announcement'}] ${ann.subject || 'New update'}`,
+              url: ann.pdfUrl || `https://tatvarthstockwatch.web.app/`,
+              tag: `ann-${String(ann.id).slice(0, 20)}`,
+            });
+          }
+        }
       } catch (e) { telegramError = e.message; }
     }
 
