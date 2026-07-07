@@ -1,208 +1,272 @@
-# StockWatch — CLAUDE.md
+# StockWatch — Project Reference
 
-## What this app does
-BSE/NSE corporate announcement tracker. Fetches all BSE announcements daily, filters to user's watchlist, sends email alerts. 3–4 users, up to 4000 scripts each.
+## App Summary
+BSE/NSE corporate announcement tracker. Users add stocks to a watchlist → backend fetches all BSE/NSE announcements daily → matches against watchlists → sends Telegram + Web Push + In-App notifications. Production on Firebase Hosting + Railway backend.
 
 ---
 
 ## Stack
-
 | Layer | Tech |
 |---|---|
 | Frontend | React 18 + Vite + Tailwind CSS |
-| Backend (local) | Express (`backend/server.js`) |
-| Backend (prod) | Vercel serverless (`backend/api/**`) |
-| Auth | Firebase Auth (skipped in local mode) |
-| DB (prod) | Firestore |
-| DB (local) | `backend/scripts.json` (watchlist) + `backend/announcements.json` (fetched) |
-| Email | Nodemailer + Gmail SMTP |
-| BSE API | `api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w` |
+| Backend | Express `backend/server.js` (Railway) |
+| Auth | Firebase Auth (JWT via `verifyToken` middleware) |
+| Primary DB | MongoDB Atlas (`mongoClient.js`) |
+| Secondary DB | Firestore (user prefs, push devices, alerts, system meta) |
+| Push Notifications | Web Push (VAPID) via `web-push` npm package |
+| Telegram | `node-telegram-bot-api` (per-user chat IDs) |
+| Rates/Cache | Upstash Redis (rate data) or local JSON fallback |
+| BSE Data | `api.bseindia.com` — Akamai-protected, cookie-based |
+| NSE Data | `www.nseindia.com` — cookie-based |
 
 ---
 
-## Running locally
-
+## Running Locally
 ```
-# Terminal 1 — backend
-cd stockwatch/backend && npm start       # http://localhost:3000
+# Terminal 1
+cd backend && npm start        # http://localhost:3000
 
-# Terminal 2 — frontend
-cd stockwatch/frontend && npm run dev    # http://localhost:5173
+# Terminal 2
+cd frontend && npm run dev     # http://localhost:5173
 ```
-
-Vite proxies `/api/*` → `http://localhost:3000` — no CORS issues.
-
----
-
-## Local vs Production mode
-
-Controlled by `FIREBASE_ENABLED = Boolean(VITE_FIREBASE_API_KEY && VITE_FIREBASE_PROJECT_ID)` in `frontend/src/services/firebase.js`.
-
-| Feature | Local (no Firebase vars) | Production (Firebase vars set) |
-|---|---|---|
-| Auth | Auto-login as DEMO_USER | Firebase Auth |
-| Watchlist storage | `backend/scripts.json` via REST | Firestore `users/{uid}/watchlist` |
-| Announcements | `backend/announcements.json` | Firestore `announcements/` |
-| Login page | Never shown | Shown when unauthenticated |
-
-**To go to production:** add Firebase + Gmail env vars, deploy backend to Vercel. Zero code changes needed.
+Vite proxies `/api/*` → `http://localhost:3000`.
 
 ---
 
-## Key files — read these before any feature work
-
+## Key Files
 ```
 backend/
-  server.js                      Express server (local only) — all REST endpoints
-  scripts.json                   Local watchlist DB
-  announcements.json             Local announcements DB (populated by Fetch News)
+  server.js                   All Express routes + cron job + rate limiter
+  routes/
+    bseRoutes.js               BSE proxy routes (quote, chart, company info, search)
+    nseRoutes.js               NSE proxy routes
   lib/
-    bseScraper.js                BSE API + Akamai bypass + pagination
-    mailer.js                    Email HTML builder + Nodemailer sender
-    firebaseAdmin.js             Admin SDK init (lazy, deferred on missing creds)
-    announcementStore.js         Firestore announcement CRUD (prod only)
-  api/cron/
-    check-announcements.js       Vercel cron — fetches BSE, notifies users
+    alertCategories.js         Parent-group → subcategory mapping (used by cron filter)
+    alertStore.js              Firestore: users/{uid}/alerts CRUD
+    aiSummarizer.js            GPT-based announcement summarizer
+    announcementStore.js       MongoDB 'announcements' collection CRUD
+    apiClients.js              BSE/NSE/Yahoo HTTP clients (Akamai bypass)
+    authMiddleware.js          Firebase token verification (verifyToken)
+    bseScraper.js              BSE announcements fetcher + normalizer
+    bseRates.js                BSE live rate fetcher (batch)
+    firebaseAdmin.js           Admin SDK init
+    mongoClient.js             MongoDB Atlas connection
+    nseScraper.js              NSE announcements fetcher + normalizer
+    prefsStore.js              Firestore: users/{uid}.prefs read/write
+    priceAlertChecker.js       Checks watchlist price alerts vs live rates
+    prompts.js                 AI prompt templates
+    pushStore.js               Firestore: users/{uid}/pushDevices CRUD
+    ratesStore.js              Upstash Redis / local JSON for live rates
+    telegramNotifier.js        Telegram message sender (per-user chatId)
+    watchlistStore.js          MongoDB 'watchlists' collection CRUD
+    webPushNotifier.js         Web Push sender (per-device + per-user)
 
 frontend/src/
   services/
-    firebase.js                  FIREBASE_ENABLED flag — controls local vs prod
-    watchlistService.js          Dual-mode: REST API (local) / Firestore (prod)
-    announcementService.js       Announcement fetch + Firestore reads
+    firebase.js                Firebase init + FIREBASE_ENABLED flag
+    apiClient.js               Authenticated fetch wrapper
+    alertService.js            Save/load notification prefs
+    announcementService.js     Fetch announcements from backend
+    watchlistService.js        Watchlist CRUD
   contexts/
-    AuthContext.jsx              Auto-login as DEMO_USER when FIREBASE_ENABLED=false
-    WatchlistContext.jsx         Global watchlist state — no mock data
+    AuthContext.jsx             Firebase Auth state + auto-login
+    WatchlistContext.jsx        Global watchlist state
+    TierContext.jsx             Premium tier gating
   hooks/
-    useWatchlist.js              Adds filtering (search/exchange) on top of context
-    useAnnouncements.js          Dual-mode: GET /api/announcements (local) / Firestore (prod)
+    useAnnouncements.js        Announcements fetch + filtering
+    useWebPush.js              Web push subscribe/unsubscribe/test
+    useWatchlist.js            Watchlist search/filter
+    useRatesSocket.js          Live rates polling
+    useCronStatus.js           Cron job status polling
+  utils/
+    bseCategories.js           ALERT_CATEGORIES (parent groups → subcategories) — frontend copy
   components/
-    Watchlist/WatchlistPage.jsx  "Fetch News" button → POST /api/trigger
-    Announcements/AnnouncementsPage.jsx
-    Announcements/AnnouncementCard.jsx  Normalises scriptCode/scripCode/ltdCode fields
-    Dashboard/DashboardPage.jsx
+    Dashboard/                 Main view: watchlisted announcements + rates
+    AllAnnouncements/          All BSE+NSE announcements (unfiltered)
+    Watchlist/                 Watchlist management, price alerts, set alerts modal
+    Settings/                  Notification prefs, category filters, push setup
+    GainersLosers/             Top gainers/losers (BSE + NSE)
+    BoardMeetings/             Board meeting calendar
+    CorporateCalendar/         BSE corporate action calendar
+    InsiderTrading/            NSE insider trading data
+    CompanyData/               Company fundamentals/details
+    Portfolio/                 Portfolio holdings tracker
+    News/                      Market news
+    BulkBlock/                 Bulk watchlist import
+    Premium/                   Premium tier page
+    Auth/                      Login/Register pages
 ```
 
 ---
 
-## Backend REST API (local)
+## Database Collections
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/watchlist` | Read scripts.json |
-| POST | `/api/watchlist` | Add script (body: `{bseCode, scriptName, nseSymbol, exchange, notes}`) |
-| DELETE | `/api/watchlist/:id` | Remove script by id |
-| DELETE | `/api/watchlist/all` | Clear all |
-| POST | `/api/watchlist/bulk` | Bulk add (body: `{scripts: [...]}`) |
-| PATCH | `/api/watchlist/:id` | Update script |
-| GET | `/api/announcements` | Read announcements.json (query: `exchange`, `scriptCode`, `limit`) |
-| POST | `/api/trigger` | Fetch all BSE → filter to watchlist → save to announcements.json → email |
-| GET | `/api/email-preview` | Returns email HTML using real announcements.json data |
+### MongoDB Atlas
+| Collection | Purpose |
+|---|---|
+| `announcements` | All BSE+NSE announcements. `_id` = NEWSID (idempotent). Wiped daily at midnight IST. |
+| `watchlists` | All users' watchlist scripts. Indexed by `userId`. |
 
----
-
-## BSE API — critical details
-
-- URL: `https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w`
-- Required params: `strSearch=P`, `subcategory=-1`, `strType=C`, `strCat=-1`
-- Date format: `yyyyMMdd` (NOT `DD/MM/YYYY`)
-- `strScrip=''` fetches ALL companies (paginated)
-- Akamai bot protection — **must** include `Sec-Fetch-*` headers + `insecureHTTPParser: true` in axios
-- Session init: visit `https://www.bseindia.com` first to capture cookies
-- Response shape: `{Table: [...items], Table1: [{ROWCNT: N}]}`
-- Page concurrency: 5 parallel pages (`PAGE_CONCURRENCY = 5`)
-
----
-
-## Data field names (BSE normalized)
-
+**Announcement doc fields:**
 ```js
-{
-  id, exchange, scriptName, scriptCode,
-  category, subCategory, subject, description,
-  announcementDate,   // ISO string
-  date,               // "15 Jun 2026"
-  time,               // "14:30:00"
-  datetimeIST,        // "15 Jun 2026 14:30:00 IST"
-  pdfUrl, sourceUrl, critical
-}
+{ id, exchange, scriptName, scriptCode, category, subCategory, subject,
+  description, announcementDate, date, time, datetimeIST, pdfUrl, sourceUrl,
+  critical, aiSummary }
 ```
 
-`AnnouncementCard` also handles legacy Firestore fields: `scripCode`, `companyName`, `url`, `link`.
-
----
-
-## Watchlist field names
-
+**Watchlist doc fields:**
 ```js
-{
-  id,           // Firestore docId or "local-{timestamp}"
-  bseCode,      // canonical — "500325"
-  nseSymbol,    // optional — "RELIANCE"
-  scriptName,   // display name
-  exchange,     // "BSE" | "NSE" | "BOTH"
-  notes,
-  addedAt
-}
+{ userId, ltdCode, symbol, scriptName, exchange, notes, group, isin,
+  alertAbove, alertBelow, alertEnabled, addedAt }
 ```
 
-Legacy input fields (`ltdCode`, `scripCode`, `scriptCode`) are normalised to `bseCode` in both `watchlistService.js` and `server.js`.
+### Firestore Collections
+| Path | Purpose |
+|---|---|
+| `users/{uid}` | User prefs doc (`.prefs` field) |
+| `users/{uid}/pushDevices/{deviceId}` | Per-device push subscriptions |
+| `users/{uid}/alerts/{id}` | Alert history (cron-fired announcements) |
+| `system_meta/cron_status` | Last cron run time, last wipe date |
+
+**Prefs fields (`users/{uid}.prefs`):**
+```js
+{ telegramEnabled, inAppEnabled, telegramChatId, frequency,
+  blockedCategories: string[], pushEnabled }
+```
+
+**pushDevices doc fields:**
+```js
+{ subscription, platform, browser, userAgent, createdAt, lastSeenAt }
+```
 
 ---
 
-## Scale design (prod)
+## API Routes (backend/server.js)
 
-- 4 users × 4000 scripts = `bseCodesIndex: string[]` array on each `users/{uid}` doc
-- Cron reads 4 user docs → builds reverse map in-memory → fetches ALL BSE (~500 items) → filters in O(N)
-- No per-script API calls. No scanning subcollections.
-- Announcement writes use NEWSID as doc ID → idempotent, no existence checks
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/health` | open | Server status |
+| GET | `/api/rates` | open | Live BSE rates (cached 15s) |
+| GET | `/api/rates/status` | open | Rates fetch progress |
+| GET | `/api/telegram-status` | 🔒 | Telegram config status |
+| POST | `/api/telegram-test` | 🔒 | Send test Telegram message |
+| GET | `/api/announcements` | 🔒 | Query MongoDB announcements |
+| GET | `/api/announcements/stats` | 🔒 | Count by exchange |
+| POST | `/api/announcements/fetch-nse` | 🔒 | Manual NSE fetch + save |
+| GET | `/api/alerts` | 🔒 | Firestore alert history |
+| GET | `/api/alerts/recent` | 🔒 | Alerts since ?since=ISO |
+| DELETE | `/api/alerts/:id` | 🔒 | Delete one alert |
+| DELETE | `/api/alerts` | 🔒 | Clear all alerts |
+| GET | `/api/prefs` | 🔒 | Get user prefs |
+| POST | `/api/prefs` | 🔒 | Save user prefs |
+| PATCH | `/api/prefs` | 🔒 | Partial update prefs |
+| GET | `/api/watchlist` | 🔒 | Get user watchlist |
+| POST | `/api/watchlist` | 🔒 | Add script |
+| POST | `/api/watchlist/bulk` | 🔒 | Bulk add scripts |
+| POST | `/api/watchlist/catchup` | 🔒 | Re-notify for script added today |
+| GET | `/api/watchlist/export` | 🔒 | CSV export |
+| DELETE | `/api/watchlist/all` | 🔒 | Clear watchlist |
+| DELETE | `/api/watchlist/:id` | 🔒 | Remove one script |
+| PATCH | `/api/watchlist/:id` | 🔒 | Update script fields |
+| PATCH | `/api/watchlist/:id/alert` | 🔒 | Set price alert (above/below) |
+| GET | `/api/push/public-key` | open | VAPID public key |
+| POST | `/api/push/subscribe` | 🔒 | Register device push subscription |
+| POST | `/api/push/unsubscribe` | 🔒 | Remove device subscription |
+| POST | `/api/push/test` | 🔒 | Send test push to current device (body: `{deviceId}`) |
+| GET | `/api/push/devices` | 🔒 | List registered push devices |
+| POST | `/api/push/heartbeat` | 🔒 | Touch device lastSeenAt |
+| POST | `/api/trigger` | 🔒 | Fetch BSE+NSE, save, notify, AI summarize |
+| GET/POST | `/api/cron/trigger` | secret | Global cron (protected by CRON_SECRET) |
+| GET | `/api/bse/movers` | open | Top gainers/losers (5-min cache) |
+| * | `/api/bse/*` | 🔒 | BSE proxy routes |
+| * | `/api/nse/*` | 🔒 | NSE proxy routes |
+| GET | `/api/search/scripts` | open | Redirects to `/api/bse/search` |
 
 ---
 
-## Env vars
+## Notification System
+
+### Category Filtering Logic
+Categories have a 2-level hierarchy (parent group → subcategories):
+- Defined in `frontend/src/utils/bseCategories.js` (frontend) and `backend/lib/alertCategories.js` (backend)
+- Parent groups: `Board Meeting`, `Result`, `AGM/EGM`, `Company Update`, `Corporate Action`, `Insider Trading`, `Others`
+- User blocks are stored as string array in `prefs.blockedCategories`
+
+**Filter rule (backend cron, `server.js`):**
+```
+Should Notify = Parent NOT blocked AND at least one specific category NOT blocked
+```
+- Parent blocked → skip (master switch)
+- All specific subcategories blocked → skip
+- Mixed (some blocked, some enabled) → notify (Option A)
+
+### Push Notification Flow
+1. Browser calls `POST /api/push/subscribe` with `{subscription, deviceId, platform, browser}`
+2. Stored in `users/{uid}/pushDevices/{deviceId}` in Firestore
+3. Cron calls `sendWebPushToUser(uid, payload)` → sends to ALL devices
+4. Test button calls `POST /api/push/test` with `{deviceId}` → sends to THAT device only
+5. Expired subscriptions (410/404) are auto-removed from Firestore
+
+### Cron Job Flow (`/api/cron/trigger`)
+1. Midnight IST check → wipes MongoDB `announcements` collection if new day
+2. Fetches ALL BSE + NSE announcements
+3. Saves new ones to MongoDB (idempotent by NEWSID)
+4. For each user: get watchlist → match announcements → filter by `blockedCategories` → send Telegram + Web Push
+5. Price alert checker runs against live rates
+
+---
+
+## Env Vars
 
 **`backend/.env`**
 ```
 PORT=3000
-GMAIL_USER=           # optional for local
-GMAIL_APP_PASSWORD=   # optional for local
-NOTIFY_EMAIL=         # optional for local
-# Production only:
+FRONTEND_URL=https://tatvarthstockwatch.web.app
+CRON_SECRET=
 FIREBASE_PROJECT_ID=
 FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=
-CRON_SECRET=
+MONGODB_URI=
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:...
+TELEGRAM_BOT_TOKEN=
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+GOOGLE_AI_API_KEY=
 ```
 
-**`frontend/.env`** — leave all `VITE_FIREBASE_*` commented out for local mode.
+**`frontend/.env`**
+```
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_APP_ID=
+VITE_API_URL=https://your-railway-backend.up.railway.app
+```
 
 ---
 
-## Common tasks
+## Common Tasks
 
-**Add a new backend endpoint:**
-Edit `backend/server.js` — add `app.get/post/delete(...)` before the `app.listen` call.
+**Add new backend route:** Edit `server.js` — add before `app.listen`.
 
-**Add a new frontend page:**
-1. Create component in `frontend/src/components/`
-2. Add route in `frontend/src/App.jsx` (wrap in `ProtectedRoute + AppLayout`)
+**Add new page:** Create component in `frontend/src/components/`, add route in `App.jsx` (wrap in `ProtectedRoute + AppLayout`).
 
-**Change email template:**
-Edit `buildSingleEmailHtml()` in `backend/lib/mailer.js`. One email is sent per announcement (`sendAnnouncementEmails` loops). Preview at `http://localhost:3000/api/email-preview` — shows all stored announcements rendered as individual emails stacked.
+**Add new watchlist field:** `watchlistStore.js` + `server.js` POST/bulk handlers + `ScriptCard.jsx` + `AddScriptModal.jsx`.
 
-**Add a new watchlist field:**
-1. `server.js` — add to POST/bulk handlers
-2. `watchlistService.js` — add to both local and Firebase paths
-3. `ScriptCard.jsx` / `AddScriptModal.jsx` — display/input
+**Add new announcement field:** `bseScraper.js → normalizeItem()` + `AnnouncementCard.jsx`.
 
-**Add a new announcement field:**
-1. `bseScraper.js` → `normalizeItem()` — parse from raw BSE item
-2. `AnnouncementCard.jsx` — display it
+**Add new notification category:** Update `frontend/src/utils/bseCategories.js` AND `backend/lib/alertCategories.js` (must stay in sync).
+
+**Deploy backend:** Push to Railway (auto-deploys from git main).
+
+**Deploy frontend:** `npm run build` in `/frontend` → `firebase deploy --only hosting`.
 
 ---
 
-## Do not
-
-- Call BSE API from the browser — CORS blocked. Always call server-side.
+## Do Not
+- Call BSE/NSE API from the browser — CORS blocked. Always server-side.
 - Hardcode credentials — use `process.env.*` (backend) or `import.meta.env.VITE_*` (frontend).
 - Add mock/demo data fallbacks — show empty states instead.
-- Use `vercel dev` for local work — use `node server.js`.
+- Modify `blockedCategories` logic without updating BOTH `bseCategories.js` (frontend) and `alertCategories.js` (backend).
