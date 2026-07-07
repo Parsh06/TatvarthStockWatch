@@ -101,8 +101,10 @@ export default function GainersLosersPage() {
               <tr key={`${item.scrip_cd}-${idx}`} className="hover:bg-white/5 transition-colors group">
                 <td className="px-4 py-3 font-medium">{item.scrip_cd}</td>
                 <td className="px-4 py-3">
-                  <a href={item.URL} target="_blank" rel="noreferrer" className="hover:text-primary transition-colors">
-                    {item.LONG_NAME || item.scripname}
+                  <a href={item.URL} target="_blank" rel="noreferrer" className="hover:text-primary transition-colors" title={item.LONG_NAME || item.scripname}>
+                    {(item.LONG_NAME || item.scripname)?.length > 30 
+                      ? (item.LONG_NAME || item.scripname).substring(0, 30) + '...' 
+                      : (item.LONG_NAME || item.scripname)}
                   </a>
                 </td>
                 <td className="px-4 py-3 text-right font-medium">{item.ltradert?.toFixed(2)}</td>

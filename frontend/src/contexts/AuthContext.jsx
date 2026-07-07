@@ -84,6 +84,20 @@ export function AuthProvider({ children }) {
   }
 
   async function logout() {
+    // Clean up push subscription for this device before signing out
+    try {
+      const deviceId = localStorage.getItem('sw_push_device_id');
+      if (deviceId && FIREBASE_ENABLED) {
+        const { apiClient } = await import('../services/apiClient');
+        await apiClient('/api/push/unsubscribe', {
+          method: 'POST',
+          body: JSON.stringify({ deviceId }),
+        }).catch(() => {}); // best-effort — don't block logout
+      }
+    } catch {
+      // Silently fail — logout should always succeed
+    }
+
     if (!FIREBASE_ENABLED) {
       setCurrentUser(null)
       return

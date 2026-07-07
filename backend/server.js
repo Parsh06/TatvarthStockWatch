@@ -507,36 +507,104 @@ app.patch('/api/watchlist/:id/alert', verifyToken, async (req, res) => {
 
 
 
-// ── Web Push Notifications ────────────────────────────────────────────────────
+// ── Web Push Notifications (Multi-Device) ─────────────────────────────────────
 app.get('/api/push/public-key', (req, res) => {
   res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' });
 });
 
 app.post('/api/push/subscribe', verifyToken, async (req, res) => {
   try {
-    const { getPrefs, savePrefs } = require('./lib/prefsStore');
-    const existing = await getPrefs(req.uid);
-    const updated = await savePrefs(req.uid, { 
-      ...existing, 
-      pushSubscription: req.body 
+    const pushStore = require('./lib/pushStore');
+    const { subscription, deviceId, platform, browser, userAgent } = req.body;
+
+    if (!subscription || !deviceId) {
+      return res.status(400).json({ error: 'subscription and deviceId are required' });
+    }
+
+    await pushStore.registerDevice(req.uid, deviceId, subscription, {
+      platform: platform || 'unknown',
+      browser:  browser  || 'unknown',
+      userAgent: userAgent || '',
     });
+
+    // Also migrate any legacy prefs.pushSubscription if present
+    await pushStore.migrateLegacySubscription(req.uid).catch(() => {});
+
     res.json({ success: true });
   } catch (e) {
+    console.error('[Push Subscribe]', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
 app.post('/api/push/unsubscribe', verifyToken, async (req, res) => {
   try {
-    const { getPrefs, savePrefs } = require('./lib/prefsStore');
-    const existing = await getPrefs(req.uid);
-    const updated = await savePrefs(req.uid, { 
-      ...existing, 
-      pushSubscription: null 
-    });
+    const pushStore = require('./lib/pushStore');
+    const { deviceId } = req.body;
+
+    if (!deviceId) {
+      return res.status(400).json({ error: 'deviceId is required' });
+    }
+
+    await pushStore.removeDevice(req.uid, deviceId);
     res.json({ success: true });
   } catch (e) {
+    console.error('[Push Unsubscribe]', e.message);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Send a test push notification to all devices of the current user
+app.post('/api/push/test', verifyToken, async (req, res) => {
+  try {
+    const { sendWebPushToUser } = require('./lib/webPushNotifier');
+    const result = await sendWebPushToUser(req.uid, {
+      title: 'Tatvarth Stock Watch — Test',
+      body: '✅ Push notifications are working! You will receive alerts on this device.',
+      url: 'https://tatvarthstockwatch.web.app/settings',
+      tag: 'test-notification',
+    });
+    res.json({ success: true, ...result });
+  } catch (e) {
+    console.error('[Push Test]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get registered push devices for the current user
+app.get('/api/push/devices', verifyToken, async (req, res) => {
+  try {
+    const pushStore = require('./lib/pushStore');
+
+    // Migrate legacy subscription on first check
+    await pushStore.migrateLegacySubscription(req.uid).catch(() => {});
+
+    const devices = await pushStore.getAllDevices(req.uid);
+    // Don't expose full subscription details to the frontend
+    const sanitized = devices.map(d => ({
+      deviceId:  d.deviceId,
+      platform:  d.platform,
+      browser:   d.browser,
+      createdAt: d.createdAt,
+      lastSeenAt: d.lastSeenAt,
+    }));
+    res.json({ devices: sanitized, count: sanitized.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Heartbeat: touch device lastSeenAt (called on app load)
+app.post('/api/push/heartbeat', verifyToken, async (req, res) => {
+  try {
+    const pushStore = require('./lib/pushStore');
+    const { deviceId } = req.body;
+    if (deviceId) {
+      await pushStore.touchDevice(req.uid, deviceId);
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false });
   }
 });
 
@@ -906,10 +974,14 @@ app.all('/api/cron/trigger', async (req, res) => {
                 console.error(`[Global Cron] Failed to get prefs for ${uid}:`, err.message);
               }
               const blocked = prefs.blockedCategories || [];
+              const { resolveCategoryGroup } = require('./lib/alertCategories');
 
               const uActuallyPending = [];
               for (const ann of uMatched) {
-                const isBlocked = blocked.includes((ann.category || '').trim()) || blocked.includes((ann.subCategory || '').trim());
+                const catGroup = resolveCategoryGroup(ann.category);
+                const subCatGroup = resolveCategoryGroup(ann.subCategory);
+                
+                const isBlocked = blocked.includes(catGroup) || blocked.includes(subCatGroup);
                 if (isBlocked) continue;
 
                 try {
@@ -944,16 +1016,15 @@ app.all('/api/cron/trigger', async (req, res) => {
                     }
                   }
                   
-                  // Web Push Dispatch
-                  if (prefs.pushSubscription) {
-                    const { sendWebPush } = require('./lib/webPushNotifier');
-                    for (const ann of uActuallyPending) {
-                      await sendWebPush(prefs.pushSubscription, {
-                        title: `${ann.scriptName || ann.scriptCode} (${ann.exchange || 'BSE'})`,
-                        body: `[${ann.category || 'Announcement'}] ${ann.subject || 'New update'}`,
-                        url: ann.pdfUrl || `https://tatvarthstockwatch.web.app/`
-                      });
-                    }
+                  // Web Push Dispatch (multi-device)
+                  const { sendWebPushToUser } = require('./lib/webPushNotifier');
+                  for (const ann of uActuallyPending) {
+                    await sendWebPushToUser(uid, {
+                      title: `${ann.scriptName || ann.scriptCode} (${ann.exchange || 'BSE'})`,
+                      body: `[${ann.category || 'Announcement'}] ${ann.subject || 'New update'}`,
+                      url: ann.pdfUrl || `https://tatvarthstockwatch.web.app/`,
+                      tag: `ann-${String(ann.id).slice(0, 20)}`,
+                    });
                   }
                 } catch (err) {
                   console.error(`[Global Cron] Error dispatching announcements for ${uid}:`, err.message);

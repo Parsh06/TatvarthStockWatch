@@ -167,12 +167,8 @@ export default function DashboardPage() {
   }, [announcements])
 
   const uniqueWatchlisted = useMemo(() => {
-    return uniqueAnnouncements.filter((a) => {
-      if (!a.isWatchlisted) return false
-      const isBlocked = blockedCategories.includes((a.category || '').trim()) || blockedCategories.includes((a.subCategory || '').trim())
-      return !isBlocked
-    })
-  }, [uniqueAnnouncements, blockedCategories])
+    return uniqueAnnouncements.filter((a) => a.isWatchlisted)
+  }, [uniqueAnnouncements])
 
   const todayAnn = useMemo(() =>
     uniqueAnnouncements.filter((a) => isAfter(new Date(a.announcementDate || a.date || 0), today)),

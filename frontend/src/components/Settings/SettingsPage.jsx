@@ -29,7 +29,7 @@ function Section({ title, icon: Icon, children }) {
 export default function SettingsPage() {
   const { currentUser, logout } = useAuth()
   const { watchlist, clearWatchlist } = useWatchlist()
-  const { isSupported, isSubscribed, loading: pushLoading, subscribe, unsubscribe } = useWebPush()
+  const { isSupported, isSubscribed, loading: pushLoading, subscribe, unsubscribe, sendTest, permission } = useWebPush()
   const [displayName, setDisplayName] = useState(currentUser?.displayName || '')
   const [savingProfile, setSavingProfile] = useState(false)
 
@@ -256,31 +256,76 @@ export default function SettingsPage() {
             </label>
           ))}
           {isSupported && (
-            <label className="flex items-center justify-between cursor-pointer">
-              <div>
-                <p className="text-sm font-medium text-textPrimary">Browser Notifications</p>
-                <p className="text-xs text-textMuted">Receive OS-level system notifications in background</p>
+            <div className="space-y-3 p-4 bg-background border border-border rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-textPrimary">Browser Push Notifications</p>
+                  <p className="text-xs text-textMuted">Receive OS-level system notifications even when the app is in the background</p>
+                </div>
+                {isSubscribed ? (
+                  <button
+                    type="button"
+                    onClick={unsubscribe}
+                    disabled={pushLoading}
+                    className="px-3 py-1.5 bg-danger/10 hover:bg-danger/20 text-danger text-xs font-semibold rounded-md transition disabled:opacity-50"
+                  >
+                    {pushLoading ? 'Disabling...' : 'Disable'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={subscribe}
+                    disabled={pushLoading || permission === 'denied'}
+                    className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold rounded-md transition disabled:opacity-50"
+                  >
+                    {pushLoading ? 'Enabling...' : 'Enable'}
+                  </button>
+                )}
               </div>
-              {isSubscribed ? (
-                <button
-                  type="button"
-                  onClick={unsubscribe}
-                  disabled={pushLoading}
-                  className="px-3 py-1.5 bg-danger/10 hover:bg-danger/20 text-danger text-xs font-semibold rounded-md transition disabled:opacity-50"
-                >
-                  {pushLoading ? 'Disabling...' : 'Disable'}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={subscribe}
-                  disabled={pushLoading}
-                  className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold rounded-md transition disabled:opacity-50"
-                >
-                  {pushLoading ? 'Enabling...' : 'Enable'}
-                </button>
+
+              {/* Permission status indicator */}
+              <div className="flex items-center gap-2 text-xs">
+                <div className={`w-2 h-2 rounded-full ${
+                  permission === 'granted' ? 'bg-emerald-400' :
+                  permission === 'denied' ? 'bg-red-400' :
+                  'bg-amber-400'
+                }`} />
+                <span className="text-textMuted">
+                  Browser permission: <span className="font-semibold text-textPrimary">{permission}</span>
+                  {permission === 'granted' && isSubscribed && ' — Active on this device ✓'}
+                  {permission === 'granted' && !isSubscribed && ' — Allowed, not yet subscribed'}
+                </span>
+              </div>
+
+              {/* Denied state — guide user */}
+              {permission === 'denied' && (
+                <div className="p-3 bg-danger/5 border border-danger/20 rounded-lg">
+                  <p className="text-xs text-danger font-medium mb-1">Notifications are blocked</p>
+                  <p className="text-xs text-textMuted">
+                    You previously blocked notifications for this site. To re-enable:
+                  </p>
+                  <ol className="text-xs text-textMuted mt-1 ml-4 list-decimal space-y-0.5">
+                    <li>Click the lock/info icon in Chrome's address bar</li>
+                    <li>Find "Notifications" and change it to "Allow"</li>
+                    <li>Reload the page, then click "Enable" above</li>
+                  </ol>
+                </div>
               )}
-            </label>
+
+              {/* Test notification + device info (when subscribed) */}
+              {isSubscribed && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={sendTest}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-md text-xs font-medium transition"
+                  >
+                    <Bell className="w-3 h-3" />
+                    Send Test Notification
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           <div>
             <label className="block text-sm font-medium text-textPrimary mb-1.5">Alert Frequency</label>
