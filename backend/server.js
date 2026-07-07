@@ -1002,10 +1002,27 @@ app.all('/api/cron/trigger', async (req, res) => {
 
               const uActuallyPending = [];
               for (const ann of uMatched) {
-                const catGroup = resolveCategoryGroup(ann.category);
-                const subCatGroup = resolveCategoryGroup(ann.subCategory);
+                const catRaw = (ann.category || '').trim();
+                const subCatRaw = (ann.subCategory || '').trim();
+                const catGroup = resolveCategoryGroup(catRaw);
+                const subCatGroup = resolveCategoryGroup(subCatRaw);
                 
-                const isBlocked = blocked.includes(catGroup) || blocked.includes(subCatGroup);
+                // 1. Master Switch: Are any parent groups blocked?
+                const parents = new Set([catGroup, subCatGroup].filter(Boolean));
+                const anyParentBlocked = Array.from(parents).some(p => blocked.includes(p));
+                
+                // 2. Specific Categories: Is at least one enabled? (Option A)
+                const specifics = new Set([catRaw, subCatRaw].filter(Boolean));
+                const specificsArr = Array.from(specifics);
+                let anySpecificEnabled = true;
+                
+                if (specificsArr.length > 0) {
+                  anySpecificEnabled = specificsArr.some(c => !blocked.includes(c));
+                }
+                
+                // Notification is sent ONLY if NO parents are blocked AND AT LEAST ONE specific category is enabled
+                const isBlocked = anyParentBlocked || !anySpecificEnabled;
+                
                 if (isBlocked) continue;
 
                 try {
