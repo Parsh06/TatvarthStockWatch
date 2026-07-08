@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { RefreshCw, Search, Download, Bell, AlertCircle, FileText, ExternalLink, Star, Filter, X, ChevronDown, Info } from 'lucide-react'
 import clsx from 'clsx'
@@ -7,6 +7,8 @@ import { exportToXLSX } from '../../utils/csvParser'
 import { getCategoryColor } from '../../utils/formatters'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 import { getAnnouncementsFromDB } from '../../services/announcementService'
+import AiAnalyzeButton from '../Common/AiAnalyzeButton'
+import AiAnalysisPanel from '../Common/AiAnalysisPanel'
 import ScriptSearchInput from '../Common/ScriptSearchInput'
 import PageTransition from '../Common/PageTransition'
 
@@ -89,6 +91,12 @@ export default function AllAnnouncementsPage() {
   const [result,     setResult]     = useState(null)
   const [page,       setPage]       = useState(1)
   const [onlyWatchlist, setOnlyWatchlist] = useState(false)
+  // Per-card AI analysis results: Map<announcementId, { analysis, generatedAt, cached }>
+  const [aiAnalysisMap, setAiAnalysisMap] = useState(new Map())
+
+  const setCardAnalysis = useCallback((id, data) => {
+    setAiAnalysisMap(prev => new Map(prev).set(String(id), data))
+  }, [])
 
   const watchlistCodes = useMemo(() =>
     new Set(watchlist.map((s) => s.ltdCode || s.bseCode || '').filter(Boolean)),
@@ -516,10 +524,16 @@ export default function AllAnnouncementsPage() {
                       </div>
                       {/* Subject */}
                       <p className="text-sm text-textMuted leading-snug line-clamp-2 mb-2">{a.subject}</p>
-                      {/* Footer */}
-                      <div className="flex items-center justify-between gap-2">
+                      {/* Footer + AI Analyze button */}
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="text-xs text-textMuted tabular-nums">{a.datetimeIST || a.announcementDate}</span>
-                        <div className="flex items-center gap-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <AiAnalyzeButton
+                            announcementId={String(a.id || a._id || a.bseCode || '')}
+                            pdfUrl={a.pdfUrl}
+                            initialAnalysis={a.aiAnalysis?.generated ? a.aiAnalysis : null}
+                            onResult={(analysis, meta) => setCardAnalysis(a.id || a._id, { analysis, generatedAt: meta?.generatedAt, cached: meta?.cached })}
+                          />
                           {a.pdfUrl && (
                             <a href={a.pdfUrl} target="_blank" rel="noopener noreferrer"
                               className="p-1.5 text-textMuted hover:text-primary transition rounded-lg hover:bg-primary/10" title="View PDF">
@@ -534,6 +548,18 @@ export default function AllAnnouncementsPage() {
                           )}
                         </div>
                       </div>
+                      {/* AI Analysis Panel — expands inline */}
+                      {(() => {
+                        const cardAi = aiAnalysisMap.get(String(a.id || a._id))
+                        const dbAi   = a.aiAnalysis?.generated ? a.aiAnalysis : null
+                        if (cardAi) {
+                          return <AiAnalysisPanel analysis={cardAi.analysis} generatedAt={cardAi.generatedAt} cached={cardAi.cached} />
+                        }
+                        if (dbAi?.analysis) {
+                          return <AiAnalysisPanel analysis={dbAi.analysis} generatedAt={dbAi.generatedAt} cached={true} />
+                        }
+                        return null
+                      })()}
                     </div>
                   </div>
                 )

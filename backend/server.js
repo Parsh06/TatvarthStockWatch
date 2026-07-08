@@ -710,32 +710,8 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
       const freshAll = newAnnouncements || [];
       freshAnnouncements = freshAll.filter((a) => bseSet.has(a.scriptCode) || nseSet.has((a.scriptCode || '').toUpperCase()));
       
-      // Run AI Summarization on all fresh watchlist announcements!
-      if (freshAnnouncements.length > 0) {
-        try {
-          console.log(`[Trigger] Running AI Summarizer on ${freshAnnouncements.length} new announcements...`);
-          const { generateAnnouncementSummary } = require('./lib/aiSummarizer');
-          const { getDb } = require('./lib/mongoClient');
-          const mongoDb = await getDb();
-          
-          await Promise.all(freshAnnouncements.map(async (ann) => {
-            if (ann.pdfUrl) {
-              const summary = await generateAnnouncementSummary(ann);
-              if (summary) {
-                ann.aiSummary = summary;
-                // Also update it in the database
-                await mongoDb.collection('announcements').updateOne(
-                  { _id: String(ann.id) },
-                  { $set: { aiSummary: summary } }
-                );
-              }
-            }
-          }));
-          console.log(`[Trigger] AI Summarization complete!`);
-        } catch (err) {
-          console.error(`[Trigger] AI Summarization error:`, err.message);
-        }
-      }
+      // AI analysis is now on-demand only — generated when user clicks "AI Analyze"
+      // See POST /api/announcements/:id/analyze
       
       console.log(`[Trigger] Saved ${saved} new announcements to MongoDB`);
       
@@ -803,7 +779,9 @@ const { bseGet, getBseCookies, getYahooFundamentals, sanitizeCode } = require('.
 
 app.use("/api/bse", require("./routes/bseRoutes")(verifyToken));
 app.use("/api/nse", require("./routes/nseRoutes")(verifyToken));
+app.use("/api/announcements", require("./routes/analyzeRoute")(verifyToken));
 app.get("/api/search/scripts", (req, res) => res.redirect(`/api/bse/search?q=${encodeURIComponent(req.query.q || "")}`));
+
 
 // ── Portfolio storage (local mode) ────────────────────────────────────────────
 app.get('/api/portfolio', (req, res) => {
@@ -1102,79 +1080,8 @@ app.all('/api/cron/trigger', async (req, res) => {
   }
 });
 
-/**
- * NEW ROUTE: Background AI Summary Generator
- * Triggered periodically to process announcements that don't have an aiSummary yet.
- */
-app.all('/api/cron/generate-summaries', async (req, res) => {
-  try {
-    const { getDb } = require('./lib/mongoClient');
-    const { generateAnnouncementSummary } = require('./lib/aiSummarizer');
-    const db = await getDb();
-    const annCol = db.collection('announcements');
 
-    // Find up to 5 most recent announcements (from last 48 hours) that don't have aiSummary
-    // and aren't marked as 'failed_ai' to avoid infinite retries
-    const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
-    const pending = await annCol.find({
-      savedAt: { $gte: twoDaysAgo },
-      aiSummary: { $exists: false },
-      aiSummaryStatus: { $ne: 'failed' }
-    }).sort({ savedAt: -1 }).limit(5).toArray();
+// /api/cron/generate-summaries has been removed.
+// AI analysis is now on-demand via POST /api/announcements/:id/analyze
+// See backend/routes/analyzeRoute.js
 
-    if (pending.length === 0) {
-      return res.status(200).json({ success: true, processed: 0, message: 'No pending summaries' });
-    }
-
-    let successCount = 0;
-    const startTime = Date.now();
-    const maxTime = 8000; // 8 seconds maximum (Vercel hobby limit is 10s)
-
-    for (const ann of pending) {
-      if (Date.now() - startTime > maxTime) {
-        console.log('[AI Cron] Vercel timeout approaching! Breaking early.');
-        break;
-      }
-
-      console.log(`[AI Cron] Summarizing ${ann._id} (${ann.scriptName})`);
-      const summaryJson = await generateAnnouncementSummary(ann);
-      
-      if (summaryJson) {
-        await annCol.updateOne(
-          { _id: ann._id },
-          { $set: { aiSummary: summaryJson, aiSummaryStatus: 'completed' } }
-        );
-        successCount++;
-        
-        // --- Edit existing Telegram Messages ---
-        if (ann.telegramMessages && ann.telegramMessages.length > 0) {
-          try {
-            const { editTelegramMessage, rebuildSingleAlertText } = require('./lib/telegramNotifier');
-            ann.aiSummary = summaryJson; // ensure rebuilding uses the new summary
-            const updatedText = rebuildSingleAlertText(ann);
-            
-            for (const tgMsg of ann.telegramMessages) {
-               try {
-                 await editTelegramMessage(tgMsg.messageId, updatedText, tgMsg.chatId);
-               } catch (editErr) {
-                 console.error(`[AI Cron] Failed to edit telegram message ${tgMsg.messageId}:`, editErr.message);
-               }
-            }
-          } catch (outerErr) {
-            console.error(`[AI Cron] Failed to process telegram edits for ${ann._id}:`, outerErr.message);
-          }
-        }
-      } else {
-        await annCol.updateOne(
-          { _id: ann._id },
-          { $set: { aiSummaryStatus: 'failed' } }
-        );
-      }
-    }
-
-    res.status(200).json({ success: true, processed: pending.length, successful: successCount });
-  } catch (err) {
-    console.error('[AI Cron] Error:', err);
-    res.status(500).json({ error: 'Failed to generate summaries' });
-  }
-});

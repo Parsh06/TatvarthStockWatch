@@ -2,8 +2,10 @@ const { GoogleGenAI } = require('@google/genai');
 const axios = require('axios');
 const { AI_ANALYST_PROMPT } = require('./prompts');
 
-// Initialize Gemini SDK later when needed
+// Initialize Gemini SDK lazily
 let ai = null;
+const AI_MODEL = 'gemini-2.0-flash-lite';
+
 function getAiClient() {
   if (!ai && process.env.GEMINI_API_KEY) {
     ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -12,16 +14,14 @@ function getAiClient() {
 }
 
 /**
- * Downloads a PDF from a URL and converts it to a base64 string
+ * Downloads a PDF from a URL and returns a base64 string.
  */
 async function downloadPdfAsBase64(pdfUrl) {
   try {
     const response = await axios.get(pdfUrl, {
       responseType: 'arraybuffer',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-      },
-      timeout: 10000 // 10 second timeout
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+      timeout: 15000,
     });
     return Buffer.from(response.data).toString('base64');
   } catch (err) {
@@ -31,10 +31,15 @@ async function downloadPdfAsBase64(pdfUrl) {
 }
 
 /**
- * Generates an AI summary for a single announcement
- * Returns the parsed JSON object or null if failed
+ * generateAIAnalysis
+ *
+ * On-demand AI analysis for a single announcement.
+ * Returns { _model, analysis } on success, or null on failure.
+ *
+ * @param {object} ann - Announcement object (must have .pdfUrl)
+ * @returns {Promise<{ _model: string, analysis: object } | null>}
  */
-async function generateAnnouncementSummary(ann) {
+async function generateAIAnalysis(ann) {
   if (!process.env.GEMINI_API_KEY) {
     console.warn('[aiSummarizer] GEMINI_API_KEY is not set');
     return null;
@@ -42,69 +47,64 @@ async function generateAnnouncementSummary(ann) {
 
   const pdfUrl = ann.pdfUrl;
   if (!pdfUrl) {
-    console.log(`[aiSummarizer] No PDF URL for announcement ${ann.id}`);
+    console.log(`[aiSummarizer] No PDF URL for announcement ${ann._id || ann.id}`);
     return null;
   }
 
   const base64Pdf = await downloadPdfAsBase64(pdfUrl);
-  if (!base64Pdf) {
-    return null;
-  }
+  if (!base64Pdf) return null;
 
   try {
     const client = getAiClient();
     if (!client) {
-      console.warn('[aiSummarizer] Gemini Client could not be initialized');
+      console.warn('[aiSummarizer] Gemini client could not be initialized');
       return null;
     }
-    
-    // We use gemini-3.1-flash-lite which has a 500 RPD and 15 RPM limit on the free tier.
+
     const response = await client.models.generateContent({
-      model: 'gemini-3.1-flash-lite',
+      model: AI_MODEL,
       contents: [
         {
           role: 'user',
           parts: [
-            {
-              inlineData: {
-                data: base64Pdf,
-                mimeType: 'application/pdf'
-              }
-            },
-            {
-              text: AI_ANALYST_PROMPT
-            }
-          ]
-        }
+            { inlineData: { data: base64Pdf, mimeType: 'application/pdf' } },
+            { text: AI_ANALYST_PROMPT },
+          ],
+        },
       ],
-      config: {
-        responseMimeType: "application/json",
-      }
+      config: { responseMimeType: 'application/json' },
     });
 
     const output = response.text;
-    
-    // Parse the JSON safely (Gemini sometimes wraps in markdown code blocks even with responseMimeType)
+
+    // Parse JSON safely — Gemini sometimes wraps in markdown blocks even with responseMimeType
     let jsonStr = output.trim();
     const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    if (match) {
-      jsonStr = match[1].trim();
-    }
+    if (match) jsonStr = match[1].trim();
 
     try {
-      const resultObj = JSON.parse(jsonStr);
-      return resultObj;
+      const analysisObj = JSON.parse(jsonStr);
+      return { _model: AI_MODEL, analysis: analysisObj };
     } catch (parseErr) {
-      console.error(`[aiSummarizer] Failed to parse JSON for ${ann.id}. Output was:\n${output}`);
+      console.error(`[aiSummarizer] Failed to parse JSON for ${ann._id || ann.id}. Raw:\n${output}`);
       return null;
     }
 
   } catch (err) {
-    console.error(`[aiSummarizer] Gemini API error for ${ann.id}:`, err?.response?.data || err.message);
+    console.error(`[aiSummarizer] Gemini API error for ${ann._id || ann.id}:`, err?.response?.data || err.message);
     return null;
   }
 }
 
-module.exports = {
-  generateAnnouncementSummary
-};
+/**
+ * Backward-compatible alias.
+ * @deprecated Use generateAIAnalysis instead.
+ */
+async function generateAnnouncementSummary(ann) {
+  const result = await generateAIAnalysis(ann);
+  return result ? result.analysis : null;
+}
+
+module.exports = { generateAIAnalysis, generateAnnouncementSummary };
+
+

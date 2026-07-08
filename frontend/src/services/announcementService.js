@@ -116,3 +116,22 @@ export async function markAllNotificationsRead(uid) {
     await batch.commit()
   }
 }
+
+// ── On-demand AI Analysis ─────────────────────────────────────────────────────
+
+/**
+ * Request AI analysis for a specific announcement.
+ *
+ * Returns:
+ *   { cached: boolean, generatedAt: string, model: string, analysis: object }
+ *
+ * Throws on HTTP errors (PDF unavailable, AI failure, etc.)
+ *
+ * @param {string} announcementId - MongoDB _id of the announcement
+ * @param {boolean} [force=false] - Force regeneration even if cached
+ */
+export async function analyzeAnnouncement(announcementId, force = false) {
+  const url = `/api/announcements/${encodeURIComponent(announcementId)}/analyze${force ? '?force=true' : ''}`
+  return apiClient(url, { method: 'POST' })
+}
+

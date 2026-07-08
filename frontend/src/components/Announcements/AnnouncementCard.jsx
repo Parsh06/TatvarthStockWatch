@@ -1,11 +1,16 @@
+import { useState } from 'react'
 import { ExternalLink, FileText, Star } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import { getCategoryColor, getExchangeColor, formatRelativeDate } from '../../utils/formatters'
 import AiSummaryCard from './AiSummaryCard'
+import AiAnalyzeButton from '../Common/AiAnalyzeButton'
+import AiAnalysisPanel from '../Common/AiAnalysisPanel'
 
 export default function AnnouncementCard({ announcement: a, read = false, onRead }) {
   const navigate = useNavigate()
+  const [aiAnalysis, setAiAnalysis] = useState(null)
+  const [aiMeta, setAiMeta]         = useState(null)
 
   // Normalise field names
   const code       = a.scriptCode  || a.scripCode  || a.ltdCode  || ''
@@ -19,6 +24,9 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
 
   const accentColor = exchange === 'NSE' ? 'bg-orange-400' : 'bg-blue-400'
 
+  // Seed from DB if aiAnalysis already stored on the announcement
+  const initialAnalysis = a.aiAnalysis?.generated ? a.aiAnalysis : null
+
   function handleCardClick() {
     if (onRead) onRead(a.id)
   }
@@ -31,6 +39,11 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
         state: { script: { bseCode: code, scripName: name, symbol: a.nseSymbol || '' } }
       })
     }
+  }
+
+  function handleAnalysisResult(result, meta) {
+    setAiAnalysis(result)
+    setAiMeta(meta || null)
   }
 
   return (
@@ -68,7 +81,7 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
           )}
         </div>
 
-        {/* Company name + code — clickable to Company Data page */}
+        {/* Company name + code */}
         <div className="flex items-center gap-2 mb-1">
           <button
             onClick={handleCompanyClick}
@@ -87,13 +100,37 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
         {/* Subject */}
         <p className="text-sm text-textMuted line-clamp-2 mb-2">{subject}</p>
 
-        {/* AI Summary */}
-        {a.aiSummary && <AiSummaryCard summary={a.aiSummary} />}
+        {/* Legacy auto-generated AI summary (backward compat — fades out naturally) */}
+        {a.aiSummary && !aiAnalysis && <AiSummaryCard summary={a.aiSummary} />}
+
+        {/* New on-demand AI Analysis Panel */}
+        {aiAnalysis && (
+          <AiAnalysisPanel
+            analysis={aiAnalysis}
+            generatedAt={aiMeta?.generatedAt}
+            cached={aiMeta?.cached}
+          />
+        )}
+        {/* Show cached panel from DB if present and button not yet clicked */}
+        {!aiAnalysis && initialAnalysis?.analysis && (
+          <AiAnalysisPanel
+            analysis={initialAnalysis.analysis}
+            generatedAt={initialAnalysis.generatedAt}
+            cached={true}
+          />
+        )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mt-3">
           <span className="text-xs text-textMuted">{formatRelativeDate(dateStr)}</span>
           <div className="flex items-center gap-2">
+            {/* AI Analyze button */}
+            <AiAnalyzeButton
+              announcementId={String(a.id || a._id || '')}
+              pdfUrl={pdfUrl}
+              initialAnalysis={initialAnalysis}
+              onResult={(analysis, meta) => handleAnalysisResult(analysis, meta)}
+            />
             {pdfUrl && (
               <a
                 href={pdfUrl}
@@ -124,3 +161,6 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
     </div>
   )
 }
+
+
+
