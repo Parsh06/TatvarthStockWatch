@@ -157,28 +157,6 @@ export default function BoardMeetingsPage() {
   return (
     <PageTransition className="space-y-6">
       
-      {/* Global Opt-In Alert */}
-      <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-            <Bell className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-textPrimary">Send me Board Meeting Updates</h3>
-            <p className="text-sm text-textMuted">Receive a global email notification for every board meeting outcome published today.</p>
-          </div>
-        </div>
-        <label className="relative inline-flex items-center cursor-pointer">
-          <input 
-            type="checkbox" 
-            className="sr-only peer" 
-            checked={isSubscribed}
-            onChange={toggleSubscription}
-            disabled={updatingPrefs}
-          />
-          <div className="w-11 h-6 bg-surface border border-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-        </label>
-      </div>
 
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">

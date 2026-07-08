@@ -689,7 +689,6 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
     console.log(`[Trigger] BSE ${bseMatched.length} | NSE ${nseMatched.length}`);
 
     const { saveAnnouncements } = require('./lib/announcementStore');
-    const { processBoardMeetingAnnouncements } = require('./lib/boardMeetingNotifier');
     
     let freshAnnouncements = [];
     if (bseAll.length > 0 || nseAll.length > 0) {
