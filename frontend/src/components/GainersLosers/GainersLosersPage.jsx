@@ -273,9 +273,6 @@ export default function GainersLosersPage() {
         </div>
       </div>
 
-      {/* ── Live Volume Spurt Dashboard ──────────────────────────────── */}
-      <VolumeSpurtSection />
-
     </PageTransition>
   )
 }
