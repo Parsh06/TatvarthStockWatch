@@ -12,14 +12,14 @@ function getSummaryCards(stocks) {
   const gainers    = stocks.filter(s => s.changePct > 0)
   const losers     = stocks.filter(s => s.changePct < 0)
   const maxVm      = stocks.reduce((m, s) => s.volMultiple > m.volMultiple ? s : m, stocks[0])
-  const maxTo      = stocks.reduce((m, s) => s.turnover > m.turnover ? s : m, stocks[0])
+  const maxTo      = stocks.reduce((m, s) => s.turnoverCr > m.turnoverCr ? s : m, stocks[0])
   const avgVm      = stocks.reduce((a, s) => a + (s.volMultiple || 0), 0) / stocks.length
   const avgChg     = stocks.reduce((a, s) => a + (s.changePct || 0), 0) / stocks.length
 
   return [
     { title: 'Total High Vol Stocks', value: stocks.length,              icon: <Activity className="w-5 h-5 text-textMuted" /> },
     { title: 'Highest Vol Multiple',  value: `${maxVm.volMultiple.toFixed(1)}x`, sub: maxVm.symbol, icon: <Zap className="w-5 h-5 text-orange-400" /> },
-    { title: 'Highest Turnover',      value: fmtTurnover(maxTo.turnover), sub: maxTo.symbol, icon: <BarChart2 className="w-5 h-5 text-textMuted" /> },
+    { title: 'Highest Turnover',      value: fmtTurnover(maxTo.turnoverCr), sub: maxTo.symbol, icon: <BarChart2 className="w-5 h-5 text-textMuted" /> },
     { title: 'Positive Movers',       value: gainers.length, icon: <TrendingUp className="w-5 h-5 text-green-500" />, valueClass: 'text-green-500' },
     { title: 'Negative Movers',       value: losers.length,  icon: <TrendingDown className="w-5 h-5 text-red-500" />,  valueClass: 'text-red-500' },
     { title: 'Avg Vol Multiple',      value: `${avgVm.toFixed(1)}x`,     icon: <Activity className="w-5 h-5 text-textMuted" /> },

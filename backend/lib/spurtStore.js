@@ -12,17 +12,22 @@ function normalizeSpurtItem(item, rank) {
     return isNaN(n) ? 0 : n;
   };
 
-  const bseCode    = String(item.scripcd || item.SCRIP_CD || '').trim();
-  const symbol     = (item.scrip_id || item.SCRIP_ID || bseCode).trim();
-  const company    = (item.SLONGNAME || item.scrip_name || symbol).trim();
-  const ltp        = parse(item.CURRENT_VALUE || item.current_value || item.LTP);
-  const prevClose  = parse(item.PREV_VALUE || item.prev_value || item.PREVCLOSE);
-  const change     = parse(item.change_val || item.CHANGE || (ltp - prevClose));
-  const changePct  = parse(item.change_percent || item.PCT_CHANGE || item.pct_change);
-  const curVol     = parse(item.CURRENT_VOLUME || item.current_volume || item.VOL);
-  const avgVol     = parse(item.AVG_VOLUME || item.avg_volume || item.AVGVOL);
-  const volMulti   = avgVol > 0 ? parseFloat((curVol / avgVol).toFixed(2)) : parse(item.VOL_MULTIPLE || item.vol_multiple);
-  const turnover   = parse(item.TURNOVER || item.turnover || (ltp * curVol));
+  // Actual BSE fields: scrip_cd, scripname, long_name, Trd_vol, wkavgqty,
+  // volumechangetimes, Ltradert, change_val, change_percent, TurnOver, NSURL
+  const bseCode   = String(item.scrip_cd || item.SCRIP_CD || '').trim();
+  const symbol    = (item.scripname || item.SCRIP_ID || bseCode).trim();
+  const company   = (item.long_name || item.SLONGNAME || symbol).trim();
+  const ltp       = parse(item.Ltradert || item.CURRENT_VALUE);
+  const change    = parse(item.change_val);
+  const changePct = parse(item.change_percent);
+  const prevClose = ltp - change;
+  const curVol    = parse(item.Trd_vol);       // in lakhs (L)
+  const avgVol    = parse(item.wkavgqty);      // weekly avg in lakhs
+  const volMulti  = parse(item.volumechangetimes); // e.g. "132.15"
+  const turnover  = parse(item.TurnOver);      // in crores
+  const bseUrl    = item.NSURL || (bseCode
+    ? `https://www.bseindia.com/corporates/ann.html?scripcd=${bseCode}`
+    : null);
 
   return {
     rank,
@@ -36,12 +41,11 @@ function normalizeSpurtItem(item, rank) {
     currentVolume: curVol,
     avgVolume:     avgVol,
     volMultiple:   volMulti,
-    turnover,
-    bseUrl: bseCode
-      ? `https://www.bseindia.com/corporates/ann.html?scripcd=${bseCode}`
-      : null,
+    turnoverCr:    turnover,  // in Crores
+    bseUrl,
   };
 }
+
 
 // ── Fetch and cache snapshot ──────────────────────────────────────────────────
 async function fetchAndCache() {

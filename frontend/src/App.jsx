@@ -14,6 +14,7 @@ import BulkBlockPage from './components/BulkBlock/BulkBlockPage'
 import CompanyDataPage from './components/CompanyData/CompanyDataPage'
 import NewsPage from './components/News/NewsPage'
 import GainersLosersPage from './components/GainersLosers/GainersLosersPage'
+import VolumeSpurtPage from './components/VolumeSpurt/VolumeSpurtPage'
 
 import PremiumPage from './components/Premium/PremiumPage'
 import SettingsPage from './components/Settings/SettingsPage'
@@ -118,6 +119,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <GainersLosersPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/volume-spurt"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <VolumeSpurtPage />
             </AppLayout>
           </ProtectedRoute>
         }

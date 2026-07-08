@@ -110,7 +110,7 @@ export default function VolumeSpurtTable({ stocks, search, onAiClick }) {
             {th('Change', 'changePct', 'text-right')}
             {th('Vol Multiple', 'volMultiple')}
             {th('Volume', 'currentVolume', 'hidden xl:table-cell text-right')}
-            {th('Turnover', 'turnover', 'hidden xl:table-cell text-right')}
+            {th('Turnover', 'turnoverCr', 'hidden xl:table-cell text-right')}
             <th className="px-3 py-3 font-medium">Signals</th>
             <th className="px-3 py-3 font-medium text-center">AI</th>
           </tr>
@@ -165,7 +165,7 @@ export default function VolumeSpurtTable({ stocks, search, onAiClick }) {
 
                 {/* Turnover */}
                 <td className="px-3 py-3 text-right text-textMuted hidden xl:table-cell">
-                  {fmtTurnover(stock.turnover)}
+                  {fmtTurnover(stock.turnoverCr)}
                 </td>
 
                 {/* Signals */}
