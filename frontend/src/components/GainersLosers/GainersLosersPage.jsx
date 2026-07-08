@@ -3,6 +3,7 @@ import { TrendingUp, TrendingDown, RefreshCw, AlertCircle, ArrowUpRight, ArrowDo
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 import PageTransition from '../Common/PageTransition'
+import VolumeSpurtSection from './VolumeSpurtSection'
 
 
 
@@ -272,6 +273,10 @@ export default function GainersLosersPage() {
           {exchange === 'BSE' ? renderBseTable() : renderNseTable()}
         </div>
       </div>
+
+      {/* ── Live Volume Spurt Dashboard ──────────────────────────────── */}
+      <VolumeSpurtSection />
+
     </PageTransition>
   )
 }
