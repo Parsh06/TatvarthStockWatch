@@ -33,16 +33,6 @@ function fmtTurnover(v) {
   return '₹' + v.toFixed(0)
 }
 
-// ── Countdown timer ───────────────────────────────────────────────────────────
-function useCountdown(seconds) {
-  const [count, setCount] = useState(seconds)
-  useEffect(() => {
-    setCount(seconds)
-    const t = setInterval(() => setCount(c => (c <= 1 ? seconds : c - 1)), 1000)
-    return () => clearInterval(t)
-  }, [seconds])
-  return count
-}
 
 // ── Main Section ──────────────────────────────────────────────────────────────
 export default function VolumeSpurtSection() {
@@ -51,7 +41,6 @@ export default function VolumeSpurtSection() {
   const [error, setError]           = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [search, setSearch]         = useState('')
-  const countdown = useCountdown(60)
 
   const fetchData = useCallback(async () => {
     try {
@@ -86,7 +75,6 @@ export default function VolumeSpurtSection() {
           <p className="text-textMuted mt-1 text-sm">
             Stocks with unusually high trading volumes (BSE).{' '}
             {lastUpdated && <>Last updated: <span className="text-textPrimary">{lastUpdated.toLocaleTimeString()}</span></>}
-            {' '}&mdash; Next refresh in <span className="font-mono text-primary">{countdown}s</span>
           </p>
         </div>
         <button
@@ -143,8 +131,10 @@ export default function VolumeSpurtSection() {
             <RefreshCw className="w-8 h-8 text-primary animate-spin" />
           </div>
         )}
-        {!loading && (
-          <VolumeSpurtTable stocks={stocks} search={search} />
+        {stocks.length > 0 && (
+          <div className={clsx("transition-opacity duration-300", loading ? "opacity-60 pointer-events-none" : "opacity-100")}>
+            <VolumeSpurtTable stocks={stocks} search={search} />
+          </div>
         )}
       </div>
     </div>
