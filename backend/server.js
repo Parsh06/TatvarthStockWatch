@@ -757,9 +757,10 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
     if (freshAnnouncements.length > 0) {
       try {
         const prefs = await prefsStore.getPrefs(req.uid) || {};
+        // Evaluate filter once per announcement, log channel at each dispatch
         const filteredForUser = freshAnnouncements.filter(ann => {
-          const { shouldNotify: allow } = shouldNotify({ prefs, announcement: ann, uid: req.uid });
-          return allow;
+          const decision = shouldNotify({ prefs, announcement: ann, uid: req.uid, notificationChannel: 'push+telegram' });
+          return decision.shouldNotify;
         });
 
         if (filteredForUser.length > 0) {
@@ -1026,8 +1027,8 @@ app.all('/api/cron/trigger', async (req, res) => {
 
               const uActuallyPending = [];
               for (const ann of uMatched) {
-                const { shouldNotify: allow } = shouldNotify({ prefs, announcement: ann, uid });
-                if (!allow) continue;
+                const decision = shouldNotify({ prefs, announcement: ann, uid, notificationChannel: 'push+telegram' });
+                if (!decision.shouldNotify) continue;
 
                 try {
                   await alertDedupLocksCol.insertOne({ _id: `${ann.id}_${uid}`, announcementId: String(ann.id), userId: uid, createdAt: new Date() });

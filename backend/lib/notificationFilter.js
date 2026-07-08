@@ -3,112 +3,173 @@
 /**
  * notificationFilter.js
  *
- * Single source of truth for ALL notification eligibility decisions.
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║  SINGLE SOURCE OF TRUTH — All notification eligibility decisions        ║
+ * ║  No notification channel (Push, Telegram, In-App) may bypass this.      ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  *
- * RULES:
- *  Notification is BLOCKED if ANY of the following are true:
- *    1. The parent group of `category` is in blockedCategories
- *    2. The parent group of `subCategory` is in blockedCategories
- *    3. The raw `category` string itself is in blockedCategories
- *    4. The raw `subCategory` string itself is in blockedCategories
+ * BLOCK RULES (evaluated in order — first match wins):
  *
- *  In other words: if the user blocked it at ANY level, it is blocked.
- *  There is NO "at least one enabled" logic. Every matched dimension must be clear.
+ *   Rule 1 — Parent group of `category` is in blockedCategories
+ *   Rule 2 — Parent group of `subCategory` is in blockedCategories
+ *   Rule 3 — Raw `category` string is in blockedCategories
+ *   Rule 4 — Raw `subCategory` string is in blockedCategories
+ *
+ *   If ANY rule fires → shouldNotify: false
+ *   If ALL rules pass → shouldNotify: true
+ *
+ * Parent acts as a master switch.
+ * There is NO "at least one enabled" logic.
  */
 
 const { resolveCategoryGroup } = require('./alertCategories');
 
-/**
- * BLOCK_REASONS — used in the returned decision object.
- */
+// ── Block reason constants ────────────────────────────────────────────────────
 const BLOCK_REASONS = {
-  BLOCKED_PARENT:      'BLOCKED_PARENT',      // parent group is in blockedCategories
-  BLOCKED_SUBCATEGORY: 'BLOCKED_SUBCATEGORY', // raw subCategory is in blockedCategories
-  BLOCKED_CATEGORY:    'BLOCKED_CATEGORY',    // raw category is in blockedCategories
+  BLOCKED_PARENT:      'BLOCKED_PARENT',      // parent group of category/subCategory is blocked
+  BLOCKED_SUBCATEGORY: 'BLOCKED_SUBCATEGORY', // raw subCategory string is blocked
+  BLOCKED_CATEGORY:    'BLOCKED_CATEGORY',    // raw category string is blocked
   NOTIFICATIONS_OFF:   'NOTIFICATIONS_OFF',   // user disabled all notifications
-  ALLOWED:             'ALLOWED',             // no block matched — send notification
+  ALLOWED:             'ALLOWED',             // all rules passed — send notification
 };
 
 /**
  * shouldNotify
  *
- * @param {Object} params
- * @param {Object} params.prefs         - User preferences from Firestore (prefsStore.getPrefs)
- * @param {Object} params.announcement  - Normalized announcement object from BSE/NSE scraper
- * @param {string} [params.uid]         - User ID (for logging only)
+ * @param {Object}  params
+ * @param {Object}  params.prefs                 - User preferences from Firestore (prefsStore.getPrefs)
+ * @param {Object}  params.announcement           - Normalized announcement object from BSE/NSE scraper
+ * @param {string}  [params.uid]                  - User ID (for logging)
+ * @param {string}  [params.notificationChannel]  - 'push' | 'telegram' | 'in-app' (for logging)
  *
- * @returns {{ shouldNotify: boolean, reason: string, debug: Object }}
+ * @returns {{
+ *   shouldNotify:        boolean,
+ *   reason:              string,
+ *   matchedCategory:     string,
+ *   matchedSubCategory:  string,
+ *   blockedBy:           string | null,
+ *   notificationChannel: string,
+ *   debug:               Object
+ * }}
  */
-function shouldNotify({ prefs, announcement, uid = 'unknown' }) {
+function shouldNotify({ prefs, announcement, uid = 'unknown', notificationChannel = 'unknown' }) {
   const catRaw    = (announcement.category    || '').trim();
   const subCatRaw = (announcement.subCategory || '').trim();
 
-  // Pre-compute parent groups
+  // Pre-compute parent groups once
   const catParent    = catRaw    ? resolveCategoryGroup(catRaw)    : null;
   const subCatParent = subCatRaw ? resolveCategoryGroup(subCatRaw) : null;
 
-  // Convert blockedCategories to a Set ONCE — O(1) lookups
+  // Build blocked set — O(1) lookups
   const blockedSet = new Set(
     Array.isArray(prefs?.blockedCategories) ? prefs.blockedCategories : []
   );
 
   const debug = {
     uid,
-    company:          announcement.scriptName || announcement.scriptCode || '?',
-    category:         catRaw,
-    subCategory:      subCatRaw,
+    announcementId:    String(announcement.id || announcement._id || '?'),
+    company:           announcement.scriptName || announcement.scriptCode || '?',
+    exchange:          announcement.exchange || '?',
+    category:          catRaw,
+    subCategory:       subCatRaw,
     catParent,
     subCatParent,
     blockedCategories: [...blockedSet],
+    notificationChannel,
   };
 
-  // ── Rule 1: Check if parent group of `category` is blocked ──────────────────
+  // Helper — build a BLOCKED decision object
+  const blocked = (reason, blockedBy) => {
+    const decision = {
+      shouldNotify:        false,
+      reason,
+      matchedCategory:     catRaw,
+      matchedSubCategory:  subCatRaw,
+      blockedBy,
+      notificationChannel,
+      debug,
+    };
+    _log(decision);
+    return decision;
+  };
+
+  // Helper — build an ALLOWED decision object
+  const allowed = () => {
+    const decision = {
+      shouldNotify:        true,
+      reason:              BLOCK_REASONS.ALLOWED,
+      matchedCategory:     catRaw,
+      matchedSubCategory:  subCatRaw,
+      blockedBy:           null,
+      notificationChannel,
+      debug,
+    };
+    _log(decision);
+    return decision;
+  };
+
+  // ── Rule 1: parent group of `category` is blocked ────────────────────────────
   if (catParent && blockedSet.has(catParent)) {
-    const decision = { shouldNotify: false, reason: BLOCK_REASONS.BLOCKED_PARENT, debug };
-    _log(decision);
-    return decision;
+    return blocked(BLOCK_REASONS.BLOCKED_PARENT, catParent);
   }
 
-  // ── Rule 2: Check if parent group of `subCategory` is blocked ───────────────
+  // ── Rule 2: parent group of `subCategory` is blocked (if different from catParent) ──
   if (subCatParent && subCatParent !== catParent && blockedSet.has(subCatParent)) {
-    const decision = { shouldNotify: false, reason: BLOCK_REASONS.BLOCKED_PARENT, debug };
-    _log(decision);
-    return decision;
+    return blocked(BLOCK_REASONS.BLOCKED_PARENT, subCatParent);
   }
 
-  // ── Rule 3: Check if the raw `category` string is explicitly blocked ─────────
+  // ── Rule 3: raw `category` string is blocked ─────────────────────────────────
   if (catRaw && blockedSet.has(catRaw)) {
-    const decision = { shouldNotify: false, reason: BLOCK_REASONS.BLOCKED_CATEGORY, debug };
-    _log(decision);
-    return decision;
+    return blocked(BLOCK_REASONS.BLOCKED_CATEGORY, catRaw);
   }
 
-  // ── Rule 4: Check if the raw `subCategory` string is explicitly blocked ──────
+  // ── Rule 4: raw `subCategory` string is blocked ──────────────────────────────
   if (subCatRaw && blockedSet.has(subCatRaw)) {
-    const decision = { shouldNotify: false, reason: BLOCK_REASONS.BLOCKED_SUBCATEGORY, debug };
-    _log(decision);
-    return decision;
+    return blocked(BLOCK_REASONS.BLOCKED_SUBCATEGORY, subCatRaw);
   }
 
-  // ── All checks passed — notification allowed ─────────────────────────────────
-  const decision = { shouldNotify: true, reason: BLOCK_REASONS.ALLOWED, debug };
-  _log(decision);
-  return decision;
+  // ── All rules passed — notification is allowed ────────────────────────────────
+  return allowed();
 }
 
 /**
- * _log — structured decision log.
- * Every notification decision is logged so you can trace exactly why
- * a notification was sent or blocked. Remove or reduce verbosity in production.
+ * _log — Emits one structured log line per notification decision.
+ *
+ * Human-readable prefix + JSON suffix so it is both greppable by eye
+ * and parseable by log aggregators (Vercel logs, Datadog, etc).
  */
-function _log({ shouldNotify, reason, debug }) {
-  const icon = shouldNotify ? '✅' : '🚫';
+function _log(decision) {
+  const { shouldNotify: allow, reason, blockedBy, notificationChannel, debug } = decision;
+  const icon = allow ? '✅' : '🚫';
+
+  // Human readable — for quick scanning in Vercel function logs
   console.log(
-    `[NotifFilter] ${icon} uid=${debug.uid} company="${debug.company}" ` +
-    `cat="${debug.category}" subCat="${debug.subCategory}" ` +
-    `catParent="${debug.catParent}" subCatParent="${debug.subCatParent}" ` +
-    `decision=${reason} blocked=[${debug.blockedCategories.join(', ')}]`
+    `[NotifFilter] ${icon}  uid=${debug.uid}  company="${debug.company}"  ` +
+    `exchange=${debug.exchange}  cat="${debug.category}"  subCat="${debug.subCategory}"  ` +
+    `catParent="${debug.catParent}"  subCatParent="${debug.subCatParent}"  ` +
+    `reason=${reason}  blockedBy=${blockedBy || 'none'}  channel=${notificationChannel}`
+  );
+
+  // Structured JSON — for log parsers / future alerting pipelines
+  console.log(
+    '[NotifFilter:JSON] ' + JSON.stringify({
+      uid:              debug.uid,
+      announcementId:   debug.announcementId,
+      company:          debug.company,
+      exchange:         debug.exchange,
+      category:         debug.category,
+      subCategory:      debug.subCategory,
+      catParent:        debug.catParent,
+      subCatParent:     debug.subCatParent,
+      blockedCategories: debug.blockedCategories,
+      shouldNotify:     allow,
+      reason,
+      blockedBy:        blockedBy || null,
+      channel:          notificationChannel,
+    })
   );
 }
 
 module.exports = { shouldNotify, BLOCK_REASONS };
+
+

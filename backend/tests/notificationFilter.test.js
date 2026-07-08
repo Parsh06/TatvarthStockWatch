@@ -214,3 +214,88 @@ if (failed === 0) {
   console.log('\n  ⚠️  Some tests FAILED. Check above.\n');
   process.exit(1);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PART 3 — Return Shape Tests (engineering spec requirements)
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n========== RETURN SHAPE TESTS ==========\n');
+
+// Shape 1: ALLOWED decision has all required fields
+{
+  const r = shouldNotify({ prefs: makePrefs([]), announcement: makeAnn('Company Update', 'Acquisition'), uid: 'user1', notificationChannel: 'push' });
+  assert('Shape 1 — ALLOWED has shouldNotify=true',     r.shouldNotify === true);
+  assert('Shape 1 — ALLOWED has matchedCategory',       r.matchedCategory === 'Company Update');
+  assert('Shape 1 — ALLOWED has matchedSubCategory',    r.matchedSubCategory === 'Acquisition');
+  assert('Shape 1 — ALLOWED has blockedBy=null',        r.blockedBy === null);
+  assert('Shape 1 — ALLOWED has notificationChannel',   r.notificationChannel === 'push');
+  assert('Shape 1 — ALLOWED reason is ALLOWED',         r.reason === BLOCK_REASONS.ALLOWED);
+}
+
+// Shape 2: BLOCKED decision has all required fields
+{
+  const r = shouldNotify({ prefs: makePrefs(['Acquisition']), announcement: makeAnn('Company Update', 'Acquisition'), uid: 'user2', notificationChannel: 'telegram' });
+  assert('Shape 2 — BLOCKED has shouldNotify=false',    r.shouldNotify === false);
+  assert('Shape 2 — BLOCKED has matchedCategory',       r.matchedCategory === 'Company Update');
+  assert('Shape 2 — BLOCKED has matchedSubCategory',    r.matchedSubCategory === 'Acquisition');
+  assert('Shape 2 — BLOCKED has blockedBy=Acquisition', r.blockedBy === 'Acquisition');
+  assert('Shape 2 — BLOCKED has notificationChannel',   r.notificationChannel === 'telegram');
+  assert('Shape 2 — BLOCKED reason is BLOCKED_SUBCATEGORY', r.reason === BLOCK_REASONS.BLOCKED_SUBCATEGORY);
+}
+
+// Shape 3: Parent block sets blockedBy to parent name
+{
+  const r = shouldNotify({ prefs: makePrefs(['Company Update']), announcement: makeAnn('Company Update', 'Acquisition'), uid: 'user3' });
+  assert('Shape 3 — Parent block sets blockedBy to parent group', typeof r.blockedBy === 'string' && r.blockedBy.length > 0);
+}
+
+// Shape 4: notificationChannel defaults to 'unknown' when not passed
+{
+  const r = shouldNotify({ prefs: makePrefs([]), announcement: makeAnn('Company Update', '') });
+  assert('Shape 4 — notificationChannel defaults to unknown', r.notificationChannel === 'unknown');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PART 4 — BSE vs NSE Exchange Parity Tests
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n========== EXCHANGE PARITY TESTS ==========\n');
+
+function makeNSEAnn(category, subCategory) {
+  return { scriptName: 'NSE Corp', scriptCode: 'NSECORP', exchange: 'NSE', category, subCategory: subCategory || '' };
+}
+
+// Exchange 1: BSE — subCategory blocked
+{
+  const r = shouldNotify({ prefs: makePrefs(['Certificate under Reg. 74 (5) of SEBI (DP) Regulations, 2018']), announcement: makeAnn('Company Update', 'Certificate under Reg. 74 (5) of SEBI (DP) Regulations, 2018') });
+  assert('Exchange 1 — BSE: exact subCategory blocked', r.shouldNotify === false && r.reason === BLOCK_REASONS.BLOCKED_SUBCATEGORY);
+}
+
+// Exchange 2: NSE — same subCategory blocked — identical behavior
+{
+  const r = shouldNotify({ prefs: makePrefs(['Certificate under Reg. 74 (5) of SEBI (DP) Regulations, 2018']), announcement: makeNSEAnn('Company Update', 'Certificate under Reg. 74 (5) of SEBI (DP) Regulations, 2018') });
+  assert('Exchange 2 — NSE: exact subCategory blocked (same as BSE)', r.shouldNotify === false && r.reason === BLOCK_REASONS.BLOCKED_SUBCATEGORY);
+}
+
+// Exchange 3: BSE — nothing blocked → notify
+{
+  const r = shouldNotify({ prefs: makePrefs([]), announcement: makeAnn('Board Meeting', 'Outcome of Board Meeting') });
+  assert('Exchange 3 — BSE: nothing blocked → notify', r.shouldNotify === true);
+}
+
+// Exchange 4: NSE — nothing blocked → notify
+{
+  const r = shouldNotify({ prefs: makePrefs([]), announcement: makeNSEAnn('Board Meeting', 'Outcome of Board Meeting') });
+  assert('Exchange 4 — NSE: nothing blocked → notify', r.shouldNotify === true);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n========== FINAL RESULTS ==========');
+console.log(`  Passed: ${passed}`);
+console.log(`  Failed: ${failed}`);
+console.log(`  Total:  ${passed + failed}`);
+if (failed === 0) {
+  console.log('\n  🎉 All tests passed!\n');
+  process.exit(0);
+} else {
+  console.log('\n  ⚠️  Some tests FAILED. Check above.\n');
+  process.exit(1);
+}
