@@ -97,7 +97,7 @@ module.exports = function createAnalyzeRouter(verifyToken) {
       const aiAnalysis = {
         generated: true,
         generatedAt: new Date().toISOString(),
-        model: result._model || 'gemini-2.0-flash-lite',
+        model: result._model || 'gemini-3.1-flash-lite',
         version: '2',
         analysis: result.analysis,
       };

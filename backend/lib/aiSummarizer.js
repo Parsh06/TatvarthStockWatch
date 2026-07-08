@@ -4,7 +4,7 @@ const { AI_ANALYST_PROMPT } = require('./prompts');
 
 // Initialize Gemini SDK lazily
 let ai = null;
-const AI_MODEL = 'gemini-2.0-flash-lite';
+const AI_MODEL = 'gemini-3.1-flash-lite';
 
 function getAiClient() {
   if (!ai && process.env.GEMINI_API_KEY) {
