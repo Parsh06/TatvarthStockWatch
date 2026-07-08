@@ -3,7 +3,6 @@ import { RefreshCw, AlertCircle, Search, Activity, TrendingUp, TrendingDown, Bar
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 import VolumeSpurtTable from './VolumeSpurtTable'
-import AiInsightDrawer from './AiInsightDrawer'
 
 // ── Summary card data ─────────────────────────────────────────────────────────
 function getSummaryCards(stocks) {
@@ -52,7 +51,6 @@ export default function VolumeSpurtSection() {
   const [error, setError]           = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [search, setSearch]         = useState('')
-  const [aiRow, setAiRow]           = useState(null)
   const countdown = useCountdown(60)
 
   const fetchData = useCallback(async () => {
@@ -146,12 +144,9 @@ export default function VolumeSpurtSection() {
           </div>
         )}
         {!loading && (
-          <VolumeSpurtTable stocks={stocks} search={search} onAiClick={setAiRow} />
+          <VolumeSpurtTable stocks={stocks} search={search} />
         )}
       </div>
-
-      {/* AI Drawer */}
-      {aiRow && <AiInsightDrawer row={aiRow} onClose={() => setAiRow(null)} />}
     </div>
   )
 }
