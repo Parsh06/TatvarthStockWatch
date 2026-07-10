@@ -731,7 +731,14 @@ app.post('/api/trigger', verifyToken, async (req, res) => {
     let telegramSent = false, telegramError = null;
     if (freshAnnouncements.length > 0) {
       try {
-        const prefs = await prefsStore.getPrefs(req.uid) || {};
+        let prefs = null;
+        try {
+          prefs = await prefsStore.getPrefs(req.uid);
+          if (!prefs) throw new Error("Empty preferences returned");
+        } catch (err) {
+          console.error(`[Manual Trigger] Failed to get prefs for ${req.uid}, aborting notifications:`, err.message);
+          return res.json({ success: true, count: 0, _note: "Failed to load preferences safely." });
+        }
         // Evaluate filter once per announcement, log channel at each dispatch
         const filteredForUser = freshAnnouncements.filter(ann => {
           const decision = shouldNotify({ prefs, announcement: ann, uid: req.uid, notificationChannel: 'push+telegram' });
@@ -999,11 +1006,13 @@ app.all('/api/cron/trigger', async (req, res) => {
             });
 
             if (uMatched.length > 0) {
-              let prefs = {};
+              let prefs = null;
               try {
-                prefs = await prefsStore.getPrefs(uid) || {};
+                prefs = await prefsStore.getPrefs(uid);
+                if (!prefs) throw new Error("Empty preferences returned");
               } catch (err) {
-                console.error(`[Global Cron] Failed to get prefs for ${uid}:`, err.message);
+                console.error(`[Global Cron] Failed to get prefs for ${uid}, skipping notifications for safety:`, err.message);
+                continue; // Skip so we don't accidentally send notifications that should be blocked
               }
               const { shouldNotify } = require('./lib/notificationFilter');
 

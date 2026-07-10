@@ -82,6 +82,13 @@ async function sendWebPush(subscription, payload, retries = 1) {
  * @returns {Promise<{ sent: number, failed: number, expired: number, total: number }>}
  */
 async function sendWebPushToUser(uid, payload) {
+  console.log("SENDING PUSH");
+  console.log({
+    uid,
+    company: payload.title,
+    category: payload.body,
+    subCategory: "N/A" // From payload we might not have raw subcat
+  });
   if (!initWebPush()) return { sent: 0, failed: 0, expired: 0, total: 0 };
   if (!uid) return { sent: 0, failed: 0, expired: 0, total: 0 };
 

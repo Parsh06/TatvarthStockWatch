@@ -61,7 +61,14 @@ function shouldNotify({ prefs, announcement, uid = 'unknown', notificationChanne
   const subCatParent = subCatRaw ? resolveCategoryGroup(subCatRaw) : null;
 
   // Build blocked set — O(1) lookups
-  const blockedSet = new Set(
+  // Lowercase all entries to ensure case-insensitive matching
+  const blockedSetLower = new Set(
+    (Array.isArray(prefs?.blockedCategories) ? prefs.blockedCategories : [])
+      .map(c => c.trim().toLowerCase())
+  );
+  
+  // Keep original casing for debug logs
+  const debugBlockedSet = new Set(
     Array.isArray(prefs?.blockedCategories) ? prefs.blockedCategories : []
   );
 
@@ -74,7 +81,7 @@ function shouldNotify({ prefs, announcement, uid = 'unknown', notificationChanne
     subCategory:       subCatRaw,
     catParent,
     subCatParent,
-    blockedCategories: [...blockedSet],
+    blockedCategories: [...debugBlockedSet],
     notificationChannel,
   };
 
@@ -109,22 +116,22 @@ function shouldNotify({ prefs, announcement, uid = 'unknown', notificationChanne
   };
 
   // ── Rule 1: parent group of `category` is blocked ────────────────────────────
-  if (catParent && blockedSet.has(catParent)) {
+  if (catParent && blockedSetLower.has(catParent.toLowerCase())) {
     return blocked(BLOCK_REASONS.BLOCKED_PARENT, catParent);
   }
 
   // ── Rule 2: parent group of `subCategory` is blocked (if different from catParent) ──
-  if (subCatParent && subCatParent !== catParent && blockedSet.has(subCatParent)) {
+  if (subCatParent && subCatParent !== catParent && blockedSetLower.has(subCatParent.toLowerCase())) {
     return blocked(BLOCK_REASONS.BLOCKED_PARENT, subCatParent);
   }
 
   // ── Rule 3: raw `category` string is blocked ─────────────────────────────────
-  if (catRaw && blockedSet.has(catRaw)) {
+  if (catRaw && blockedSetLower.has(catRaw.toLowerCase())) {
     return blocked(BLOCK_REASONS.BLOCKED_CATEGORY, catRaw);
   }
 
   // ── Rule 4: raw `subCategory` string is blocked ──────────────────────────────
-  if (subCatRaw && blockedSet.has(subCatRaw)) {
+  if (subCatRaw && blockedSetLower.has(subCatRaw.toLowerCase())) {
     return blocked(BLOCK_REASONS.BLOCKED_SUBCATEGORY, subCatRaw);
   }
 
@@ -141,6 +148,18 @@ function shouldNotify({ prefs, announcement, uid = 'unknown', notificationChanne
 function _log(decision) {
   const { shouldNotify: allow, reason, blockedBy, notificationChannel, debug } = decision;
   const icon = allow ? '✅' : '🚫';
+
+  console.log("================================");
+  console.log("Notification Decision");
+  console.log({
+    uid: debug.uid,
+    company: debug.company,
+    category: debug.category,
+    subCategory: debug.subCategory,
+    blocked: debug.blockedCategories,
+    decision: decision
+  });
+  console.log("================================");
 
   // Human readable — for quick scanning in Vercel function logs
   console.log(

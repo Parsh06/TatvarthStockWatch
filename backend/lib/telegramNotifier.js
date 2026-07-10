@@ -138,6 +138,7 @@ async function editTelegramMessage(messageId, text, userChatId) {
  * Splits automatically if > 4000 chars.
  */
 async function sendTelegramAlert(announcements, userChatId) {
+  console.log("SENDING TELEGRAM");
   if (!isConfigured(userChatId)) {
     return { sent: false, reason: 'not_configured' };
   }

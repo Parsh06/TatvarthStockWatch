@@ -13,8 +13,9 @@ async function getPrefs(uid) {
     const snap = await db.collection('users').doc(uid).get();
     if (!snap.exists) return { ...DEFAULT_PREFS };
     return { ...DEFAULT_PREFS, ...(snap.data().prefs || {}) };
-  } catch {
-    return { ...DEFAULT_PREFS };
+  } catch (err) {
+    console.error(`[prefsStore] Failed to get preferences for ${uid}:`, err.message);
+    throw err;
   }
 }
 
