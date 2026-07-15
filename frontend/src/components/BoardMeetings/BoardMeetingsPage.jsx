@@ -69,13 +69,8 @@ export default function BoardMeetingsPage() {
       const cachedAnns = await getAnnouncementsFromDB({ limitCount: 2000 })
       setAnnouncements(cachedAnns)
 
-      // 4. Fetch email logs to see which ones got notified
-      try {
-        const logs = await apiClient('/api/bse/board-meetings/email-logs')
-        setEmailLogs(logs || {})
-      } catch (err) {
-        console.error('Failed to fetch email logs', err)
-      }
+      // Removed non-existent email logs fetch to prevent 404 console errors
+
 
     } catch (err) {
       console.error(err)

@@ -79,7 +79,7 @@ export default function AGMUpdatesPage() {
 
   const watchlistCodes = useMemo(() => {
     const codes = new Set()
-    for (const s of watchlistScripts) {
+    for (const s of (watchlistScripts || [])) {
       if (s.bseCode) codes.add(s.bseCode)
     }
     return codes
