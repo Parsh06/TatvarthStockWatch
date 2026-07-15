@@ -733,6 +733,57 @@ router.get('/companynews', async (req, res) => {
 });
 
 
+router.get('/agm-updates', verifyToken, async (req, res) => {
+  const { fromDT, ToDt } = req.query;
+  
+  // Format dates: API expects YYYYMMDD
+  const today = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  
+  const getYYYYMMDD = (d) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}${mm}${dd}`;
+  };
+
+  let defaultFrom = getYYYYMMDD(today);
+  const nextMonth = new Date(today);
+  nextMonth.setMonth(nextMonth.getMonth() + 1);
+  let defaultTo = getYYYYMMDD(nextMonth);
+
+  const params = {
+    SCRIPCODE: '',
+    fromDT: fromDT || defaultFrom,
+    ToDt: ToDt || defaultTo,
+    purposeCode: '',
+    IsCanRev: '',
+    IsSubCode: ''
+  };
+
+  try {
+    const cookies = await getBseCookies();
+    const sessionHdr = cookies ? { Cookie: cookies } : {};
+
+    const data = await bseGet(
+      '/GetForthBoardMeeting/w',
+      params,
+      15000,
+      sessionHdr
+    );
+    
+    // Parse result correctly
+    if (typeof data === 'string' && data.trim() === '') {
+      return res.json({ Table: [] });
+    }
+    
+    res.json(data);
+  } catch (e) {
+    console.error(`[BSE AGMUpdates]`, e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 router.get('/board-meetings', verifyToken, async (req, res) => {
   const { fromDT, ToDt } = req.query;
   

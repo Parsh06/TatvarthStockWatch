@@ -10,6 +10,7 @@ import WatchlistPage from './components/Watchlist/WatchlistPage'
 import AnnouncementsPage from './components/Announcements/AnnouncementsPage'
 import AllAnnouncementsPage from './components/AllAnnouncements/AllAnnouncementsPage'
 import BoardMeetingsPage from './components/BoardMeetings/BoardMeetingsPage'
+import AGMUpdatesPage from './components/AGMUpdates/AGMUpdatesPage'
 import BulkBlockPage from './components/BulkBlock/BulkBlockPage'
 import CompanyDataPage from './components/CompanyData/CompanyDataPage'
 import NewsPage from './components/News/NewsPage'
@@ -99,6 +100,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <BoardMeetingsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/agm-updates"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <AGMUpdatesPage />
             </AppLayout>
           </ProtectedRoute>
         }
