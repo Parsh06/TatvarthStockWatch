@@ -106,15 +106,23 @@ export default function BoardMeetingsPage() {
     return map
   }, [announcements])
 
-  // Filter meetings locally
+  // Filter and sort meetings locally
   const filteredMeetings = useMemo(() => {
-    if (!searchQuery) return meetings
-    const q = searchQuery.toLowerCase()
-    return meetings.filter(m => 
-      (m.Long_Name || '').toLowerCase().includes(q) ||
-      (m.scrip_code || '').toLowerCase().includes(q) ||
-      (m.PURPOSE_NAME || '').toLowerCase().includes(q)
-    )
+    let result = meetings
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      result = result.filter(m => 
+        (m.Long_Name || '').toLowerCase().includes(q) ||
+        (m.scrip_code || '').toLowerCase().includes(q) ||
+        (m.PURPOSE_NAME || '').toLowerCase().includes(q)
+      )
+    }
+    // Sort alphabetically by Company Name
+    return [...result].sort((a, b) => {
+      const nameA = (a.Long_Name || '').toLowerCase()
+      const nameB = (b.Long_Name || '').toLowerCase()
+      return nameA.localeCompare(nameB)
+    })
   }, [meetings, searchQuery])
 
   // Export to Excel

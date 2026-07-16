@@ -102,7 +102,12 @@ export default function AGMUpdatesPage() {
         (m.Industry_name || '').toLowerCase().includes(q)
       )
     }
-    return result
+    // Sort alphabetically by Company Name
+    return [...result].sort((a, b) => {
+      const nameA = (a.Long_Name || '').toLowerCase()
+      const nameB = (b.Long_Name || '').toLowerCase()
+      return nameA.localeCompare(nameB)
+    })
   }, [agms, searchQuery, showWatchlistOnly, watchlistCodes])
 
   // Export to Excel
