@@ -49,8 +49,8 @@ export default function BulkBlockPage() {
   const [error,      setError]      = useState(null)
   const [result,     setResult]     = useState(null)
   const [search,     setSearch]     = useState('')
-  const [sortKey,    setSortKey]    = useState('dealDate')
-  const [sortDir,    setSortDir]    = useState('desc')
+  const [sortKey,    setSortKey]    = useState('scripname')
+  const [sortDir,    setSortDir]    = useState('asc')
   const [activeTab,  setActiveTab]  = useState('table')   // 'table' | 'summary'
 
   // When switching exchange, reset dealType to a sensible default
