@@ -1078,7 +1078,7 @@ export default function CompanyDataPage() {
           {companyData && !hasHolding && (
             <div className="glass-panel rounded-xl px-5 py-4 flex items-center gap-3 text-xs text-textMuted/60 shadow-inner">
               <Info className="w-4 h-4 flex-shrink-0 text-primary/70" />
-              <span><span className="text-textMuted font-medium">Shareholding Breakdown</span> — data currently unavailable from BSE (API returned empty for this script)</span>
+              <span><span className="text-textMuted font-medium">Shareholding Breakdown</span> — data currently unavailable for this script</span>
             </div>
           )}
 

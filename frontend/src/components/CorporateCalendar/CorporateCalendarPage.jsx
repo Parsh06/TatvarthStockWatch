@@ -200,7 +200,7 @@ export default function CorporateCalendarPage() {
             Corporate Calendar
           </h1>
           <p className="text-xs text-textMuted mt-0.5">
-            Board meetings, results, dividends, AGMs &amp; corporate actions — BSE India
+            Board meetings, results, dividends, AGMs &amp; corporate actions
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -241,7 +241,7 @@ export default function CorporateCalendarPage() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search company / BSE code…"
+            placeholder="Search company code…"
             className="w-full pl-7 pr-7 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-textPrimary placeholder:text-textMuted/40 focus:outline-none focus:border-primary/40 transition shadow-sm"
           />
           {search && (
@@ -323,7 +323,7 @@ export default function CorporateCalendarPage() {
       {loading && (
         <div className="flex items-center justify-center py-16 gap-3 text-textMuted">
           <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm">Fetching corporate events from BSE…</span>
+          <span className="text-sm">Fetching corporate events…</span>
         </div>
       )}
 
@@ -349,7 +349,7 @@ export default function CorporateCalendarPage() {
                 {wlOnly ? 'Try disabling "Watchlist only"' :
                  search  ? 'Try clearing the search filter' :
                  activeCat ? 'Try a different category' :
-                 'BSE may not have published data for this period yet'}
+                 'Data may not be published for this period yet'}
               </p>
               {(wlOnly || search || activeCat) && (
                 <button
@@ -403,7 +403,7 @@ export default function CorporateCalendarPage() {
       {/* Footer */}
       {fetchedAt && !loading && (
         <p className="text-[11px] text-textMuted/40 text-center pb-2">
-          Board meeting data &amp; corporate actions from BSE India public API · Cached 30 min ·
+          Board meeting data &amp; corporate actions · Cached 30 min ·
           Last fetched {fetchedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
         </p>
       )}
@@ -526,7 +526,7 @@ function EventCard({ event: e, meta, onCompany }) {
             className="flex justify-center items-center gap-1.5 text-[11px] font-medium text-textMuted hover:text-textPrimary bg-background hover:bg-white/5 border border-border py-1.5 px-3 rounded-lg transition"
           >
             <ExternalLink className="w-3.5 h-3.5" />
-            BSE
+            Source
           </a>
         )}
       </div>
