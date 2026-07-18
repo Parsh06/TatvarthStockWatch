@@ -288,8 +288,6 @@ export default function IPOGmpPage() {
               </button>
             </div>
           )}
-
-          <span>Data sourced live via MainboardGMP API</span>
         </div>
       </div>
 
