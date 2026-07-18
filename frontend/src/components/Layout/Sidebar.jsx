@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Star, Bell, BellRing, Settings, TrendingUp, ChevronLeft, ChevronRight, LogOut, Crown, Layers, BarChart2, Globe, Newspaper, Briefcase, CalendarDays, Eye, Presentation, Zap, Users } from 'lucide-react'
+import { LayoutDashboard, Star, Bell, Settings, TrendingUp, ChevronLeft, ChevronRight, LogOut, Crown, Layers, BarChart2, Globe, Newspaper, Briefcase, CalendarDays, Eye, Presentation, Zap, Users, Rocket } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTier } from '../../contexts/TierContext'
@@ -15,6 +15,7 @@ const NAV_TOP = [
   { to: '/all-announcements',  icon: Globe,           label: 'All Announcements' },
   { to: '/board-meetings',     icon: Presentation,    label: 'Board Meeting Updates' },
   { to: '/agm-updates',        icon: Users,           label: 'AGM Updates' },
+  { to: '/ipo-gmp',            icon: Rocket,          label: 'IPO GMP Tracker' },
   { to: '/gainers-losers',     icon: TrendingUp,      label: 'Top Gainers/Losers' },
   { to: '/volume-spurt',       icon: Zap,             label: 'Live Volume Spurt' },
   { to: '/news',               icon: Newspaper,       label: 'Market News' },

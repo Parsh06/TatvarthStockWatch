@@ -11,6 +11,7 @@ import AnnouncementsPage from './components/Announcements/AnnouncementsPage'
 import AllAnnouncementsPage from './components/AllAnnouncements/AllAnnouncementsPage'
 import BoardMeetingsPage from './components/BoardMeetings/BoardMeetingsPage'
 import AGMUpdatesPage from './components/AGMUpdates/AGMUpdatesPage'
+import IPOGmpPage from './components/IPO/IPOGmpPage'
 import BulkBlockPage from './components/BulkBlock/BulkBlockPage'
 import CompanyDataPage from './components/CompanyData/CompanyDataPage'
 import NewsPage from './components/News/NewsPage'
@@ -110,6 +111,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <AGMUpdatesPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ipo-gmp"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <IPOGmpPage />
             </AppLayout>
           </ProtectedRoute>
         }
