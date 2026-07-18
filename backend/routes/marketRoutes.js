@@ -23,10 +23,13 @@ module.exports = function marketRoutes(verifyToken) {
   });
 
   // GET /api/market/ipo-gmp
-  // Fetches live IPO GMP data from mainboardgmp.com
+  // Fetches live IPO GMP data from mainboardgmp.com with pagination and search
   router.get('/ipo-gmp', verifyToken, async (req, res) => {
     try {
-      const response = await axios.get('https://mainboardgmp.com/ipos-pagination.php?type=all&page=1&search=&year=', {
+      const page = req.query.page || 1;
+      const search = req.query.search || '';
+      
+      const response = await axios.get(`https://mainboardgmp.com/ipos-pagination.php?type=all&page=${page}&search=${encodeURIComponent(search)}&year=`, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36',
           'Accept': '*/*',
@@ -35,7 +38,7 @@ module.exports = function marketRoutes(verifyToken) {
         timeout: 10000 // 10 second timeout
       });
       
-      // Send the entire response data to frontend
+      // Send the entire response data to frontend (includes pagination metadata)
       res.json(response.data);
     } catch (err) {
       console.error('Failed to fetch IPO GMP data:', err.message);

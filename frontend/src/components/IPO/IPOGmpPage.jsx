@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, Search, Download, TrendingUp, AlertCircle, Calendar, Briefcase, Zap } from 'lucide-react';
+import { RefreshCw, Search, Download, TrendingUp, AlertCircle, Calendar, Briefcase, Zap, ChevronLeft, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import { apiClient } from '../../services/apiClient';
 import { exportToXLSX } from '../../utils/csvParser';
@@ -28,15 +28,32 @@ export default function IPOGmpPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [lastFetched, setLastFetched] = useState(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+
+  // Debounce search
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setCurrentPage(1); // Reset to page 1 on new search
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
   const fetchData = async (isBackground = false) => {
     if (!isBackground) setLoading(true);
     setError(null);
     try {
-      const data = await apiClient('/api/market/ipo-gmp');
-      if (data && data.data) {
-        setIpos(data.data);
+      const data = await apiClient(`/api/market/ipo-gmp?page=${currentPage}&search=${encodeURIComponent(debouncedSearch)}`);
+      if (data) {
+        setIpos(data.data || []);
+        if (data.total_pages) setTotalPages(data.total_pages);
+        if (data.total) setTotalItems(data.total);
         setLastFetched(new Date());
       }
     } catch (err) {
@@ -47,30 +64,18 @@ export default function IPOGmpPage() {
     }
   };
 
-  // Fetch immediately on mount, and poll every 60 seconds
+  // Fetch on mount, and when page or debounced search changes. Also poll every 60s.
   useEffect(() => {
     fetchData();
     const intervalId = setInterval(() => {
       fetchData(true);
     }, 60000);
     return () => clearInterval(intervalId);
-  }, []);
-
-  const filteredIpos = useMemo(() => {
-    let result = ipos;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(m => 
-        (m.company_name || '').toLowerCase().includes(q) ||
-        (m.slug || '').toLowerCase().includes(q)
-      );
-    }
-    return result;
-  }, [ipos, searchQuery]);
+  }, [currentPage, debouncedSearch]);
 
   const handleExport = () => {
-    if (!filteredIpos.length) return;
-    const exportData = filteredIpos.map(m => {
+    if (!ipos.length) return;
+    const exportData = ipos.map(m => {
       const issuePrice = parseFloat(m.issue_price) || 0;
       const gmp = parseFloat(m.gmp) || 0;
       const estPrice = issuePrice + gmp;
@@ -122,7 +127,7 @@ export default function IPOGmpPage() {
           </button>
           <button 
             onClick={handleExport}
-            disabled={!filteredIpos.length}
+            disabled={!ipos.length}
             className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-primary/15 hover:bg-primary/25 border border-primary/20 text-primary rounded-xl text-sm font-medium transition-colors disabled:opacity-50 shadow-sm"
           >
             <Download className="w-4 h-4" />
@@ -180,14 +185,14 @@ export default function IPOGmpPage() {
                     <p>Loading IPO data...</p>
                   </td>
                 </tr>
-              ) : filteredIpos.length === 0 ? (
+              ) : ipos.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="px-4 py-16 text-center text-textMuted">
                     No IPOs found.
                   </td>
                 </tr>
               ) : (
-                filteredIpos.map((m) => {
+                ipos.map((m) => {
                   const issuePrice = parseFloat(m.issue_price) || 0;
                   const gmp = parseFloat(m.gmp) || 0;
                   const estPrice = issuePrice + gmp;
@@ -258,8 +263,32 @@ export default function IPOGmpPage() {
             </tbody>
           </table>
         </div>
-        <div className="px-4 py-3 border-t border-white/5 bg-black/20 flex justify-between items-center text-xs text-textMuted">
-          <span>Showing {filteredIpos.length} IPOs</span>
+        <div className="px-4 py-3 border-t border-white/5 bg-black/20 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-textMuted">
+          <span>Showing {ipos.length} IPOs {totalItems > 0 && `(Total: ${totalItems})`}</span>
+          
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1 || loading}
+                className="p-1.5 rounded-lg hover:bg-white/10 disabled:opacity-30 transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="font-medium">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages || loading}
+                className="p-1.5 rounded-lg hover:bg-white/10 disabled:opacity-30 transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           <span>Data sourced live via MainboardGMP API</span>
         </div>
       </div>
