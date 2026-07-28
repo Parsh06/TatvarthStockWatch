@@ -2,15 +2,20 @@ import { useState } from 'react'
 import {
   Sparkles, ChevronDown, ChevronUp,
   TrendingUp, TrendingDown, Minus,
-  CheckCircle2, XCircle, AlertTriangle, Info,
-  Target, Lightbulb, BarChart3, Building2
+  Info, Target, Lightbulb, BarChart3, Building2,
+  Telescope, Handshake, MessageSquareQuote, ShieldAlert,
+  AlertTriangle, CheckCircle2, Banknote, ArrowRightLeft
 } from 'lucide-react'
 import clsx from 'clsx'
 
+// ── Helper: skip non-informational values ────────────────────────────────────
+const NA_VALS = new Set(['Not Reported', 'Not Applicable', '', null, undefined])
+const hasVal = (v) => !NA_VALS.has(v)
+
 // ── Reusable metric card ─────────────────────────────────────────────────────
-function Metric({ label, value, qoq, yoy }) {
+function Metric({ label, value, qoq, yoy, prev, prevLabel = 'Prev Qtr' }) {
   const parseNum = (v) => {
-    if (!v || v === 'Not Reported' || v === 'Not Applicable') return null
+    if (!hasVal(v)) return null
     const n = parseFloat(v)
     return isNaN(n) ? null : n
   }
@@ -30,17 +35,20 @@ function Metric({ label, value, qoq, yoy }) {
       )}>
         {label}
         {pos ? <TrendingUp className="w-2.5 h-2.5" /> : neg ? <TrendingDown className="w-2.5 h-2.5" /> : <Minus className="w-2.5 h-2.5" />}
-        {Math.abs(num)}%
+        {Math.abs(num).toFixed(1)}%
       </span>
     )
   }
 
-  const display = (!value || value === 'Not Reported' || value === 'Not Applicable') ? '—' : value
+  const display = hasVal(value) ? value : '—'
 
   return (
     <div className="flex flex-col p-3 bg-surface border border-border/50 rounded-xl">
       <span className="text-[10px] text-textMuted mb-1 font-semibold uppercase tracking-wider">{label}</span>
       <span className="text-base font-bold text-textPrimary mb-2">{display}</span>
+      {hasVal(prev) && (
+        <span className="text-[10px] text-textMuted mb-1.5">{prevLabel}: {prev}</span>
+      )}
       <div className="flex items-center gap-1.5 flex-wrap mt-auto">
         {pill(qoqNum, 'QoQ ')}
         {pill(yoyNum, 'YoY ')}
@@ -51,8 +59,7 @@ function Metric({ label, value, qoq, yoy }) {
 
 // ── Bullet list ──────────────────────────────────────────────────────────────
 function BulletList({ items, color = 'text-primary' }) {
-  const filtered = (Array.isArray(items) ? items : [])
-    .filter(i => i && i !== 'Not Reported' && i !== 'Not Applicable')
+  const filtered = (Array.isArray(items) ? items : []).filter(i => hasVal(i))
   if (!filtered.length) return null
   return (
     <ul className="space-y-1.5">
@@ -66,9 +73,34 @@ function BulletList({ items, color = 'text-primary' }) {
   )
 }
 
+// ── Kv Row (label: value) ────────────────────────────────────────────────────
+function KvRow({ label, value }) {
+  if (!hasVal(value)) return null
+  return (
+    <div className="flex items-start gap-3 text-sm py-2 border-b border-white/5 last:border-b-0">
+      <span className="text-textMuted w-40 flex-shrink-0 font-medium text-xs leading-relaxed">{label}</span>
+      <span className="text-textPrimary leading-relaxed">{value}</span>
+    </div>
+  )
+}
+
+// ── Risk Row ─────────────────────────────────────────────────────────────────
+function RiskRow({ label, value }) {
+  if (!hasVal(value)) return null
+  return (
+    <div className="flex items-start gap-2 text-sm py-2.5 border-b border-red-500/10 last:border-b-0">
+      <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+      <div>
+        <span className="text-red-400 font-semibold text-xs">{label}: </span>
+        <span className="text-textPrimary">{value}</span>
+      </div>
+    </div>
+  )
+}
+
 // ── Sentiment badge ──────────────────────────────────────────────────────────
 function SentimentBadge({ value }) {
-  if (!value || value === 'Not Reported' || value === 'Not Applicable') return null
+  if (!hasVal(value)) return null
   const lc = value.toLowerCase()
   return (
     <span className={clsx(
@@ -85,7 +117,7 @@ function SentimentBadge({ value }) {
 
 // ── Importance badge ─────────────────────────────────────────────────────────
 function ImportanceBadge({ value }) {
-  if (!value || value === 'Not Reported' || value === 'Not Applicable') return null
+  if (!hasVal(value)) return null
   const lc = value.toLowerCase()
   return (
     <span className={clsx(
@@ -100,9 +132,9 @@ function ImportanceBadge({ value }) {
 }
 
 // ── Section wrapper ──────────────────────────────────────────────────────────
-function Section({ icon: Icon, title, children, iconColor = 'text-primary' }) {
+function Section({ icon: Icon, title, children, iconColor = 'text-primary', borderColor }) {
   return (
-    <div>
+    <div className={clsx('rounded-xl border p-4', borderColor || 'border-white/5 bg-surface/30')}>
       <div className="flex items-center gap-2 mb-3">
         <div className={clsx('p-1 rounded-md', iconColor.replace('text-', 'bg-') + '/10')}>
           <Icon className={clsx('w-3.5 h-3.5', iconColor)} />
@@ -114,37 +146,47 @@ function Section({ icon: Icon, title, children, iconColor = 'text-primary' }) {
   )
 }
 
-// ── Corporate action row ─────────────────────────────────────────────────────
-function CorporateActionRow({ label, value }) {
-  if (!value || value === 'Not Reported' || value === 'Not Applicable') return null
-  return (
-    <div className="flex items-start gap-2 text-sm">
-      <span className="text-textMuted w-32 flex-shrink-0 font-medium">{label}:</span>
-      <span className="text-textPrimary">{value}</span>
-    </div>
-  )
-}
-
 // ── Main Component ───────────────────────────────────────────────────────────
-/**
- * AiAnalysisPanel
- *
- * Renders the full institutional-grade AI analysis for an announcement.
- * The `analysis` prop is the JSON object returned by the Gemini model.
- *
- * Props:
- *   analysis     — the analysis object (from aiAnalysis.analysis in MongoDB)
- *   generatedAt  — ISO date string of when it was generated
- *   cached       — boolean, was it served from cache?
- */
 export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
   const [expanded, setExpanded] = useState(true)
 
   if (!analysis || typeof analysis !== 'object') return null
-
   const a = analysis
-  const hasFinancials = a.financials?.applicable !== false &&
-    (a.financials?.revenue?.current || a.financials?.netProfit?.current)
+
+  const fin = a.financials || {}
+  const fwd = a.forwardLooking || {}
+  const str = a.strategicInitiativesAndPartnerships || {}
+  const risk = a.riskFactorsAndRedFlags || {}
+  const mgmt = a.managementCommentary
+
+  const hasFinancials = fin.applicable !== false &&
+    (hasVal(fin.revenue?.current) || hasVal(fin.netProfit?.current))
+
+  const hasForwardLooking = fwd.applicable !== false &&
+    Object.values(fwd).some(v => typeof v === 'string' && hasVal(v))
+
+  const hasStrategic = str.applicable !== false &&
+    Object.values(str).some(v => typeof v === 'string' && hasVal(v))
+
+  const hasRisks = risk.applicable !== false &&
+    Object.values(risk).some(v => typeof v === 'string' && hasVal(v))
+
+  const hasMgmt = Array.isArray(mgmt) && mgmt.some(m => hasVal(m))
+
+  const corporateActionsExist = a.corporateActions &&
+    Object.values(a.corporateActions).some(v => hasVal(v))
+
+  const hasCategoryDetails = a.categorySpecificDetails &&
+    Object.values(a.categorySpecificDetails).some(v => hasVal(v))
+
+  const hasBalanceSheet = fin.balanceSheetSnapshot &&
+    Object.values(fin.balanceSheetSnapshot).some(v => hasVal(v))
+
+  const hasCashFlow = fin.cashFlowHighlights &&
+    Object.values(fin.cashFlowHighlights).some(v => hasVal(v))
+
+  const hasMargins = fin.marginAnalysis &&
+    Object.values(fin.marginAnalysis).some(v => hasVal(v))
 
   const generatedLabel = (() => {
     if (!generatedAt) return null
@@ -157,9 +199,6 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
       return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
     } catch { return null }
   })()
-
-  const corporateActionsExist = a.corporateActions && Object.values(a.corporateActions)
-    .some(v => v && v !== 'Not Reported' && v !== 'Not Applicable')
 
   return (
     <div className="mt-3 border border-primary/20 bg-gradient-to-br from-primary/5 to-violet-900/5 rounded-2xl overflow-hidden">
@@ -182,7 +221,7 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
               )}
             </div>
             {a.headline && (
-              <p className="text-xs text-textPrimary mt-0.5 line-clamp-1 opacity-80">{a.headline}</p>
+              <p className="text-xs text-textPrimary mt-0.5 line-clamp-2 opacity-80">{a.headline}</p>
             )}
           </div>
         </div>
@@ -198,20 +237,31 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
 
       {/* ── Body ── */}
       {expanded && (
-        <div className="px-4 pb-5 space-y-5 border-t border-primary/10" onClick={(e) => e.stopPropagation()}>
-          {/* Badges */}
+        <div className="px-4 pb-5 space-y-4 border-t border-primary/10" onClick={(e) => e.stopPropagation()}>
+
+          {/* Badges Row */}
           <div className="flex items-center gap-2 flex-wrap pt-4">
             <SentimentBadge value={a.sentiment} />
             <ImportanceBadge value={a.importance} />
-            {a.announcementCategory && (
+            {hasVal(a.announcementCategory) && (
               <span className="text-xs px-2.5 py-1 rounded-full bg-surface border border-border text-textMuted font-medium">
                 {a.announcementCategory}
               </span>
             )}
+            {hasVal(a.announcementType) && (
+              <span className="text-xs px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 font-medium">
+                {a.announcementType}
+              </span>
+            )}
+            {hasVal(fin.period) && (
+              <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-medium">
+                📅 {fin.period}
+              </span>
+            )}
           </div>
 
-          {/* Summary bullets */}
-          {Array.isArray(a.summary) && a.summary.some(s => s && s !== 'Not Reported') && (
+          {/* Executive Summary */}
+          {Array.isArray(a.summary) && a.summary.some(s => hasVal(s)) && (
             <Section icon={Info} title="Executive Summary" iconColor="text-blue-400">
               <BulletList items={a.summary} color="text-blue-400" />
             </Section>
@@ -220,25 +270,44 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
           {/* Financial Highlights */}
           {hasFinancials && (
             <Section icon={BarChart3} title="Financial Highlights" iconColor="text-emerald-400">
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {a.financials.revenue?.current && (
-                  <Metric label="Revenue" value={a.financials.revenue.current}
-                    qoq={a.financials.revenue.qoqPercent} yoy={a.financials.revenue.yoyPercent} />
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+                {hasVal(fin.revenue?.current) && (
+                  <Metric label="Revenue" value={fin.revenue.current}
+                    prev={fin.revenue.previousQuarter}
+                    qoq={fin.revenue.qoqPercent} yoy={fin.revenue.yoyPercent} />
                 )}
-                {a.financials.ebitda?.current && (
-                  <Metric label="EBITDA" value={a.financials.ebitda.current}
-                    qoq={a.financials.ebitda.qoqPercent} yoy={a.financials.ebitda.yoyPercent} />
+                {hasVal(fin.grossProfit?.current) && (
+                  <Metric label="Gross Profit" value={fin.grossProfit.current}
+                    prev={fin.grossProfit.previousQuarter}
+                    qoq={fin.grossProfit.qoqPercent} yoy={fin.grossProfit.yoyPercent} />
                 )}
-                {a.financials.netProfit?.current && (
-                  <Metric label="Net Profit (PAT)" value={a.financials.netProfit.current}
-                    qoq={a.financials.netProfit.qoqPercent} yoy={a.financials.netProfit.yoyPercent} />
+                {hasVal(fin.ebitda?.current) && (
+                  <Metric label="EBITDA" value={fin.ebitda.current}
+                    prev={fin.ebitda.previousQuarter}
+                    qoq={fin.ebitda.qoqPercent} yoy={fin.ebitda.yoyPercent} />
+                )}
+                {hasVal(fin.operatingProfit?.current) && (
+                  <Metric label="Operating Profit" value={fin.operatingProfit.current}
+                    prev={fin.operatingProfit.previousQuarter}
+                    qoq={fin.operatingProfit.qoqPercent} yoy={fin.operatingProfit.yoyPercent} />
+                )}
+                {hasVal(fin.netProfit?.current) && (
+                  <Metric label="Net Profit (PAT)" value={fin.netProfit.current}
+                    prev={fin.netProfit.previousQuarter}
+                    qoq={fin.netProfit.qoqPercent} yoy={fin.netProfit.yoyPercent} />
+                )}
+                {hasVal(fin.eps?.current) && (
+                  <Metric label="EPS" value={fin.eps.current}
+                    prev={fin.eps.previousQuarter}
+                    qoq={fin.eps.qoqPercent} yoy={fin.eps.yoyPercent} />
                 )}
               </div>
-              {/* Margin row */}
-              {a.financials.marginAnalysis && Object.values(a.financials.marginAnalysis).some(v => v && v !== 'Not Reported' && v !== 'Not Applicable') && (
-                <div className="flex flex-wrap gap-3 mt-3">
-                  {Object.entries(a.financials.marginAnalysis).map(([k, v]) =>
-                    v && v !== 'Not Reported' && v !== 'Not Applicable' ? (
+
+              {/* Margins */}
+              {hasMargins && (
+                <div className="flex flex-wrap gap-x-5 gap-y-2 mt-1 pt-3 border-t border-white/5">
+                  {Object.entries(fin.marginAnalysis).map(([k, v]) =>
+                    hasVal(v) ? (
                       <div key={k} className="text-xs text-textMuted">
                         <span className="capitalize">{k.replace(/([A-Z])/g, ' $1').trim()}:</span>{' '}
                         <span className="text-textPrimary font-semibold">{v}</span>
@@ -247,65 +316,166 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
                   )}
                 </div>
               )}
+
+              {/* Exceptional Items */}
+              {hasVal(fin.exceptionalItems) && (
+                <div className="mt-3 pt-3 border-t border-amber-500/15 flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-300 leading-relaxed"><span className="font-bold">Exceptional Items: </span>{fin.exceptionalItems}</p>
+                </div>
+              )}
+
+              {/* Balance Sheet */}
+              {hasBalanceSheet && (
+                <div className="mt-3 pt-3 border-t border-white/5">
+                  <p className="text-[10px] font-bold text-textMuted uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <Banknote className="w-3 h-3" /> Balance Sheet Snapshot
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1.5">
+                    {Object.entries(fin.balanceSheetSnapshot).map(([k, v]) =>
+                      hasVal(v) ? (
+                        <div key={k} className="flex items-baseline gap-1.5">
+                          <span className="text-[10px] text-textMuted capitalize">{k.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                          <span className="text-xs text-textPrimary font-semibold">{v}</span>
+                        </div>
+                      ) : null
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Cash Flow */}
+              {hasCashFlow && (
+                <div className="mt-3 pt-3 border-t border-white/5">
+                  <p className="text-[10px] font-bold text-textMuted uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <ArrowRightLeft className="w-3 h-3" /> Cash Flow Highlights
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1.5">
+                    {Object.entries(fin.cashFlowHighlights).map(([k, v]) =>
+                      hasVal(v) ? (
+                        <div key={k} className="flex items-baseline gap-1.5">
+                          <span className="text-[10px] text-textMuted capitalize">{k.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                          <span className="text-xs text-textPrimary font-semibold">{v}</span>
+                        </div>
+                      ) : null
+                    )}
+                  </div>
+                </div>
+              )}
             </Section>
           )}
 
           {/* Key Highlights */}
-          {Array.isArray(a.keyHighlights) && a.keyHighlights.some(h => h && h !== 'Not Reported' && h !== 'Not Applicable') && (
+          {Array.isArray(a.keyHighlights) && a.keyHighlights.some(h => hasVal(h)) && (
             <Section icon={Lightbulb} title="Key Highlights" iconColor="text-amber-400">
-              <div className="flex flex-wrap gap-2">
-                {a.keyHighlights
-                  .filter(h => h && h !== 'Not Reported' && h !== 'Not Applicable')
-                  .map((h, i) => (
-                    <span key={i} className="text-[11px] px-2.5 py-1 bg-surface border border-border rounded-lg text-textPrimary leading-snug">
-                      {h}
-                    </span>
-                  ))}
+              <ul className="space-y-2">
+                {a.keyHighlights.filter(h => hasVal(h)).map((h, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-textPrimary leading-relaxed">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                    <span>{h}</span>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+
+          {/* Forward Looking */}
+          {hasForwardLooking && (
+            <Section icon={Telescope} title="Forward-Looking & Guidance" iconColor="text-cyan-400">
+              <div className="space-y-0">
+                <KvRow label="Guidance" value={fwd.guidance} />
+                <KvRow label="Capacity Expansion" value={fwd.capacityExpansionPlans} />
+                <KvRow label="Capex Plans" value={fwd.capexPlans} />
+                <KvRow label="New Products / Services" value={fwd.newProductOrServicePlans} />
+                <KvRow label="New Markets / Geographies" value={fwd.newMarketOrGeographyPlans} />
+                <KvRow label="Order Book / Pipeline" value={fwd.orderBookOrPipeline} />
+                <KvRow label="M&A / Inorganic Intent" value={fwd.mAndAOrInorganicIntent} />
+                <KvRow label="Tech / Digital Plans" value={fwd.technologyOrDigitalInvestmentPlans} />
+                <KvRow label="Medium-Term Targets" value={fwd.mediumTermStrategicTargets} />
+              </div>
+            </Section>
+          )}
+
+          {/* Management Commentary */}
+          {hasMgmt && (
+            <Section icon={MessageSquareQuote} title="Management Commentary" iconColor="text-violet-400">
+              <div className="space-y-2.5">
+                {mgmt.filter(m => hasVal(m)).map((m, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <div className="w-1 h-full min-h-[1.25rem] rounded-full bg-violet-400/40 flex-shrink-0 mt-1" />
+                    <p className="text-sm text-textPrimary leading-relaxed italic">"{m}"</p>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {/* Strategic Initiatives */}
+          {hasStrategic && (
+            <Section icon={Handshake} title="Strategic Initiatives & Partnerships" iconColor="text-indigo-400">
+              <div className="space-y-0">
+                <KvRow label="Partnerships / JVs / MOUs" value={str.newPartnershipsOrJVsOrMOUs} />
+                <KvRow label="Subsidiaries / Stakes" value={str.subsidiariesOrStakeChanges} />
+                <KvRow label="Tech / Licensing Tie-ups" value={str.technologyOrLicensingTieUps} />
+                <KvRow label="Govt. Scheme" value={str.governmentSchemeParticipation} />
+                <KvRow label="ESG / Sustainability" value={str.esgOrSustainabilityInitiatives} />
               </div>
             </Section>
           )}
 
           {/* Corporate Actions */}
           {corporateActionsExist && (
-            <Section icon={Building2} title="Corporate Actions" iconColor="text-violet-400">
-              <div className="space-y-1.5">
-                <CorporateActionRow label="Dividend" value={a.corporateActions?.dividend} />
-                <CorporateActionRow label="Stock Split" value={a.corporateActions?.stockSplit} />
-                <CorporateActionRow label="Bonus Issue" value={a.corporateActions?.bonusIssue} />
-                <CorporateActionRow label="Buyback" value={a.corporateActions?.buyback} />
-                <CorporateActionRow label="Rights Issue" value={a.corporateActions?.rightsIssue} />
-                <CorporateActionRow label="Merger" value={a.corporateActions?.merger} />
-                <CorporateActionRow label="Acquisition" value={a.corporateActions?.acquisition} />
-                <CorporateActionRow label="Fund Raise" value={a.corporateActions?.fundRaise} />
-                <CorporateActionRow label="Board Changes" value={a.corporateActions?.boardChanges} />
-                <CorporateActionRow label="Mgmt Changes" value={a.corporateActions?.managementChanges} />
-                <CorporateActionRow label="Credit Rating" value={a.corporateActions?.creditRatingChange} />
-                <CorporateActionRow label="Regulatory" value={a.corporateActions?.litigationOrRegulatory} />
+            <Section icon={Building2} title="Corporate Actions" iconColor="text-primary">
+              <div className="space-y-0">
+                <KvRow label="Dividend" value={a.corporateActions?.dividend} />
+                <KvRow label="Stock Split" value={a.corporateActions?.stockSplit} />
+                <KvRow label="Bonus Issue" value={a.corporateActions?.bonusIssue} />
+                <KvRow label="Buyback" value={a.corporateActions?.buyback} />
+                <KvRow label="Rights Issue" value={a.corporateActions?.rightsIssue} />
+                <KvRow label="Merger" value={a.corporateActions?.merger} />
+                <KvRow label="Acquisition" value={a.corporateActions?.acquisition} />
+                <KvRow label="Fund Raise" value={a.corporateActions?.fundRaise} />
+                <KvRow label="Board Changes" value={a.corporateActions?.boardChanges} />
+                <KvRow label="Mgmt Changes" value={a.corporateActions?.managementChanges} />
+                <KvRow label="Credit Rating" value={a.corporateActions?.creditRatingChange} />
+                <KvRow label="Regulatory" value={a.corporateActions?.litigationOrRegulatory} />
               </div>
             </Section>
           )}
 
-          {/* Category-specific details — conditionally shown */}
-          {a.categorySpecificDetails && (() => {
+          {/* Risk Factors & Red Flags */}
+          {hasRisks && (
+            <Section icon={ShieldAlert} title="Risk Factors & Red Flags" iconColor="text-red-400" borderColor="border-red-500/20 bg-red-900/5">
+              <div className="space-y-0">
+                <RiskRow label="Auditor / Going Concern" value={risk.auditorQualificationOrGoingConcern} />
+                <RiskRow label="Related-Party Transactions" value={risk.materialRelatedPartyTransactions} />
+                <RiskRow label="Litigation / Regulatory" value={risk.litigationOrRegulatoryNotices} />
+                <RiskRow label="Credit Rating Concerns" value={risk.creditRatingConcerns} />
+                <RiskRow label="Guidance Miss / Delay" value={risk.guidanceMissOrDelay} />
+                <RiskRow label="Mgmt Departure" value={risk.keyManagementDepartureWithoutSuccession} />
+              </div>
+            </Section>
+          )}
+
+          {/* Category-specific details */}
+          {hasCategoryDetails && (() => {
             const csd = a.categorySpecificDetails
-            const hasData = Object.values(csd).some(v => v && v !== 'Not Reported' && v !== 'Not Applicable')
-            if (!hasData) return null
             return (
               <Section icon={Target} title="Filing Details" iconColor="text-cyan-400">
-                <div className="space-y-1.5">
-                  <CorporateActionRow label="Resolutions" value={csd.meetingResolutions} />
-                  <CorporateActionRow label="Voting" value={csd.votingResults} />
-                  <CorporateActionRow label="Notice" value={csd.noticeDetails} />
-                  <CorporateActionRow label="Compliance" value={csd.complianceStatus} />
-                  <CorporateActionRow label="Highlights" value={csd.pressReleaseHighlights} />
+                <div className="space-y-0">
+                  <KvRow label="Resolutions" value={csd.meetingResolutions} />
+                  <KvRow label="Voting" value={csd.votingResults} />
+                  <KvRow label="Notice" value={csd.noticeDetails} />
+                  <KvRow label="Compliance" value={csd.complianceStatus} />
+                  <KvRow label="Highlights" value={csd.pressReleaseHighlights} />
                 </div>
               </Section>
             )
           })()}
 
-          {/* Footer note */}
-          <p className="text-[10px] text-textMuted opacity-50 pt-1 border-t border-border/40">
-            Tatvarth AI · Powered by Gemini · For informational purposes only. Not financial advice.
+          {/* Footer */}
+          <p className="text-[10px] text-textMuted opacity-40 pt-1 border-t border-border/30 text-center">
+            Tatvarth AI · For informational purposes only · Not financial advice
           </p>
         </div>
       )}
