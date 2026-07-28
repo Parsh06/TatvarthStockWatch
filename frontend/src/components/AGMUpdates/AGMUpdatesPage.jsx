@@ -36,7 +36,7 @@ function StatCard({ label, value, sub, color = 'text-textPrimary', icon: Icon, i
 
 export default function AGMUpdatesPage() {
   const [fromDate, setFromDate] = useState(today())
-  const [toDate, setToDate] = useState(nextMonth())
+  const [toDate, setToDate] = useState(today())
   const [searchQuery, setSearchQuery] = useState('')
   const [showWatchlistOnly, setShowWatchlistOnly] = useState(false)
   
