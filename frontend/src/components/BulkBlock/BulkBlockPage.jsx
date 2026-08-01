@@ -111,11 +111,14 @@ export default function BulkBlockPage() {
     finally { setLoading(false) }
   }
 
-  // Fetch automatically on mount
+  // Fetch automatically on mount, exchange change, or dealType change
   useEffect(() => {
+    // Only fetch if dealType is valid for the current exchange
+    if (exchange === 'BSE' && !['both', '1', '2'].includes(dealType)) return;
+    if (exchange === 'NSE' && !['bulk_deals', 'block_deals', 'short_deals'].includes(dealType)) return;
     fetchDeals()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [exchange, dealType])
 
   const deals = result?.deals ?? []
 
