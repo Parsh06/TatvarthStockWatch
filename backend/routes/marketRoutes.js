@@ -57,12 +57,20 @@ module.exports = function marketRoutes(verifyToken) {
       let finalData = { data: [], current_page: page, total_pages: 1, total: 0 };
       const companySet = new Set();
 
+      // Helper to normalize company name for strict deduplication
+      const getMatchKey = (name) => {
+        return name.toLowerCase()
+          .replace(/\bltd\b/g, '')
+          .replace(/\blimited\b/g, '')
+          .replace(/[^a-z0-9]/g, '');
+      };
+
       // Process MainboardGMP (Primary Source)
       if (mbGmpRes.status === 'fulfilled' && mbGmpRes.value.data) {
         finalData = mbGmpRes.value.data;
         if (!finalData.data) finalData.data = [];
         // Track existing companies to prevent duplicates
-        finalData.data.forEach(ipo => companySet.add(ipo.company_name.toLowerCase().trim()));
+        finalData.data.forEach(ipo => companySet.add(getMatchKey(ipo.company_name)));
       }
 
       // Process Investorgain (Secondary Source)
@@ -132,12 +140,12 @@ module.exports = function marketRoutes(verifyToken) {
         // Create a map for quick lookup by name to enrich MainboardGMP data
         const igMap = new Map();
         normalizedIgData.forEach(ipo => {
-          igMap.set(ipo.company_name.toLowerCase().trim(), ipo);
+          igMap.set(getMatchKey(ipo.company_name), ipo);
         });
 
         // Enrich MainboardGMP data
         finalData.data = finalData.data.map(mbIpo => {
-          const nameKey = mbIpo.company_name.toLowerCase().trim();
+          const nameKey = getMatchKey(mbIpo.company_name);
           const igIpo = igMap.get(nameKey);
           if (igIpo) {
             return {
@@ -162,7 +170,7 @@ module.exports = function marketRoutes(verifyToken) {
           // Apply search filter manually for investorgain
           if (search && !ipo.company_name.toLowerCase().includes(search)) return false;
           // Deduplicate
-          const nameKey = ipo.company_name.toLowerCase().trim();
+          const nameKey = getMatchKey(ipo.company_name);
           if (companySet.has(nameKey)) return false;
           companySet.add(nameKey);
           return true;
