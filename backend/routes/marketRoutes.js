@@ -23,23 +23,124 @@ module.exports = function marketRoutes(verifyToken) {
   });
 
   // GET /api/market/ipo-gmp
-  // Fetches live IPO GMP data from mainboardgmp.com with pagination and search
+  // Fetches live IPO GMP data from mainboardgmp.com and investorgain.com, merges and paginates
   router.get('/ipo-gmp', verifyToken, async (req, res) => {
     try {
-      const page = req.query.page || 1;
-      const search = req.query.search || '';
+      const page = parseInt(req.query.page) || 1;
+      const search = (req.query.search || '').toLowerCase();
       
-      const response = await axios.get(`https://mainboardgmp.com/ipos-pagination.php?type=all&page=${page}&search=${encodeURIComponent(search)}&year=`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36',
-          'Accept': '*/*',
-          'Referer': 'https://mainboardgmp.com/'
-        },
-        timeout: 10000 // 10 second timeout
-      });
-      
-      // Send the entire response data to frontend (includes pagination metadata)
-      res.json(response.data);
+      const mbGmpUrl = `https://mainboardgmp.com/ipos-pagination.php?type=all&page=${page}&search=${encodeURIComponent(search)}&year=`;
+      // Investorgain URL for current active/upcoming IPOs
+      const date = new Date();
+      const currentYear = date.getFullYear();
+      const nextYear = currentYear + 1;
+      const igUrl = `https://webnodejs.investorgain.com/cloud/v2/report/data-read/331/1/8/${currentYear}/${currentYear}-${nextYear.toString().slice(-2)}/0/all?search=${encodeURIComponent(search)}&v=11-18`;
+
+      // Fetch concurrently
+      const [mbGmpRes, igRes] = await Promise.allSettled([
+        axios.get(mbGmpUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://mainboardgmp.com/'
+          },
+          timeout: 8000
+        }),
+        axios.get(igUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://www.investorgain.com/'
+          },
+          timeout: 8000
+        })
+      ]);
+
+      let finalData = { data: [], current_page: page, total_pages: 1, total: 0 };
+      const companySet = new Set();
+
+      // Process MainboardGMP (Primary Source)
+      if (mbGmpRes.status === 'fulfilled' && mbGmpRes.value.data) {
+        finalData = mbGmpRes.value.data;
+        if (!finalData.data) finalData.data = [];
+        // Track existing companies to prevent duplicates
+        finalData.data.forEach(ipo => companySet.add(ipo.company_name.toLowerCase().trim()));
+      }
+
+      // Process Investorgain (Secondary Source)
+      if (igRes.status === 'fulfilled' && igRes.value.data && igRes.value.data.reportTableData) {
+        const rawIgData = igRes.value.data.reportTableData;
+        
+        const normalizedIgData = rawIgData.map(item => {
+          // Extract name from HTML <a> tag
+          let company_name = item['~ipo_name'] || '';
+          const nameMatch = item.Name?.match(/title="([^"]+)"/);
+          if (nameMatch) company_name = nameMatch[1];
+          company_name = company_name.replace(' IPO', '').trim();
+
+          // Extract GMP from HTML
+          let gmp = 0;
+          const gmpMatch = item.GMP?.match(/<b>([\d.]+)<\/b>/);
+          if (gmpMatch && gmpMatch[1] !== '--') gmp = parseFloat(gmpMatch[1]);
+
+          // Extract Status (upcoming, open, closed)
+          let tab_status = 'closed';
+          const now = new Date();
+          const openD = new Date(item['~Srt_Open']);
+          const closeD = new Date(item['~Srt_Close']);
+          // Add 1 day to closeD to cover the whole day
+          closeD.setHours(23, 59, 59, 999);
+          if (now < openD) tab_status = 'upcoming';
+          else if (now >= openD && now <= closeD) tab_status = 'open';
+
+          // Format dates to DD MMM YYYY
+          const formatDate = (ds) => {
+            if (!ds || ds === '0000-00-00') return '-';
+            const d = new Date(ds);
+            return isNaN(d) ? ds : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ');
+          };
+
+          return {
+            id: item['~id'] || Math.floor(Math.random() * 100000),
+            slug: company_name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+            company_name,
+            company_logo: null,
+            logo_txt: company_name.substring(0, 2).toUpperCase(),
+            listing_exch: item['~IPO_Category'] === 'SME' ? 'SME' : 'Mainboard',
+            gmp,
+            open_date: formatDate(item['~Srt_Open']),
+            close_date: formatDate(item['~Srt_Close']),
+            listing_date: formatDate(item['~Str_Listing']),
+            issue_price: item['Price (₹)'] || '0',
+            lot_size: item['Lot'] || '0',
+            tab_status
+          };
+        });
+
+        // Filter and Merge
+        const uniqueIgData = normalizedIgData.filter(ipo => {
+          // Apply search filter manually for investorgain
+          if (search && !ipo.company_name.toLowerCase().includes(search)) return false;
+          // Deduplicate
+          const nameKey = ipo.company_name.toLowerCase().trim();
+          if (companySet.has(nameKey)) return false;
+          companySet.add(nameKey);
+          return true;
+        });
+
+        // Only append Investorgain data on Page 1 (since it returns current active IPOs)
+        // Or if searching, we append to the single page of results.
+        if (page === 1 || search) {
+          // Sort active/upcoming first, then append to top of finalData.data
+          uniqueIgData.sort((a, b) => {
+            const statusWeight = { 'open': 1, 'upcoming': 2, 'closed': 3 };
+            return statusWeight[a.tab_status] - statusWeight[b.tab_status];
+          });
+          
+          finalData.data = [...uniqueIgData, ...finalData.data];
+          finalData.total += uniqueIgData.length;
+        }
+      }
+
+      res.json(finalData);
     } catch (err) {
       console.error('Failed to fetch IPO GMP data:', err.message);
       res.status(500).json({ error: 'Failed to fetch IPO GMP data', details: err.message });
