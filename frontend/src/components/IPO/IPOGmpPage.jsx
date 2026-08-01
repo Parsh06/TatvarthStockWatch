@@ -195,7 +195,16 @@ export default function IPOGmpPage() {
                   </td>
                 </tr>
               ) : (
-                ipos.map((m) => {
+                [...ipos].sort((a, b) => {
+                  const getWeight = (status) => {
+                    if (!status) return 3;
+                    const s = status.toLowerCase();
+                    if (s === 'open') return 1;
+                    if (s === 'upcoming' || s === 'soon') return 2;
+                    return 3;
+                  };
+                  return getWeight(a.tab_status) - getWeight(b.tab_status);
+                }).map((m) => {
                   const issuePrice = parseFloat(m.issue_price) || 0;
                   const gmp = parseFloat(m.gmp) || 0;
                   const estPrice = issuePrice + gmp;
