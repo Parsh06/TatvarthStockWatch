@@ -35,52 +35,65 @@ module.exports = function (verifyToken) {
       const todayStr = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
       
       let response;
-      if (from === todayStr && to === todayStr) {
-        // Fetch cookies from homepage first to avoid 401/403/timeout
-        const baseRes = await axios.get('https://www.nseindia.com', {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive'
-          },
-          timeout: 15000
-        });
-        const cookies = baseRes.headers['set-cookie'] ? baseRes.headers['set-cookie'].map(c => c.split(';')[0]).join('; ') : '';
-
-        // Fetch from live snapshot for today's data
-        response = await axios.get(
-          `https://www.nseindia.com/api/snapshot-capital-market-largedeal`,
-          {
+      if (from === to) {
+        try {
+          // Fetch cookies from homepage first to avoid 401/403/timeout
+          const baseRes = await axios.get('https://www.nseindia.com', {
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': '*/*',
               'Accept-Language': 'en-US,en;q=0.9',
               'Accept-Encoding': 'gzip, deflate, br',
-              'Connection': 'keep-alive',
-              'Cookie': cookies
+              'Connection': 'keep-alive'
             },
-            timeout: 30000
+            timeout: 15000
+          });
+          const cookies = baseRes.headers['set-cookie'] ? baseRes.headers['set-cookie'].map(c => c.split(';')[0]).join('; ') : '';
+
+          // Fetch live snapshot
+          const snapRes = await axios.get(
+            `https://www.nseindia.com/api/snapshot-capital-market-largedeal`,
+            {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Cookie': cookies
+              },
+              timeout: 30000
+            }
+          );
+          
+          const snapDate = snapRes.data.as_on_date; // e.g., "31-Jul-2026"
+          const monthMap = { 'Jan':'01', 'Feb':'02', 'Mar':'03', 'Apr':'04', 'May':'05', 'Jun':'06', 'Jul':'07', 'Aug':'08', 'Sep':'09', 'Oct':'10', 'Nov':'11', 'Dec':'12' };
+          const parts = snapDate.split('-');
+          const snapDateFormatted = parts.length === 3 ? `${parts[0].padStart(2, '0')}-${monthMap[parts[1]]}-${parts[2]}` : '';
+
+          // Use snapshot if it matches the requested date or if user requested literally today
+          if (snapDateFormatted === from || from === todayStr) {
+            let rawArray = [];
+            if (dealType === 'bulk_deals') rawArray = snapRes.data.BULK_DEALS_DATA || [];
+            else if (dealType === 'block_deals') rawArray = snapRes.data.BLOCK_DEALS_DATA || [];
+            else if (dealType === 'short_deals') rawArray = snapRes.data.SHORT_DEALS_DATA || [];
+            
+            const mappedData = rawArray.map(item => ({
+              BD_BUY_SELL: item.buySell,
+              BD_CLIENT_NAME: item.clientName,
+              BD_DT_DATE: item.date,
+              BD_SCRIP_NAME: item.name,
+              BD_QTY_TRD: item.qty,
+              BD_REMARKS: item.remarks,
+              BD_SYMBOL: item.symbol,
+              BD_TP_WATP: item.watp
+            }));
+            
+            return res.json({ data: mappedData });
           }
-        );
-        
-        let rawArray = [];
-        if (dealType === 'bulk_deals') rawArray = response.data.BULK_DEALS_DATA || [];
-        else if (dealType === 'block_deals') rawArray = response.data.BLOCK_DEALS_DATA || [];
-        else if (dealType === 'short_deals') rawArray = response.data.SHORT_DEALS_DATA || [];
-        
-        const mappedData = rawArray.map(item => ({
-          BD_BUY_SELL: item.buySell,
-          BD_CLIENT_NAME: item.clientName,
-          BD_DT_DATE: item.date,
-          BD_SCRIP_NAME: item.name,
-          BD_QTY_TRD: item.qty,
-          BD_REMARKS: item.remarks,
-          BD_SYMBOL: item.symbol,
-          BD_TP_WATP: item.watp
-        }));
-        
-        return res.json({ data: mappedData });
+        } catch (err) {
+          console.error('[NSE Snapshot fallback failed]', err.message);
+          // Ignore snapshot failure, fallback to historical
+        }
       }
 
       // Historical data fallback
