@@ -98,6 +98,16 @@ module.exports = function marketRoutes(verifyToken) {
             return isNaN(d) ? ds : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ');
           };
 
+          // Extract rating (count fire emojis)
+          let fireRating = 0;
+          if (item.Rating) {
+            const matches = item.Rating.match(/&#128293;/g);
+            if (matches) fireRating = matches.length;
+          }
+          
+          // Clean IPO size
+          let ipoSize = (item['IPO Size'] || '-').replace(/&#8377;/g, '₹');
+
           return {
             id: item['~id'] || Math.floor(Math.random() * 100000),
             slug: company_name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
@@ -111,11 +121,43 @@ module.exports = function marketRoutes(verifyToken) {
             listing_date: formatDate(item['~Str_Listing']),
             issue_price: item['Price (₹)'] || '0',
             lot_size: item['Lot'] || '0',
-            tab_status
+            tab_status,
+            subscription: item['Sub'] || '-',
+            pe_ratio: item['~P/E'] || '-',
+            ipo_size: ipoSize,
+            fire_rating: fireRating
           };
         });
 
-        // Filter and Merge
+        // Create a map for quick lookup by name to enrich MainboardGMP data
+        const igMap = new Map();
+        normalizedIgData.forEach(ipo => {
+          igMap.set(ipo.company_name.toLowerCase().trim(), ipo);
+        });
+
+        // Enrich MainboardGMP data
+        finalData.data = finalData.data.map(mbIpo => {
+          const nameKey = mbIpo.company_name.toLowerCase().trim();
+          const igIpo = igMap.get(nameKey);
+          if (igIpo) {
+            return {
+              ...mbIpo,
+              subscription: igIpo.subscription,
+              pe_ratio: igIpo.pe_ratio,
+              ipo_size: igIpo.ipo_size,
+              fire_rating: igIpo.fire_rating
+            };
+          }
+          return {
+            ...mbIpo,
+            subscription: '-',
+            pe_ratio: '-',
+            ipo_size: '-',
+            fire_rating: 0
+          };
+        });
+
+        // Filter and Merge unique Investorgain data
         const uniqueIgData = normalizedIgData.filter(ipo => {
           // Apply search filter manually for investorgain
           if (search && !ipo.company_name.toLowerCase().includes(search)) return false;

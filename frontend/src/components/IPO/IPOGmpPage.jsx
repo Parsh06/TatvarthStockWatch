@@ -170,6 +170,9 @@ export default function IPOGmpPage() {
               <tr>
                 <th className="px-4 py-3 font-medium">Company</th>
                 <th className="px-4 py-3 font-medium">Dates</th>
+                <th className="px-4 py-3 font-medium text-right">Size</th>
+                <th className="px-4 py-3 font-medium text-right">P/E</th>
+                <th className="px-4 py-3 font-medium text-right">Sub.</th>
                 <th className="px-4 py-3 font-medium text-right">Issue Price</th>
                 <th className="px-4 py-3 font-medium text-right">Lot Size</th>
                 <th className="px-4 py-3 font-medium text-right">GMP (₹)</th>
@@ -180,14 +183,14 @@ export default function IPOGmpPage() {
             <tbody className="divide-y divide-white/5">
               {loading && ipos.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-4 py-16 text-center text-textMuted">
+                  <td colSpan="10" className="px-4 py-16 text-center text-textMuted">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-50 text-primary" />
                     <p>Loading IPO data...</p>
                   </td>
                 </tr>
               ) : ipos.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-4 py-16 text-center text-textMuted">
+                  <td colSpan="10" className="px-4 py-16 text-center text-textMuted">
                     No IPOs found.
                   </td>
                 </tr>
@@ -221,7 +224,16 @@ export default function IPOGmpPage() {
                                 {m.tab_status}
                               </span>
                             </div>
-                            <div className="text-xs text-textMuted mt-0.5">{m.listing_exch}</div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-xs text-textMuted">{m.listing_exch}</span>
+                              {m.fire_rating > 0 && (
+                                <div className="flex gap-0.5">
+                                  {Array(m.fire_rating).fill('🔥').map((emoji, idx) => (
+                                    <span key={idx} className="text-[10px] leading-none">{emoji}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -230,6 +242,9 @@ export default function IPOGmpPage() {
                         <div><span className="opacity-70">Close:</span> <span className="text-textPrimary">{m.close_date || '-'}</span></div>
                         <div><span className="opacity-70">List:</span> <span className="text-textPrimary">{m.listing_date || '-'}</span></div>
                       </td>
+                      <td className="px-4 py-3 text-right font-medium text-textMuted">{m.ipo_size || '-'}</td>
+                      <td className="px-4 py-3 text-right font-medium text-textMuted">{m.pe_ratio || '-'}</td>
+                      <td className="px-4 py-3 text-right font-medium text-textMuted">{m.subscription || '-'}</td>
                       <td className="px-4 py-3 text-right font-medium">
                         {m.issue_price && m.issue_price !== 'NA' ? `₹${m.issue_price}` : 'NA'}
                       </td>
