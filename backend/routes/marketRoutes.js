@@ -153,7 +153,11 @@ module.exports = function marketRoutes(verifyToken) {
               subscription: igIpo.subscription,
               pe_ratio: igIpo.pe_ratio,
               ipo_size: igIpo.ipo_size,
-              fire_rating: igIpo.fire_rating
+              fire_rating: igIpo.fire_rating,
+              // Prefer Investorgain data for these fields if it's not 0 or missing
+              gmp: igIpo.gmp > 0 ? igIpo.gmp : mbIpo.gmp,
+              issue_price: igIpo.issue_price && igIpo.issue_price !== '0' ? igIpo.issue_price : mbIpo.issue_price,
+              lot_size: igIpo.lot_size && igIpo.lot_size !== '0' ? igIpo.lot_size : mbIpo.lot_size
             };
           }
           return {
