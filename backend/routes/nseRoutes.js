@@ -36,6 +36,18 @@ module.exports = function (verifyToken) {
       
       let response;
       if (from === todayStr && to === todayStr) {
+        // Fetch cookies from homepage first to avoid 401/403/timeout
+        const baseRes = await axios.get('https://www.nseindia.com', {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive'
+          },
+          timeout: 15000
+        });
+        const cookies = baseRes.headers['set-cookie'] ? baseRes.headers['set-cookie'].map(c => c.split(';')[0]).join('; ') : '';
+
         // Fetch from live snapshot for today's data
         response = await axios.get(
           `https://www.nseindia.com/api/snapshot-capital-market-largedeal`,
@@ -46,6 +58,7 @@ module.exports = function (verifyToken) {
               'Accept-Language': 'en-US,en;q=0.9',
               'Accept-Encoding': 'gzip, deflate, br',
               'Connection': 'keep-alive',
+              'Cookie': cookies
             },
             timeout: 30000
           }
