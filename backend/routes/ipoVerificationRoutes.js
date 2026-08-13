@@ -239,7 +239,17 @@ module.exports = function (verifyToken) {
 
       // Query KFintech
       const startMs = Date.now();
-      const kfinResponse = await queryKfintech(symbol, cleanPan);
+      let kfinResponse;
+      try {
+        kfinResponse = await queryKfintech(symbol, cleanPan);
+      } catch (err) {
+        if (err.response && err.response.status === 404 && err.response.data && err.response.data.error === 'Record Not Found') {
+          kfinResponse = { data: [] };
+        } else {
+          throw err;
+        }
+      }
+      
       const normalized = normalizeKfinResponse(kfinResponse);
       const durationMs = Date.now() - startMs;
 
@@ -439,7 +449,17 @@ module.exports = function (verifyToken) {
           }
 
           try {
-            const kfinResponse = await queryKfintech(symbol, app.pan);
+            let kfinResponse;
+            try {
+              kfinResponse = await queryKfintech(symbol, app.pan);
+            } catch (err) {
+              if (err.response && err.response.status === 404 && err.response.data && err.response.data.error === 'Record Not Found') {
+                kfinResponse = { data: [] };
+              } else {
+                throw err;
+              }
+            }
+            
             const normalized = normalizeKfinResponse(kfinResponse);
 
             return {
