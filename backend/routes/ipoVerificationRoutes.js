@@ -16,13 +16,23 @@ const NSE_HEADERS = {
 };
 
 async function getNseCookies() {
-  const res = await axios.get('https://www.nseindia.com', {
-    headers: { ...NSE_HEADERS, Accept: 'text/html' },
-    timeout: 15000,
-  });
-  const setCookies = res.headers['set-cookie'];
-  if (!setCookies) return '';
-  return setCookies.map(c => c.split(';')[0]).join('; ');
+  try {
+    const res = await axios.get('https://www.nseindia.com', {
+      headers: {
+        'User-Agent': NSE_UA,
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+      },
+      timeout: 15000,
+    });
+    const setCookies = res.headers['set-cookie'];
+    if (!setCookies) return '';
+    return setCookies.map(c => c.split(';')[0]).join('; ');
+  } catch (err) {
+    console.error('[NSE Cookie Fetch Error]', err.message);
+    throw err;
+  }
 }
 
 // ── IPO Symbol Cache ──────────────────────────────────────────────────────────
