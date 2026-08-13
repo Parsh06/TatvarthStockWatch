@@ -239,7 +239,7 @@ module.exports = function (verifyToken) {
       });
     } catch (err) {
       console.error('[IPO Verify Error]', err.message, err.response?.status, err.response?.data);
-      res.status(502).json({ 
+      res.status(400).json({ 
         success: false, 
         error: 'Unable to connect to NSE verification service. Details: ' + err.message,
         statusCode: err.response?.status,
