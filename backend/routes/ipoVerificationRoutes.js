@@ -238,14 +238,13 @@ module.exports = function (verifyToken) {
         verifiedAt: new Date().toISOString(),
       });
     } catch (err) {
-      console.error('[IPO Verify Error]', err.message);
-      if (err.response?.status === 403 || err.response?.status === 401) {
-        return res.status(503).json({ success: false, error: 'NSE verification service has temporarily limited this request. Please try again later.' });
-      }
-      if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
-        return res.status(504).json({ success: false, error: 'NSE verification service timed out. Please try again.' });
-      }
-      res.status(502).json({ success: false, error: 'Unable to connect to NSE verification service. Please try again later.' });
+      console.error('[IPO Verify Error]', err.message, err.response?.status, err.response?.data);
+      res.status(502).json({ 
+        success: false, 
+        error: 'Unable to connect to NSE verification service. Details: ' + err.message,
+        statusCode: err.response?.status,
+        responseData: err.response?.data
+      });
     }
   });
 
