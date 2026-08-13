@@ -279,19 +279,19 @@ export default function AllAnnouncementsPage() {
         </div>
 
         <div className="flex items-center gap-4 flex-wrap justify-between mt-2">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap w-full lg:w-auto">
             <button onClick={fetchAnnouncements} disabled={loading}
-              className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/30 transition">
+              className="flex items-center justify-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/30 transition w-full sm:w-auto">
               <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
               {loading ? 'Fetching…' : 'Fetch Announcements'}
             </button>
             
             {/* Exchange Switch */}
-            <div className="flex items-center bg-surface border border-border rounded-xl p-1 shadow-inner h-[40px] sm:h-[42px]">
+            <div className="flex items-center bg-surface border border-border rounded-xl p-1 shadow-inner h-[40px] sm:h-[42px] w-full sm:w-auto">
               <button
                 onClick={() => setExchange('BSE')}
                 className={clsx(
-                  "flex items-center justify-center gap-2 px-5 text-sm font-semibold rounded-lg transition-all h-full",
+                  "flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-5 text-sm font-semibold rounded-lg transition-all h-full",
                   exchange === 'BSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
                 )}
               >
@@ -300,7 +300,7 @@ export default function AllAnnouncementsPage() {
               <button
                 onClick={() => setExchange('NSE')}
                 className={clsx(
-                  "flex items-center justify-center gap-2 px-5 text-sm font-semibold rounded-lg transition-all h-full",
+                  "flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-5 text-sm font-semibold rounded-lg transition-all h-full",
                   exchange === 'NSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
                 )}
               >
@@ -309,7 +309,7 @@ export default function AllAnnouncementsPage() {
               <button
                 onClick={() => setExchange('BOTH')}
                 className={clsx(
-                  "flex items-center justify-center gap-2 px-5 text-sm font-semibold rounded-lg transition-all h-full",
+                  "flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-5 text-sm font-semibold rounded-lg transition-all h-full",
                   exchange === 'BOTH' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
                 )}
               >
