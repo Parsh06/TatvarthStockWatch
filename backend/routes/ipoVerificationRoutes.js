@@ -146,15 +146,25 @@ module.exports = function (verifyToken) {
         return res.json({ success: true, symbols: _symbolCache.data, source: 'NSE', cached: true });
       }
 
-      const cookies = await getNseCookies();
-      const nseRes = await axios.get('https://www.nseindia.com/api/ipo-bid-master', {
-        headers: { ...NSE_HEADERS, Cookie: cookies },
-        timeout: 15000,
-      });
+      let rawSymbols = [];
+      try {
+        // Try direct fetch first (NSE symbols master often doesn't require session cookies)
+        const nseRes = await axios.get('https://www.nseindia.com/api/ipo-bid-master', {
+          headers: NSE_HEADERS,
+          timeout: 10000,
+        });
+        rawSymbols = Array.isArray(nseRes.data) ? nseRes.data : [];
+      } catch (directErr) {
+        console.warn('[Symbols Direct Fetch Failed, trying with cookies]', directErr.message);
+        const cookies = await getNseCookies();
+        const nseRes = await axios.get('https://www.nseindia.com/api/ipo-bid-master', {
+          headers: { ...NSE_HEADERS, Cookie: cookies },
+          timeout: 15000,
+        });
+        rawSymbols = Array.isArray(nseRes.data) ? nseRes.data : [];
+      }
 
-      const rawSymbols = Array.isArray(nseRes.data) ? nseRes.data : [];
       const symbols = rawSymbols.map(s => ({ symbol: String(s) }));
-
       _symbolCache = { data: symbols, fetchedAt: now };
 
       res.json({ success: true, symbols, source: 'NSE', cached: false });
