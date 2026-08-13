@@ -131,6 +131,44 @@ function mapFlagCode(flag) {
   return `NSE Reference Code: ${cleaned}`;
 }
 
+// ── KFintech Response Normalization ───────────────────────────────────────────
+function normalizeKfinRecord(raw) {
+  const toNum = (v) => {
+    if (v === null || v === undefined || v === '' || v === '-') return null;
+    const n = Number(v);
+    return isNaN(n) ? null : n;
+  };
+
+  const cleanStr = (v) => {
+    if (v === null || v === undefined || v === '-' || v === '') return null;
+    return String(v).trim();
+  };
+
+  const allotted = toNum(raw.All_Shares);
+  const applied = toNum(raw.App_Shares);
+
+  return {
+    applicantName: cleanStr(raw.Name),
+    maskedPan: maskPan(cleanStr(raw.Pan_No) || ''),
+    applicationNumber: cleanStr(raw.Appln_No),
+    appliedShares: applied,
+    allottedShares: allotted,
+    dpClientId: cleanStr(raw.DP_CLID),
+    allotmentStatus: allotted > 0 ? 'Allotted' : allotted === 0 ? 'Not Allotted' : 'Unknown',
+  };
+}
+
+function normalizeKfinResponse(response) {
+  if (!response || !Array.isArray(response.data)) {
+    return { success: false, error: 'KFINTECH_ERROR', message: 'Invalid response from registrar', records: [] };
+  }
+  return {
+    success: true,
+    provider: 'KFINTECH',
+    records: response.data.map(normalizeKfinRecord),
+  };
+}
+
 module.exports = {
   encryptPan,
   decryptPan,
@@ -139,5 +177,7 @@ module.exports = {
   normalizeIpoBidResponse,
   normalizeIpoBidRecord,
   mapFlagCode,
+  normalizeKfinRecord,
+  normalizeKfinResponse,
   PAN_REGEX,
 };

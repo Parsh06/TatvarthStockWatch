@@ -2,42 +2,113 @@
 
 const express = require('express');
 const axios   = require('axios');
-const { encryptPan, decryptPan, maskPan, validatePan, normalizeIpoBidResponse } = require('../lib/ipoUtils');
+const { encryptPan, decryptPan, maskPan, validatePan, normalizeKfinResponse } = require('../lib/ipoUtils');
 
-// ── NSE Session Helper ────────────────────────────────────────────────────────
-// Fetches the NSE homepage to obtain session cookies, then uses them for API calls.
-const NSE_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-const NSE_HEADERS = {
-  'User-Agent': NSE_UA,
-  'Accept': '*/*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Accept-Encoding': 'gzip, deflate, br',
-  'Connection': 'keep-alive',
+// ── KFintech Headers ─────────────────────────────────────────────────────────
+const KFIN_HEADERS = {
+  'Accept': 'application/json, text/plain, */*',
+  'Origin': 'https://ipostatus.kfintech.com',
+  'Referer': 'https://ipostatus.kfintech.com/',
 };
 
-async function getNseCookies() {
+// ── KFintech Fallback Companies ──────────────────────────────────────────────
+const KFIN_FALLBACK_COMPANIES = [
+  { "clientId": "81387868980", "name": "MOLBIO DIAGNOSTICS LIMITED" },
+  { "clientId": "94818267561", "name": "DHOOT TRANSMISSION LIMITED" },
+  { "clientId": "62198153830", "name": "ARDEE INDUSTRIES LIMITED" },
+  { "clientId": "44065980180", "name": "MV ELECTROSYSTEMS LIMITED" },
+  { "clientId": "53707331280", "name": "JUNIPER GREEN ENERGY LIMITED" },
+  { "clientId": "67709372110", "name": "DHAVAL PACKAGING LIMITED" },
+  { "clientId": "43836057990", "name": "MANIPAL HEALTH ENTERPRISES LIMITED" },
+  { "clientId": "42817695520", "name": "ADVANCE TECHNOFORG LIMITED" },
+  { "clientId": "55385908200", "name": "CUBE HIGHWAYS TRUST - INVIT" },
+  { "clientId": "94419360500", "name": "XTRANET TECHNOLOGIES LIMITED" },
+  { "clientId": "63734978420", "name": "SHREE BALAJI MALA TEXTILES LIMITED" },
+  { "clientId": "19193086920", "name": "GULF LLOYDS INDIA LIMITED" },
+  { "clientId": "89605487720", "name": "CALIBER MINING AND LOGISTICS LIMITED IPO" },
+  { "clientId": "89468061991", "name": "SBI FUNDS MANAGMENT LIMITED IPO" },
+  { "clientId": "41422222050", "name": "ALPINE TEXWORLD LIMITED IPO" },
+  { "clientId": "73206134640", "name": "KRATIKAL TECH LIMITED SME" },
+  { "clientId": "17643901490", "name": "TEJA ENGINEERING INDUSTRIES LIMITED SME IPO" },
+  { "clientId": "65065971040", "name": "ADON AGRO COMMODITIES LIMITED SME IPO" },
+  { "clientId": "39751101520", "name": "CRAZY SNACKS LIMITED SME IPO" },
+  { "clientId": "89075375160", "name": "CSM TECHNOLOGIES LIMITED IPO" },
+  { "clientId": "10609640970", "name": "TURTLEMINT FINTECH SOLUTIONS LIMITED IPO" },
+  { "clientId": "82984397570", "name": "CLAY CRAFT INDIA LIMITED SME IPO" },
+  { "clientId": "41208427340", "name": "LIOTECH INDUSTRIES LIMITED SME IPO" },
+  { "clientId": "22809299660", "name": "PRACHAY CAPITAL LIMITED NCDS JUNE 2026" },
+  { "clientId": "34105687640", "name": "HORIZON RECLAIM INDIA LIMITED" },
+  { "clientId": "89347697100", "name": "EDELWEISS FINANCIAL SERVICES LTD NCD18 JUNE 2026" },
+  { "clientId": "68599915170", "name": "MUTHOOT MERCANTILE LIMITED - JUNE 2026" },
+  { "clientId": "70806992450", "name": "HEXAGON NUTRITION LIMITED" },
+  { "clientId": "28962929970", "name": "VAHH CHEMICALS LIMITED" },
+  { "clientId": "65310715440", "name": "CMR GREEN TECHNOLOGIES LIMITED" },
+  { "clientId": "90318758440", "name": "KOSAMATTAM FINANCE LIMITED - NCDS - MAY-2026" },
+  { "clientId": "53483362510", "name": "TEAMTECH FORMWORK SOLUTIONS LIMITED" },
+  { "clientId": "26859517830", "name": "RFBL FLEXI PACK LIMITED" },
+  { "clientId": "28267215520", "name": "BAGMANE PRIME OFFICE REIT" },
+  { "clientId": "34561715130", "name": "VALUE 360 COMMUNICATIONS LIMITED" },
+  { "clientId": "54450217260", "name": "ONEMI TECHNOLOGY SOLUTIONS LIMITED" },
+  { "clientId": "92634312570", "name": "ADISOFT TECHNOLOGIES LIMITED" },
+  { "clientId": "73146088770", "name": "CITIUS TRANSNET INVESTMENT TRUST" },
+  { "clientId": "80184898770", "name": "MEHUL TELECOM LIMITED" },
+  { "clientId": "51817446680", "name": "PROPSHARE CELESTIA SM REIT 2026" },
+  { "clientId": "77980267280", "name": "AMIR CHAND JAGDISH KUMAR (EXPORTS) LIMITED" },
+  { "clientId": "67638044790", "name": "CENTRAL MINE PLANNING AND DESIGN INSTITUTE LIMITED" },
+  { "clientId": "26440316230", "name": "NOVUS LOYALTY LIMITED" },
+  { "clientId": "91318037690", "name": "EDELWEISS FINANCIAL SERVICES LTD-NCDS-MARCH-2026" },
+  { "clientId": "35015605280", "name": "INNOVISION LIMITED-IPO" },
+  { "clientId": "94209528790", "name": "RAAJMARG INFRA INVESTMENT TRUST - INVIT" },
+  { "clientId": "76300775270", "name": "CHEMMANUR CREDITS AND INVESTMENTS LIMITED - NCDS8 - MARCH2026" },
+  { "clientId": "43990634450", "name": "RAJPUTANA STAINLESS LIMITED-IPO" },
+  { "clientId": "62507743750", "name": "PRACHAY CAPITAL LIMITED-NCDS3-FEBRUARY-2026" },
+  { "clientId": "51058840660", "name": "ACCORD TRANSFORMER AND SWITCHGEAR LIMITED" },
+  { "clientId": "85658340220", "name": "FRACTAL INDUSTRIES LIMITED" },
+  { "clientId": "20422755930", "name": "KOSAMATTAM FINANCE LIMITED - NCD36 - FEBRUARY 2026" },
+  { "clientId": "64562521850", "name": "POWER FINANCE CORPORATION LIMITED - ZERO COUPON NCDS" },
+  { "clientId": "33209180890", "name": "POWER FINANCE CORPORATION LIMITED - NCDS" },
+  { "clientId": "62430336220", "name": "AYE FINANCE LIMITED" },
+  { "clientId": "18899853180", "name": "ACCRETION NUTRAVEDA LIMITED" },
+  { "clientId": "41087928370", "name": "KANISHK ALUMINIUM INDIA LIMITED" }
+];
+
+// ── Dynamic Scraper Helper ───────────────────────────────────────────────────
+async function scrapeKfinCompanies() {
   try {
-    const res = await axios.get('https://www.nseindia.com', {
+    const homeRes = await axios.get('https://ipostatus.kfintech.com/', {
       headers: {
-        'User-Agent': NSE_UA,
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
-      timeout: 15000,
+      timeout: 8000
     });
-    const setCookies = res.headers['set-cookie'];
-    if (!setCookies) return '';
-    return setCookies.map(c => c.split(';')[0]).join('; ');
+    const scriptMatch = homeRes.data.match(/src="(\.\/static\/js\/main\.[a-f0-9]+\.js)"/);
+    if (!scriptMatch) throw new Error('Script tag not found');
+
+    const bundleUrl = 'https://ipostatus.kfintech.com' + scriptMatch[1].slice(1);
+    const bundleRes = await axios.get(bundleUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      timeout: 10000
+    });
+
+    const jsonMatch = bundleRes.data.match(/JSON\.parse\('(\[.*?\])'\)/);
+    if (!jsonMatch) throw new Error('JSON.parse pattern not found');
+
+    const parsed = JSON.parse(jsonMatch[1]);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed.map(c => ({ clientId: String(c.clientId), symbol: String(c.name) }));
+    }
+    throw new Error('Parsed list is empty');
   } catch (err) {
-    console.error('[NSE Cookie Fetch Error]', err.message);
-    throw err;
+    console.warn('[KFintech Scraper Failed, using fallback]', err.message);
+    return KFIN_FALLBACK_COMPANIES.map(c => ({ clientId: c.clientId, symbol: c.name }));
   }
 }
 
-// ── IPO Symbol Cache ──────────────────────────────────────────────────────────
+// ── Symbols Cache ─────────────────────────────────────────────────────────────
 let _symbolCache = { data: null, fetchedAt: 0 };
-const SYMBOL_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const SYMBOL_CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours
 
 // ── Per-user IPO Rate Limiter ─────────────────────────────────────────────────
 const _ipoRl = new Map();
@@ -58,7 +129,7 @@ function checkIpoRateLimit(uid, action) {
   return entry.count <= max;
 }
 
-// Clean up rate limiter entries periodically
+// Clean up rate limiter entries
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of _ipoRl) {
@@ -67,7 +138,7 @@ setInterval(() => {
 }, 5 * 60_000);
 
 // ── Bulk Concurrency Control ──────────────────────────────────────────────────
-const MAX_CONCURRENT_NSE = 2;
+const MAX_CONCURRENT_KFIN = 2;
 const INTER_REQUEST_DELAY_MS = 500;
 
 async function runWithConcurrencyLimit(tasks, concurrency, delayMs) {
@@ -96,36 +167,17 @@ async function runWithConcurrencyLimit(tasks, concurrency, delayMs) {
   return results;
 }
 
-// ── Helper: Verify a single PAN against NSE ───────────────────────────────────
-async function verifySinglePan(cookies, symbol, pan) {
-  const res = await axios.post(
-    'https://www.nseindia.com/api/ipo-bid-verification-details',
-    { symbol, pan, appNo: '' },
+// ── Helper: Query KFintech ────────────────────────────────────────────────────
+async function queryKfintech(clientId, pan) {
+  const res = await axios.get(
+    'https://0uz601ms56.execute-api.ap-south-1.amazonaws.com/prod/api/query?type=pan',
     {
       headers: {
-        ...NSE_HEADERS,
-        'Content-Type': 'application/json',
-        'Referer': 'https://www.nseindia.com/products/dynaContent/equities/ipos/ipo_bid_details.jsp',
-        Cookie: cookies,
+        ...KFIN_HEADERS,
+        'client_id': clientId,
+        'reqparam': pan,
       },
-      timeout: 30000,
-    }
-  );
-  return res.data;
-}
-
-async function verifySingleAppNo(cookies, symbol, appNo) {
-  const res = await axios.post(
-    'https://www.nseindia.com/api/ipo-bid-verification-details',
-    { symbol, pan: '', appNo },
-    {
-      headers: {
-        ...NSE_HEADERS,
-        'Content-Type': 'application/json',
-        'Referer': 'https://www.nseindia.com/products/dynaContent/equities/ipos/ipo_bid_details.jsp',
-        Cookie: cookies,
-      },
-      timeout: 30000,
+      timeout: 15000,
     }
   );
   return res.data;
@@ -143,132 +195,76 @@ module.exports = function (verifyToken) {
     try {
       const now = Date.now();
       if (_symbolCache.data && (now - _symbolCache.fetchedAt) < SYMBOL_CACHE_TTL) {
-        return res.json({ success: true, symbols: _symbolCache.data, source: 'NSE', cached: true });
+        return res.json({ success: true, symbols: _symbolCache.data, source: 'KFINTECH', cached: true });
       }
 
-      let rawSymbols = [];
-      try {
-        // Try direct fetch first (NSE symbols master often doesn't require session cookies)
-        const nseRes = await axios.get('https://www.nseindia.com/api/ipo-bid-master', {
-          headers: NSE_HEADERS,
-          timeout: 10000,
-        });
-        rawSymbols = Array.isArray(nseRes.data) ? nseRes.data : [];
-      } catch (directErr) {
-        console.warn('[Symbols Direct Fetch Failed, trying with cookies]', directErr.message);
-        const cookies = await getNseCookies();
-        const nseRes = await axios.get('https://www.nseindia.com/api/ipo-bid-master', {
-          headers: { ...NSE_HEADERS, Cookie: cookies },
-          timeout: 15000,
-        });
-        rawSymbols = Array.isArray(nseRes.data) ? nseRes.data : [];
-      }
-
-      const symbols = rawSymbols.map(s => ({ symbol: String(s) }));
+      const symbols = await scrapeKfinCompanies();
       _symbolCache = { data: symbols, fetchedAt: now };
 
-      res.json({ success: true, symbols, source: 'NSE', cached: false });
+      res.json({ success: true, symbols, source: 'KFINTECH', cached: false });
     } catch (err) {
-      console.error('[IPO Symbols]', err.message);
-      // Return cached data even if stale on error
+      console.error('[IPO Symbols KFintech]', err.message);
       if (_symbolCache.data) {
-        return res.json({ success: true, symbols: _symbolCache.data, source: 'NSE', cached: true, stale: true });
+        return res.json({ success: true, symbols: _symbolCache.data, source: 'KFINTECH', cached: true, stale: true });
       }
-      res.status(502).json({ success: false, error: 'Unable to fetch IPO symbols from NSE' });
+      res.status(400).json({ success: false, error: 'Unable to fetch IPO symbols from KFintech' });
     }
   });
 
   // ── POST /api/ipo/verify ────────────────────────────────────────────────────
   router.post('/verify', verifyToken, async (req, res) => {
     try {
-      const { ipoType, symbol, verificationType, identifier } = req.body;
+      const { symbol, verificationType, identifier } = req.body;
 
-      // Validate inputs
       if (!symbol || typeof symbol !== 'string') {
         return res.status(400).json({ success: false, error: 'Please select an IPO symbol' });
       }
-      if (ipoType === 'debt') {
-        return res.status(400).json({ success: false, error: 'Debt IPO verification is coming soon' });
-      }
-      if (!verificationType || !['pan', 'application'].includes(verificationType)) {
-        return res.status(400).json({ success: false, error: 'Invalid verification type' });
+      if (!verificationType || verificationType !== 'pan') {
+        return res.status(400).json({ success: false, error: 'Only PAN verification is supported for KFintech' });
       }
       if (!identifier || typeof identifier !== 'string' || !identifier.trim()) {
-        return res.status(400).json({ success: false, error: 'Please enter a PAN or Application Number' });
+        return res.status(400).json({ success: false, error: 'Please enter your PAN number' });
       }
 
-      const cleanIdentifier = identifier.trim().toUpperCase();
+      const cleanPan = identifier.trim().toUpperCase();
 
-      if (verificationType === 'pan' && !validatePan(cleanIdentifier)) {
-        return res.status(400).json({ success: false, error: 'Please enter a valid 10-character PAN number (e.g., ABCDE1234F)' });
+      if (!validatePan(cleanPan)) {
+        return res.status(400).json({ success: false, error: 'Please enter a valid 10-character PAN number' });
       }
 
       // Rate limit
       if (!checkIpoRateLimit(req.uid, 'verify')) {
-        return res.status(429).json({ success: false, error: 'Too many verification requests. Please wait a minute and try again.' });
+        return res.status(429).json({ success: false, error: 'Too many verification requests. Please wait a minute.' });
       }
 
-      // Fetch cookies & verify
+      // Query KFintech
       const startMs = Date.now();
-      let cookies = '';
-      try {
-        cookies = await getNseCookies();
-      } catch (cookieErr) {
-        console.warn('[IPO Verify Cookie Fetch Failed, trying direct]', cookieErr.message);
-      }
-
-      let nseResponse;
-      try {
-        if (verificationType === 'pan') {
-          nseResponse = await verifySinglePan(cookies, symbol.trim(), cleanIdentifier);
-        } else {
-          nseResponse = await verifySingleAppNo(cookies, symbol.trim(), cleanIdentifier);
-        }
-      } catch (verifyErr) {
-        // If we tried with cookies and failed, try one last time directly without cookies
-        if (cookies) {
-          console.warn('[Verify failed with cookies, retrying direct]', verifyErr.message);
-          if (verificationType === 'pan') {
-            nseResponse = await verifySinglePan('', symbol.trim(), cleanIdentifier);
-          } else {
-            nseResponse = await verifySingleAppNo('', symbol.trim(), cleanIdentifier);
-          }
-        } else {
-          throw verifyErr;
-        }
-      }
-
-      const normalized = normalizeIpoBidResponse(nseResponse);
+      const kfinResponse = await queryKfintech(symbol, cleanPan);
+      const normalized = normalizeKfinResponse(kfinResponse);
       const durationMs = Date.now() - startMs;
 
-      // Audit log (never logs plaintext PAN)
-      console.log(`[IPO Verify] uid=${req.uid} symbol=${symbol} type=${verificationType} masked=${verificationType === 'pan' ? maskPan(cleanIdentifier) : '***'} records=${normalized.records.length} duration=${durationMs}ms`);
+      console.log(`[IPO Verify KFintech] uid=${req.uid} clientId=${symbol} masked=${maskPan(cleanPan)} records=${normalized.records?.length || 0} duration=${durationMs}ms`);
 
       res.json({
         success: normalized.success,
-        source: 'NSE',
-        message: normalized.message,
-        ipo: { symbol: symbol.trim() },
+        provider: 'KFINTECH',
         verification: {
-          type: verificationType,
-          maskedIdentifier: verificationType === 'pan' ? maskPan(cleanIdentifier) : cleanIdentifier,
+          type: 'pan',
+          maskedIdentifier: maskPan(cleanPan),
         },
-        records: normalized.records,
+        records: normalized.records || [],
         verifiedAt: new Date().toISOString(),
       });
     } catch (err) {
-      console.error('[IPO Verify Error]', err.message, err.response?.status, err.response?.data);
-      res.status(400).json({ 
-        success: false, 
-        error: 'Unable to connect to NSE verification service. Details: ' + err.message,
-        statusCode: err.response?.status,
-        responseData: err.response?.data
+      console.error('[IPO Verify KFintech Error]', err.message);
+      res.status(400).json({
+        success: false,
+        error: 'Unable to connect to KFintech verification service. Details: ' + err.message,
       });
     }
   });
 
   // ── GET /api/ipo/applicants ─────────────────────────────────────────────────
-  // Returns masked PAN data only — frontend never sees encrypted values.
   router.get('/applicants', verifyToken, async (req, res) => {
     try {
       const { db } = require('../lib/firebaseAdmin');
@@ -293,7 +289,6 @@ module.exports = function (verifyToken) {
   });
 
   // ── POST /api/ipo/applicants ────────────────────────────────────────────────
-  // Encrypts PAN and stores in Firestore. Frontend sends plaintext PAN only once.
   router.post('/applicants', verifyToken, async (req, res) => {
     try {
       const { name, pan } = req.body;
@@ -311,13 +306,11 @@ module.exports = function (verifyToken) {
       const { db } = require('../lib/firebaseAdmin');
       const collRef = db.collection('users').doc(req.uid).collection('familyPans');
 
-      // Enforce max 10 applicants
       const countSnap = await collRef.count().get();
       if (countSnap.data().count >= 10) {
-        return res.status(400).json({ success: false, error: 'Maximum 10 applicants allowed. Please remove one to add a new one.' });
+        return res.status(400).json({ success: false, error: 'Maximum 10 applicants allowed.' });
       }
 
-      // Check for duplicate PAN (by last 4 chars + name match)
       const panLast4 = cleanPan.slice(-4);
       const existingSnap = await collRef.where('panLast4', '==', panLast4).get();
       let duplicate = false;
@@ -329,13 +322,12 @@ module.exports = function (verifyToken) {
             authTag: doc.data().panAuthTag,
           });
           if (existingPan === cleanPan) duplicate = true;
-        } catch { /* ignore decryption errors for old records */ }
+        } catch { /* ignore decryption errors */ }
       });
       if (duplicate) {
         return res.status(400).json({ success: false, error: 'This PAN is already saved for another applicant' });
       }
 
-      // Encrypt and store
       const { encrypted, iv, authTag } = encryptPan(cleanPan);
       const now = new Date();
 
@@ -349,7 +341,6 @@ module.exports = function (verifyToken) {
         updatedAt: now,
       });
 
-      // Audit (no plaintext PAN)
       console.log(`[IPO Applicant Add] uid=${req.uid} name="${cleanName}" last4=${panLast4}`);
 
       res.json({
@@ -390,17 +381,12 @@ module.exports = function (verifyToken) {
   });
 
   // ── POST /api/ipo/verify-bulk ───────────────────────────────────────────────
-  // Verifies multiple family applicants against a single IPO.
-  // Decrypts PANs server-side, rate-controls NSE requests, handles partial failures.
   router.post('/verify-bulk', verifyToken, async (req, res) => {
     try {
-      const { ipoType, symbol, applicantIds } = req.body;
+      const { symbol, applicantIds } = req.body;
 
       if (!symbol || typeof symbol !== 'string') {
         return res.status(400).json({ success: false, error: 'Please select an IPO symbol' });
-      }
-      if (ipoType === 'debt') {
-        return res.status(400).json({ success: false, error: 'Debt IPO verification is coming soon' });
       }
       if (!Array.isArray(applicantIds) || applicantIds.length === 0) {
         return res.status(400).json({ success: false, error: 'Please select at least one applicant' });
@@ -409,12 +395,10 @@ module.exports = function (verifyToken) {
         return res.status(400).json({ success: false, error: 'Maximum 10 applicants per bulk verification' });
       }
 
-      // Rate limit
       if (!checkIpoRateLimit(req.uid, 'bulk')) {
         return res.status(429).json({ success: false, error: 'Too many bulk verification requests. Please wait a minute.' });
       }
 
-      // Load applicants from Firestore (ownership validated by subcollection path)
       const { db } = require('../lib/firebaseAdmin');
       const collRef = db.collection('users').doc(req.uid).collection('familyPans');
 
@@ -440,16 +424,7 @@ module.exports = function (verifyToken) {
         return res.status(400).json({ success: false, error: 'No valid applicants found' });
       }
 
-      // Fetch cookies once for all requests
-      let cookies = '';
-      try {
-        cookies = await getNseCookies();
-      } catch (cookieErr) {
-        console.warn('[IPO Bulk Verify Cookie Fetch Failed, trying direct]', cookieErr.message);
-      }
-      const cleanSymbol = symbol.trim();
-
-      // Build verification tasks with concurrency control
+      // Build tasks for concurrency control
       const tasks = applicants.map(app => {
         return async () => {
           if (!app.pan) {
@@ -464,48 +439,31 @@ module.exports = function (verifyToken) {
           }
 
           try {
-            let nseResponse;
-            try {
-              nseResponse = await verifySinglePan(cookies, cleanSymbol, app.pan);
-            } catch (vErr) {
-              if (cookies) {
-                console.warn('[Bulk verify failed with cookies, retrying direct]', vErr.message);
-                nseResponse = await verifySinglePan('', cleanSymbol, app.pan);
-              } else {
-                throw vErr;
-              }
-            }
-            const normalized = normalizeIpoBidResponse(nseResponse);
+            const kfinResponse = await queryKfintech(symbol, app.pan);
+            const normalized = normalizeKfinResponse(kfinResponse);
 
             return {
               applicantId: app.id,
               name: app.name,
               maskedPan: maskPan(app.pan),
-              status: normalized.records.length > 0 ? 'found' : 'not_found',
-              records: normalized.records,
+              status: normalized.records && normalized.records.length > 0 ? 'found' : 'not_found',
+              records: normalized.records || [],
             };
           } catch (err) {
-            let errorMsg = 'NSE request failed';
-            if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
-              errorMsg = 'NSE request timed out';
-            } else if (err.response?.status === 403 || err.response?.status === 401) {
-              errorMsg = 'NSE temporarily blocked the request';
-            }
             return {
               applicantId: app.id,
               name: app.name,
               maskedPan: maskPan(app.pan),
               status: 'error',
-              error: errorMsg,
+              error: err.message || 'KFintech query failed',
               records: [],
             };
           }
         };
       });
 
-      const results = await runWithConcurrencyLimit(tasks, MAX_CONCURRENT_NSE, INTER_REQUEST_DELAY_MS);
+      const results = await runWithConcurrencyLimit(tasks, MAX_CONCURRENT_KFIN, INTER_REQUEST_DELAY_MS);
 
-      // Normalize any worker-level errors
       const finalResults = results.map((r, i) => {
         if (r && r._error) {
           return {
@@ -527,18 +485,16 @@ module.exports = function (verifyToken) {
         errors: finalResults.filter(r => r.status === 'error').length,
       };
 
-      console.log(`[IPO Bulk Verify] uid=${req.uid} symbol=${cleanSymbol} total=${summary.total} found=${summary.found} notFound=${summary.notFound} errors=${summary.errors}`);
-
       res.json({
         success: true,
-        symbol: cleanSymbol,
+        symbol,
         summary,
         results: finalResults,
         verifiedAt: new Date().toISOString(),
       });
     } catch (err) {
       console.error('[IPO Bulk Verify Error]', err.message);
-      res.status(502).json({ success: false, error: 'Bulk verification failed. Please try again later.' });
+      res.status(400).json({ success: false, error: 'Bulk verification failed: ' + err.message });
     }
   });
 

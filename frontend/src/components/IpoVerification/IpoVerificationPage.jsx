@@ -7,19 +7,14 @@ import toast from 'react-hot-toast'
 // ── PAN Validation (client-side preview only) ─────────────────────────────────
 const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]$/
 
-// ══════════════════════════════════════════════════════════════════════════════
-// MAIN PAGE COMPONENT
-// ══════════════════════════════════════════════════════════════════════════════
 export default function IpoVerificationPage() {
   // ── State ───────────────────────────────────────────────────────────────────
-  const [ipoType, setIpoType] = useState('equity_sme')
   const [symbols, setSymbols] = useState([])
   const [symbolsLoading, setSymbolsLoading] = useState(false)
-  const [selectedSymbol, setSelectedSymbol] = useState('')
+  const [selectedSymbol, setSelectedSymbol] = useState(null) // holds { clientId, symbol }
   const [symbolSearch, setSymbolSearch] = useState('')
   const [symbolDropdownOpen, setSymbolDropdownOpen] = useState(false)
 
-  const [verificationType, setVerificationType] = useState('pan')
   const [identifier, setIdentifier] = useState('')
 
   const [verifying, setVerifying] = useState(false)
@@ -43,7 +38,7 @@ export default function IpoVerificationPage() {
       const data = await apiClient('/api/ipo/symbols')
       setSymbols(data.symbols || [])
     } catch (err) {
-      toast.error('Failed to load IPO symbols')
+      toast.error('Failed to load active IPOs')
       console.error(err)
     } finally {
       setSymbolsLoading(false)
@@ -111,7 +106,7 @@ export default function IpoVerificationPage() {
     e.preventDefault()
     if (!selectedSymbol || !identifier.trim()) return
     const cleanId = identifier.trim().toUpperCase()
-    if (verificationType === 'pan' && !PAN_REGEX.test(cleanId)) {
+    if (!PAN_REGEX.test(cleanId)) {
       toast.error('Invalid PAN format')
       return
     }
@@ -121,15 +116,17 @@ export default function IpoVerificationPage() {
     try {
       const data = await apiClient('/api/ipo/verify', {
         method: 'POST',
-        body: JSON.stringify({ ipoType, symbol: selectedSymbol, verificationType, identifier: cleanId }),
+        body: JSON.stringify({
+          symbol: selectedSymbol.clientId,
+          verificationType: 'pan',
+          identifier: cleanId
+        }),
       })
       setVerifyResult(data)
     } catch (err) {
       const msg = err.message || 'Verification failed'
-      if (msg.includes('429') || msg.includes('Too many')) toast.error('Too many requests. Please wait a minute.')
-      else if (msg.includes('503') || msg.includes('limited')) toast.error('NSE service temporarily unavailable')
-      else if (msg.includes('504') || msg.includes('timeout')) toast.error('NSE request timed out. Try again.')
-      else toast.error('Verification failed. Please try again.')
+      if (msg.includes('429')) toast.error('Too many requests. Please wait a minute.')
+      else toast.error(err.error || 'Verification failed. Please try again.')
     } finally {
       setVerifying(false)
     }
@@ -145,8 +142,7 @@ export default function IpoVerificationPage() {
       const data = await apiClient('/api/ipo/verify-bulk', {
         method: 'POST',
         body: JSON.stringify({
-          ipoType,
-          symbol: selectedSymbol,
+          symbol: selectedSymbol.clientId,
           applicantIds: applicants.map(a => a.id),
         }),
       })
@@ -160,29 +156,32 @@ export default function IpoVerificationPage() {
     }
   }
 
-  // ── Filtered symbols ────────────────────────────────────────────────────────
+  // Helper to mask demat client ID
+  function maskDpId(id) {
+    if (!id || id.length < 4) return '—'
+    return '*'.repeat(id.length - 4) + id.slice(-4)
+  }
+
+  // Filtered symbols
   const filteredSymbols = symbols.filter(s =>
     s.symbol.toLowerCase().includes(symbolSearch.toLowerCase())
   )
 
-  // ══════════════════════════════════════════════════════════════════════════════
-  // RENDER
-  // ══════════════════════════════════════════════════════════════════════════════
   return (
     <div className="space-y-6">
-      {/* ── Page Header ──────────────────────────────────────────────────────── */}
+      {/* Page Header */}
       <div className="flex items-center gap-3">
         <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center border border-emerald-500/20">
           <ShieldCheck className="w-6 h-6 text-emerald-400" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-textPrimary">IPO Bid Verification</h1>
-          <p className="text-sm text-textMuted">Check bid and application details using NSE's verification service</p>
+          <h1 className="text-2xl font-bold text-textPrimary">IPO Allotment & Status Check</h1>
+          <p className="text-sm text-textMuted">Check IPO application and allotment status using KFintech registrar query service</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ── LEFT COLUMN: My IPO Applicants ─────────────────────────────────── */}
+        {/* LEFT COLUMN: My IPO Applicants */}
         <div className="lg:col-span-1 space-y-4">
           <div className="glass-panel rounded-2xl p-5 border border-white/5">
             <div className="flex items-center justify-between mb-4">
@@ -252,7 +251,7 @@ export default function IpoVerificationPage() {
               <div className="text-center py-8">
                 <Users className="w-8 h-8 text-textMuted/30 mx-auto mb-2" />
                 <p className="text-sm text-textMuted">No applicants saved yet</p>
-                <p className="text-xs text-textMuted/60 mt-1">Add family members to check IPO bids in bulk</p>
+                <p className="text-xs text-textMuted/60 mt-1">Add family members to check IPO status in bulk</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -294,45 +293,25 @@ export default function IpoVerificationPage() {
               {bulkVerifying ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Verifying All Applicants...
+                  Checking All Applicants...
                 </>
               ) : (
                 <>
                   <FileCheck2 className="w-4 h-4" />
-                  Verify All Applicants — {selectedSymbol}
+                  Check All Applicants — {selectedSymbol.symbol}
                 </>
               )}
             </motion.button>
           )}
         </div>
 
-        {/* ── RIGHT COLUMN: Verification Form + Results ──────────────────────── */}
+        {/* RIGHT COLUMN: Verification Form + Results */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Verification Form */}
           <form onSubmit={handleVerify} className="glass-panel rounded-2xl p-6 border border-white/5 space-y-5">
-            {/* IPO Type */}
-            <div>
-              <label className="text-xs font-semibold text-textMuted uppercase tracking-wider mb-2 block">IPO Type</label>
-              <div className="flex gap-3">
-                <label className={`flex-1 flex items-center gap-2.5 px-4 py-3 rounded-xl border cursor-pointer transition-all text-sm font-medium ${ipoType === 'equity_sme' ? 'border-primary/50 bg-primary/10 text-primary' : 'border-white/10 bg-white/[0.03] text-textMuted hover:border-white/20'}`}>
-                  <input type="radio" name="ipoType" value="equity_sme" checked={ipoType === 'equity_sme'} onChange={() => setIpoType('equity_sme')} className="sr-only" />
-                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${ipoType === 'equity_sme' ? 'border-primary' : 'border-white/30'}`}>
-                    {ipoType === 'equity_sme' && <div className="w-2 h-2 rounded-full bg-primary" />}
-                  </div>
-                  Equity & SME IPO
-                </label>
-                <label className="flex-1 flex items-center gap-2.5 px-4 py-3 rounded-xl border border-white/10 bg-white/[0.03] text-textMuted/50 cursor-not-allowed text-sm font-medium">
-                  <div className="w-4 h-4 rounded-full border-2 border-white/20" />
-                  Debt IPO
-                  <span className="ml-auto text-[10px] px-2 py-0.5 bg-amber-400/10 text-amber-400 rounded-md font-bold">SOON</span>
-                </label>
-              </div>
-            </div>
-
             {/* IPO Symbol Selector */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold text-textMuted uppercase tracking-wider">Select IPO Symbol</label>
+                <label className="text-xs font-semibold text-textMuted uppercase tracking-wider">Select IPO Issue</label>
                 <button
                   type="button"
                   onClick={fetchSymbols}
@@ -349,7 +328,7 @@ export default function IpoVerificationPage() {
                   onClick={() => setSymbolDropdownOpen(!symbolDropdownOpen)}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border text-sm transition-all ${selectedSymbol ? 'border-primary/30 bg-primary/5 text-textPrimary font-semibold' : 'border-white/10 bg-white/5 text-textMuted'} hover:border-white/20`}
                 >
-                  <span>{selectedSymbol || 'Select an IPO...'}</span>
+                  <span>{selectedSymbol ? selectedSymbol.symbol : 'Select an IPO...'}</span>
                   <ChevronDown className={`w-4 h-4 transition-transform ${symbolDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
 
@@ -368,7 +347,7 @@ export default function IpoVerificationPage() {
                             type="text"
                             value={symbolSearch}
                             onChange={e => setSymbolSearch(e.target.value)}
-                            placeholder="Search IPO..."
+                            placeholder="Search IPO Issue..."
                             className="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/5 rounded-lg text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-primary/30"
                             autoFocus
                           />
@@ -384,16 +363,16 @@ export default function IpoVerificationPage() {
                         ) : (
                           filteredSymbols.map(s => (
                             <button
-                              key={s.symbol}
+                              key={s.clientId}
                               type="button"
                               onClick={() => {
-                                setSelectedSymbol(s.symbol)
+                                setSelectedSymbol(s)
                                 setSymbolDropdownOpen(false)
                                 setSymbolSearch('')
                                 setVerifyResult(null)
                                 setBulkResult(null)
                               }}
-                              className={`w-full text-left px-4 py-2.5 text-sm transition-all ${selectedSymbol === s.symbol ? 'bg-primary/10 text-primary font-semibold' : 'text-textPrimary hover:bg-white/5'}`}
+                              className={`w-full text-left px-4 py-2.5 text-sm transition-all ${selectedSymbol?.clientId === s.clientId ? 'bg-primary/10 text-primary font-semibold' : 'text-textPrimary hover:bg-white/5'}`}
                             >
                               {s.symbol}
                             </button>
@@ -406,40 +385,25 @@ export default function IpoVerificationPage() {
               </div>
             </div>
 
-            {/* Verification Method */}
+            {/* Verification Method Label */}
             <div>
               <label className="text-xs font-semibold text-textMuted uppercase tracking-wider mb-2 block">Verify Using</label>
-              <div className="flex gap-3">
-                {['pan', 'application'].map(type => (
-                  <label
-                    key={type}
-                    className={`flex-1 flex items-center gap-2.5 px-4 py-3 rounded-xl border cursor-pointer transition-all text-sm font-medium ${verificationType === type ? 'border-primary/50 bg-primary/10 text-primary' : 'border-white/10 bg-white/[0.03] text-textMuted hover:border-white/20'}`}
-                  >
-                    <input type="radio" name="vType" value={type} checked={verificationType === type} onChange={() => { setVerificationType(type); setIdentifier('') }} className="sr-only" />
-                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${verificationType === type ? 'border-primary' : 'border-white/30'}`}>
-                      {verificationType === type && <div className="w-2 h-2 rounded-full bg-primary" />}
-                    </div>
-                    {type === 'pan' ? 'PAN Number' : 'Application Number'}
-                  </label>
-                ))}
+              <div className="px-4 py-3 rounded-xl border border-primary/50 bg-primary/10 text-primary text-sm font-semibold w-fit">
+                PAN Number
               </div>
             </div>
 
-            {/* Identifier Input */}
+            {/* PAN Number Input */}
             <div>
-              <label className="text-xs font-semibold text-textMuted uppercase tracking-wider mb-2 block">
-                {verificationType === 'pan' ? 'PAN Number' : 'Application Number'} *
-              </label>
+              <label className="text-xs font-semibold text-textMuted uppercase tracking-wider mb-2 block">PAN Number *</label>
               <input
                 type="text"
                 value={identifier}
-                onChange={e => setIdentifier(verificationType === 'pan' ? e.target.value.toUpperCase().slice(0, 10) : e.target.value)}
-                placeholder={verificationType === 'pan' ? 'Enter PAN (e.g., ABCDE1234F)' : 'Enter Application Number'}
+                onChange={e => setIdentifier(e.target.value.toUpperCase().slice(0, 10))}
+                placeholder="Enter PAN (e.g., ABCDE1234F)"
                 className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all font-mono tracking-wider"
               />
-              {verificationType === 'pan' && (
-                <p className="text-[11px] text-textMuted/60 mt-1.5">Your PAN is used only to verify the selected IPO bid.</p>
-              )}
+              <p className="text-[11px] text-textMuted/60 mt-1.5">Your PAN is used only to query the KFintech allotment registry.</p>
             </div>
 
             {/* Submit */}
@@ -449,14 +413,14 @@ export default function IpoVerificationPage() {
               className="w-full py-3.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-primary to-blue-500 text-white shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all flex items-center justify-center gap-2"
             >
               {verifying ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Verifying...</>
+                <><Loader2 className="w-4 h-4 animate-spin" /> Querying...</>
               ) : (
-                <><ShieldCheck className="w-4 h-4" /> Verify Bid</>
+                <><ShieldCheck className="w-4 h-4" /> Check Allotment</>
               )}
             </button>
           </form>
 
-          {/* ── SINGLE VERIFICATION RESULT ──────────────────────────────────── */}
+          {/* SINGLE VERIFICATION RESULT */}
           <AnimatePresence mode="wait">
             {verifyResult && (
               <motion.div
@@ -466,7 +430,7 @@ export default function IpoVerificationPage() {
                 exit={{ opacity: 0, y: -10 }}
                 className="space-y-4"
               >
-                {/* Summary */}
+                {/* Summary Panel */}
                 <div className={`glass-panel rounded-2xl p-5 border ${verifyResult.records?.length > 0 ? 'border-emerald-500/20' : 'border-amber-500/20'}`}>
                   <div className="flex items-center gap-3 mb-4">
                     {verifyResult.records?.length > 0 ? (
@@ -480,71 +444,60 @@ export default function IpoVerificationPage() {
                     )}
                     <div>
                       <h3 className="text-base font-semibold text-textPrimary">
-                        {verifyResult.records?.length > 0 ? `${verifyResult.records.length} Bid Record${verifyResult.records.length > 1 ? 's' : ''} Found` : 'No Bid Found'}
+                        {verifyResult.records?.length > 0 ? `${verifyResult.records.length} Application Record${verifyResult.records.length > 1 ? 's' : ''} Found` : 'No Application Found'}
                       </h3>
-                      <p className="text-xs text-textMuted">{verifyResult.ipo?.symbol} • {verifyResult.verification?.type === 'pan' ? 'PAN' : 'App No.'}: {verifyResult.verification?.maskedIdentifier}</p>
+                      <p className="text-xs text-textMuted">{selectedSymbol?.symbol} • PAN: {verifyResult.verification?.maskedIdentifier}</p>
                     </div>
                   </div>
 
                   {verifyResult.records?.length === 0 && (
                     <div className="p-4 bg-amber-500/5 rounded-xl border border-amber-500/10 text-sm text-textMuted space-y-1">
-                      <p>No matching bid found for the selected IPO and identifier.</p>
-                      <p className="text-xs">Please verify: IPO symbol, PAN/Application Number, and whether the application was submitted through an eligible intermediary.</p>
+                      <p>KFintech did not return an application associated with this PAN.</p>
+                      <p className="text-xs">Please verify: PAN, selected IPO, and whether KFintech is the official registrar for this issue.</p>
                     </div>
                   )}
                 </div>
 
-                {/* Bid Detail Cards */}
+                {/* Detail Cards */}
                 {verifyResult.records?.map((record, idx) => (
                   <div key={idx} className="space-y-3">
                     {verifyResult.records.length > 1 && (
-                      <h4 className="text-sm font-semibold text-textMuted">Bid #{idx + 1}</h4>
+                      <h4 className="text-sm font-semibold text-textMuted">Application #{idx + 1}</h4>
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {/* Bid Details */}
+                      {/* Applicant Details */}
                       <div className="glass-panel rounded-xl p-4 border border-white/5">
-                        <h4 className="text-xs font-semibold text-textMuted uppercase tracking-wider mb-3">Bid Details</h4>
+                        <h4 className="text-xs font-semibold text-textMuted uppercase tracking-wider mb-3">Applicant Info</h4>
                         <div className="space-y-2.5">
-                          <DetailRow label="Bid Quantity" value={record.quantity != null ? `${record.quantity.toLocaleString()} Shares` : null} />
-                          <DetailRow label="Bid Price" value={record.bidPrice != null ? `₹${record.bidPrice.toLocaleString()}` : null} />
-                          <DetailRow label="Application No." value={record.applicationNumber} />
-                          <DetailRow label="Order No." value={record.orderNumber} />
-                          {record.flag && <DetailRow label="NSE Flag" value={record.flagLabel || record.flag} />}
+                          <DetailRow label="Applicant Name" value={record.applicantName} />
+                          <DetailRow label="PAN Number" value={record.maskedPan} />
+                          <DetailRow label="Application Number" value={record.applicationNumber} />
                         </div>
                       </div>
 
-                      {/* Payment / UPI */}
+                      {/* Allotment Status */}
                       <div className="glass-panel rounded-xl p-4 border border-white/5">
-                        <h4 className="text-xs font-semibold text-textMuted uppercase tracking-wider mb-3">Payment & UPI</h4>
+                        <h4 className="text-xs font-semibold text-textMuted uppercase tracking-wider mb-3">Allotment Status</h4>
                         <div className="space-y-2.5">
-                          <DetailRow label="UPI Amount Blocked" value={record.upiAmountBlocked != null ? `₹${record.upiAmountBlocked.toLocaleString()}` : null} />
-                          <DetailRow label="UPI Status" value={record.upiStatus} />
-                          <DetailRow label="Debit Status" value={record.debitStatus} />
+                          <DetailRow label="Shares Applied" value={record.appliedShares != null ? record.appliedShares.toLocaleString() : '—'} />
+                          <DetailRow label="Shares Allotted" value={record.allottedShares != null ? record.allottedShares.toLocaleString() : '—'} />
+                          <DetailRow label="Status" value={
+                            record.allottedShares > 0 ? (
+                              <span className="text-emerald-400 font-bold">Allotted</span>
+                            ) : record.allottedShares === 0 ? (
+                              <span className="text-red-400 font-bold">Not Allotted</span>
+                            ) : (
+                              <span className="text-amber-400 font-bold">Unknown</span>
+                            )
+                          } />
                         </div>
                       </div>
 
-                      {/* Allotment */}
-                      <div className="glass-panel rounded-xl p-4 border border-white/5">
-                        <h4 className="text-xs font-semibold text-textMuted uppercase tracking-wider mb-3">Allotment</h4>
+                      {/* DP Demat Account */}
+                      <div className="glass-panel rounded-xl p-4 border border-white/5 md:col-span-2">
+                        <h4 className="text-xs font-semibold text-textMuted uppercase tracking-wider mb-3">DP / Client Demat Details</h4>
                         <div className="space-y-2.5">
-                          <DetailRow label="Allotted Quantity" value={record.allotmentQuantity != null ? `${record.allotmentQuantity.toLocaleString()} Shares` : null} />
-                          <DetailRow label="Allotment Price" value={record.allotmentPrice != null ? `₹${record.allotmentPrice.toFixed(2)}` : null} />
-                        </div>
-                        {record.allotmentQuantity == null && (
-                          <p className="text-[11px] text-textMuted/60 mt-3 flex items-start gap-1.5">
-                            <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                            Allotment information is not currently available in the NSE response.
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Depository */}
-                      <div className="glass-panel rounded-xl p-4 border border-white/5">
-                        <h4 className="text-xs font-semibold text-textMuted uppercase tracking-wider mb-3">Depository</h4>
-                        <div className="space-y-2.5">
-                          <DetailRow label="Beneficiary ID" value={record.beneficiaryId} />
-                          <DetailRow label="Depository" value={record.depositoryName} />
-                          <DetailRow label="Depository ID" value={record.depositoryId} />
+                          <DetailRow label="Demat/DP Client ID" value={maskDpId(record.dpClientId)} />
                         </div>
                       </div>
                     </div>
@@ -554,15 +507,14 @@ export default function IpoVerificationPage() {
                 {/* Footer */}
                 {verifyResult.records?.length > 0 && (
                   <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-textMuted/50 px-1">
-                    <span>Source: NSE India • Verified: {new Date(verifyResult.verifiedAt).toLocaleString()}</span>
-                    <span>Bid information looks incorrect? Contact your broker/bank for correction.</span>
+                    <span>Source: KFintech • Verified: {new Date(verifyResult.verifiedAt).toLocaleString()}</span>
                   </div>
                 )}
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* ── BULK VERIFICATION DASHBOARD ─────────────────────────────────── */}
+          {/* BULK VERIFICATION DASHBOARD */}
           <AnimatePresence mode="wait">
             {bulkResult && (
               <motion.div
@@ -579,7 +531,7 @@ export default function IpoVerificationPage() {
                       <Users className="w-5 h-5 text-emerald-400" />
                     </div>
                     <div>
-                      <h3 className="text-base font-semibold text-textPrimary">{bulkResult.symbol} — Bulk Verification</h3>
+                      <h3 className="text-base font-semibold text-textPrimary">{selectedSymbol?.symbol} — All Applicants Status</h3>
                       <p className="text-xs text-textMuted">{bulkResult.summary?.total} applicants checked</p>
                     </div>
                   </div>
@@ -621,7 +573,7 @@ export default function IpoVerificationPage() {
                           result.status === 'error' ? 'bg-red-500/10 text-red-400' :
                           'bg-amber-500/10 text-amber-400'
                         }`}>
-                          {result.status === 'found' ? 'Bid Found' : result.status === 'error' ? 'Error' : 'No Bid'}
+                          {result.status === 'found' ? 'Record Found' : result.status === 'error' ? 'Error' : 'No Record'}
                         </span>
                       </div>
 
@@ -633,17 +585,17 @@ export default function IpoVerificationPage() {
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
                           {result.records.map((rec, i) => (
                             <div key={i} className="contents">
-                              <MiniStat label="Quantity" value={rec.quantity != null ? `${rec.quantity.toLocaleString()}` : '—'} />
-                              <MiniStat label="Bid Price" value={rec.bidPrice != null ? `₹${rec.bidPrice.toLocaleString()}` : '—'} />
-                              <MiniStat label="Allotment" value={rec.allotmentQuantity != null ? `${rec.allotmentQuantity.toLocaleString()} Shares` : 'Not Available'} />
-                              <MiniStat label="UPI Status" value={rec.upiStatus || 'Not Available'} />
+                              <MiniStat label="Applied" value={rec.appliedShares != null ? `${rec.appliedShares.toLocaleString()}` : '—'} />
+                              <MiniStat label="Allotted" value={rec.allottedShares != null ? `${rec.allottedShares.toLocaleString()}` : '—'} />
+                              <MiniStat label="Status" value={rec.allotmentStatus} />
+                              <MiniStat label="Demat ID" value={maskDpId(rec.dpClientId)} />
                             </div>
                           ))}
                         </div>
                       )}
 
                       {result.status === 'not_found' && (
-                        <p className="text-xs text-textMuted/60">No matching bid found. Bid information may not yet be available on NSE.</p>
+                        <p className="text-xs text-textMuted/60">No matching application found. Status may not yet be uploaded by the registrar.</p>
                       )}
                     </div>
                   ))}
@@ -651,8 +603,7 @@ export default function IpoVerificationPage() {
 
                 {/* Bulk Footer */}
                 <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-textMuted/50 px-1">
-                  <span>Source: NSE India • Verified: {new Date(bulkResult.verifiedAt).toLocaleString()}</span>
-                  <span>Bid data availability depends on NSE's update schedule.</span>
+                  <span>Source: KFintech • Verified: {new Date(bulkResult.verifiedAt).toLocaleString()}</span>
                 </div>
               </motion.div>
             )}
@@ -660,7 +611,7 @@ export default function IpoVerificationPage() {
         </div>
       </div>
 
-      {/* ── Delete Confirmation Modal ────────────────────────────────────────── */}
+      {/* Delete Confirmation Modal */}
       <AnimatePresence>
         {deleteConfirm && (
           <motion.div
@@ -706,14 +657,12 @@ export default function IpoVerificationPage() {
   )
 }
 
-// ── Reusable Sub-components ───────────────────────────────────────────────────
-
 function DetailRow({ label, value }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-xs text-textMuted">{label}</span>
       <span className="text-sm font-medium text-textPrimary text-right">
-        {value ?? <span className="text-textMuted/40 text-xs italic">Not Available</span>}
+        {value ?? <span className="text-textMuted/40 text-xs italic">—</span>}
       </span>
     </div>
   )
