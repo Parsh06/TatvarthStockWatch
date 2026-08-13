@@ -210,13 +210,32 @@ module.exports = function (verifyToken) {
 
       // Fetch cookies & verify
       const startMs = Date.now();
-      const cookies = await getNseCookies();
+      let cookies = '';
+      try {
+        cookies = await getNseCookies();
+      } catch (cookieErr) {
+        console.warn('[IPO Verify Cookie Fetch Failed, trying direct]', cookieErr.message);
+      }
 
       let nseResponse;
-      if (verificationType === 'pan') {
-        nseResponse = await verifySinglePan(cookies, symbol.trim(), cleanIdentifier);
-      } else {
-        nseResponse = await verifySingleAppNo(cookies, symbol.trim(), cleanIdentifier);
+      try {
+        if (verificationType === 'pan') {
+          nseResponse = await verifySinglePan(cookies, symbol.trim(), cleanIdentifier);
+        } else {
+          nseResponse = await verifySingleAppNo(cookies, symbol.trim(), cleanIdentifier);
+        }
+      } catch (verifyErr) {
+        // If we tried with cookies and failed, try one last time directly without cookies
+        if (cookies) {
+          console.warn('[Verify failed with cookies, retrying direct]', verifyErr.message);
+          if (verificationType === 'pan') {
+            nseResponse = await verifySinglePan('', symbol.trim(), cleanIdentifier);
+          } else {
+            nseResponse = await verifySingleAppNo('', symbol.trim(), cleanIdentifier);
+          }
+        } else {
+          throw verifyErr;
+        }
       }
 
       const normalized = normalizeIpoBidResponse(nseResponse);
@@ -422,7 +441,12 @@ module.exports = function (verifyToken) {
       }
 
       // Fetch cookies once for all requests
-      const cookies = await getNseCookies();
+      let cookies = '';
+      try {
+        cookies = await getNseCookies();
+      } catch (cookieErr) {
+        console.warn('[IPO Bulk Verify Cookie Fetch Failed, trying direct]', cookieErr.message);
+      }
       const cleanSymbol = symbol.trim();
 
       // Build verification tasks with concurrency control
@@ -440,7 +464,17 @@ module.exports = function (verifyToken) {
           }
 
           try {
-            const nseResponse = await verifySinglePan(cookies, cleanSymbol, app.pan);
+            let nseResponse;
+            try {
+              nseResponse = await verifySinglePan(cookies, cleanSymbol, app.pan);
+            } catch (vErr) {
+              if (cookies) {
+                console.warn('[Bulk verify failed with cookies, retrying direct]', vErr.message);
+                nseResponse = await verifySinglePan('', cleanSymbol, app.pan);
+              } else {
+                throw vErr;
+              }
+            }
             const normalized = normalizeIpoBidResponse(nseResponse);
 
             return {
