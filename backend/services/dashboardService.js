@@ -2,47 +2,48 @@
 
 /**
  * Dashboard aggregation service.
- * Calls existing backend modules — does NOT duplicate BSE/NSE logic.
- * Returns a partial-failure model: each source has its own status.
+ * Uses authoritative BSE endpoints matched with bseRoutes.js and spurtStore.js.
  */
 
-const { bseGet } = require('../lib/apiClients');
+const { bseGet, getBseCookies } = require('../lib/apiClients');
 const { getAnnouncements } = require('../lib/announcementStore');
 const { getWatchlist } = require('../lib/watchlistStore');
+const { startSpurtPoller, getLatestSpurt } = require('../lib/spurtStore');
 const axios = require('axios');
 
-// KFintech fallback symbols (updated periodically in ipoVerificationRoutes)
-const KFIN_FALLBACK = [
-  'MOLBIO DIAGNOSTICS', 'DHOOT TRANSMISSION', 'ARDEE INDUSTRIES',
-  'MV ELECTROSYSTEMS', 'JUNIPER GREEN ENERGY', 'DHAVAL PACKAGING',
-];
-
-async function fetchIpoSymbolsFromKfin() {
-  try {
-    const homeRes = await axios.get('https://ipostatus.kfintech.com/', {
-      headers: { 'User-Agent': 'Mozilla/5.0 StockWatch/1.0' },
-      timeout: 8000,
-    });
-    const scriptMatch = homeRes.data.match(/src="(\.\/static\/js\/main\.[a-f0-9]+\.js)"/);
-    if (!scriptMatch) return KFIN_FALLBACK;
-
-    const bundleUrl = 'https://ipostatus.kfintech.com' + scriptMatch[1].slice(1);
-    const bundleRes = await axios.get(bundleUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 StockWatch/1.0' },
-      timeout: 10000,
-    });
-    const jsonMatch = bundleRes.data.match(/JSON\.parse\('(\[.*?\])'\)/);
-    if (!jsonMatch) return KFIN_FALLBACK;
-    const parsed = JSON.parse(jsonMatch[1]);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed.map(c => String(c.name || c.clientId || '')).filter(Boolean);
-    }
-    return KFIN_FALLBACK;
-  } catch {
-    return KFIN_FALLBACK;
+// Ensure spurt poller is initialized
+let _spurtPromise = null;
+function ensureSpurtPoller() {
+  if (!_spurtPromise) {
+    _spurtPromise = startSpurtPoller().catch(e => console.error('[Spurt Poller Init]', e.message));
   }
+  return _spurtPromise;
 }
+ensureSpurtPoller();
 
+// ── Date Formatting Helpers ───────────────────────────────────────────────────
+function getFormattedDates() {
+  const now = new Date(Date.now() + 5.5 * 60 * 60 * 1000); // IST
+  const future = new Date(now);
+  future.setDate(now.getDate() + 30); // 30 days ahead
+
+  const pastWeek = new Date(now);
+  pastWeek.setDate(now.getDate() - 14); // 14 days back
+
+  const dd = (d) => String(d.getDate()).padStart(2, '0');
+  const mm = (d) => String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = (d) => d.getFullYear();
+
+  return {
+    todayDDMMYYYY:  `${dd(now)}/${mm(now)}/${yyyy(now)}`,
+    futureDDMMYYYY: `${dd(future)}/${mm(future)}/${yyyy(future)}`,
+    pastDDMMYYYY:   `${dd(pastWeek)}/${mm(pastWeek)}/${yyyy(pastWeek)}`,
+
+    todayYYYYMMDD:  `${yyyy(now)}${mm(now)}${dd(now)}`,
+    futureYYYYMMDD: `${yyyy(future)}${mm(future)}${dd(future)}`,
+    pastYYYYMMDD:   `${yyyy(pastWeek)}${mm(pastWeek)}${dd(pastWeek)}`,
+  };
+}
 
 // ── In-memory TTL cache ────────────────────────────────────────────────────────
 const _cache = new Map();
@@ -62,97 +63,42 @@ async function safe(label, fn) {
     return { status: 'success', data };
   } catch (err) {
     console.warn(`[DashboardService] ${label} failed:`, err.message);
-    return { status: 'error', message: 'Provider unavailable' };
+    return { status: 'error', message: err.message || 'Provider unavailable' };
   }
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-/** Normalize raw BSE index object to a consistent schema */
-function normalizeIndex(raw) {
-  return {
-    name:          (raw.indxnm || raw.name || '').trim(),
-    value:         parseFloat(String(raw.ltp  || raw.value || '0').replace(/,/g, '')) || 0,
-    change:        parseFloat(String(raw.chg  || raw.change || '0').replace(/,/g, '')) || 0,
-    changePercent: parseFloat(String(raw.perchg || raw.changePercent || '0').replace(/[,%]/g, '')) || 0,
-  };
-}
-
-/** Normalize a BSE gainer/loser row */
-function normalizeMover(raw) {
-  return {
-    name:          (raw.scrip_name || raw.scriptname || raw.companyName || raw.scripName || '').trim(),
-    bseCode:       (raw.scripcode  || raw.bseCode    || '').trim(),
-    ltp:           parseFloat(String(raw.ltp || raw.LTP || 0).replace(/,/g, '')) || 0,
-    change:        parseFloat(String(raw.chg || raw.chng || 0).replace(/,/g, '')) || 0,
-    changePercent: parseFloat(String(raw.perchg || raw.per_chg || 0).replace(/[,%]/g, '')) || 0,
-  };
-}
-
-/** Normalize a BSE bulk/block deal row */
-function normalizeDeal(raw) {
-  return {
-    company:     (raw.SCRIP_NAME  || raw.scrip_name  || raw.CompanyName || '').trim(),
-    bseCode:     (raw.SCRIP_CD    || raw.scripcode   || '').trim(),
-    dealType:    (raw.DEAL_TYPE   || raw.deal_type   || '').trim(),
-    client:      (raw.CLIENT_NAME || raw.client_name || '').trim(),
-    quantity:    Number(String(raw.QUANTITY || raw.quantity || 0).replace(/,/g, '')) || 0,
-    price:       parseFloat(String(raw.RATE  || raw.price  || 0).replace(/,/g, '')) || 0,
-    value:       parseFloat(String(raw.VALUE || raw.value  || 0).replace(/,/g, '')) || 0,
-  };
-}
-
-/** Normalize a volume spurt row */
-function normalizeSpurt(raw) {
-  return {
-    name:       (raw.scrip_name || raw.ScripName || raw.companyName || '').trim(),
-    bseCode:    (raw.scripcode  || raw.ScripCode || '').trim(),
-    multiplier: parseFloat(String(raw.noof_times || raw.NoofTimes || raw.multiplier || 0).replace(/,/g, '')) || 0,
-    volume:     Number(String(raw.TodaysVol || raw.volume || 0).replace(/,/g, '')) || 0,
-  };
-}
-
-/** Normalize a board-meeting/AGM record */
-function normalizeMeeting(raw) {
-  return {
-    company:  (raw.COMPANY_NAME || raw.companyName || raw.scrip_name || '').trim(),
-    bseCode:  (raw.SCRIP_CD     || raw.scripcode   || '').trim(),
-    date:     (raw.BOARD_DATE   || raw.date        || raw.MEETING_DATE || '').trim(),
-    purpose:  (raw.PURPOSE      || raw.purpose     || raw.Agenda || '').trim(),
-    type:     (raw.MEETING_TYPE || raw.meetingType || 'BOARD').trim(),
-  };
 }
 
 // ── Data Fetchers ─────────────────────────────────────────────────────────────
 
+/** 1. Primary Market Indices (Sensex, Nifty, etc) */
 async function fetchIndices() {
   const CACHE_KEY = 'dashboard:indices';
-  const cached = fromCache(CACHE_KEY, 30_000); // 30s
+  const cached = fromCache(CACHE_KEY, 30_000);
   if (cached) return cached;
 
-  const raw = await bseGet('/IndicesGetData/w', { index: 'BSE' }, 10_000);
-  if (!Array.isArray(raw)) throw new Error('Unexpected indices response');
+  let raw = await bseGet('https://api.bseindia.com/RealTimeBseIndiaAPI/api/GetSensexDatanew/w', {}, 10_000);
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw); } catch { raw = []; }
+  }
 
-  const PRIORITY = ['SENSEX', 'S&P BSE SENSEX', 'NIFTY 50', 'NIFTY BANK', 'NIFTY IT'];
-  const normalized = raw.map(normalizeIndex).filter(i => i.name && i.value > 0);
+  const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.Table) ? raw.Table : []);
+  if (!list.length) throw new Error('Indices unavailable');
 
-  // Sort: priority items first, then rest
-  normalized.sort((a, b) => {
-    const ai = PRIORITY.findIndex(p => a.name.toUpperCase().includes(p));
-    const bi = PRIORITY.findIndex(p => b.name.toUpperCase().includes(p));
-    if (ai === -1 && bi === -1) return 0;
-    if (ai === -1) return 1;
-    if (bi === -1) return -1;
-    return ai - bi;
-  });
+  const normalized = list.map(item => {
+    const name = (item.indxnm || item.indexname || item.name || '').trim();
+    const val  = parseFloat(String(item.ltp || item.currentValue || item.val || 0).replace(/,/g, '')) || 0;
+    const chg  = parseFloat(String(item.chg || item.change || 0).replace(/,/g, '')) || 0;
+    const pchg = parseFloat(String(item.perchg || item.perChange || item.pChange || 0).replace(/[,%]/g, '')) || 0;
+    return { name, value: val, change: chg, changePercent: pchg };
+  }).filter(i => i.name && i.value > 0);
 
   toCache(CACHE_KEY, normalized, 30_000);
   return normalized;
 }
 
+/** 2. Announcement Statistics */
 async function fetchAnnouncementStats() {
   const CACHE_KEY = 'dashboard:ann_stats';
-  const cached = fromCache(CACHE_KEY, 30_000); // 30s
+  const cached = fromCache(CACHE_KEY, 30_000);
   if (cached) return cached;
 
   const { getDb } = require('../lib/mongoClient');
@@ -168,90 +114,236 @@ async function fetchAnnouncementStats() {
   return result;
 }
 
+/** 3. Market Movers (Top Gainers & Losers) */
 async function fetchMarketMovers() {
   const CACHE_KEY = 'dashboard:movers';
-  const cached = fromCache(CACHE_KEY, 45_000); // 45s
+  const cached = fromCache(CACHE_KEY, 45_000);
   if (cached) return cached;
 
-  // Try BSE TopGainers and TopLosers endpoint (same as bseRoutes)
-  const [gainersRaw, losersRaw] = await Promise.all([
-    bseGet('/TopGainersScrips/w', { flag: '1' }, 10_000),
-    bseGet('/TopLosers/w',        { flag: '2' }, 10_000),
+  const cookies = await getBseCookies();
+  const sessionHdr = cookies ? { Cookie: cookies } : {};
+
+  const [gainersRes, losersRes] = await Promise.allSettled([
+    bseGet('/MktRGainerLoserDataeqto/w', { GLtype: 'gainer', IndxGrp: 'AllMkt', IndxGrpval: 'AllMkt', orderby: 'all' }, 15_000, sessionHdr),
+    bseGet('/MktRGainerLoserDataeqto/w', { GLtype: 'loser', IndxGrp: 'AllMkt', IndxGrpval: 'AllMkt', orderby: 'all' }, 15_000, sessionHdr),
   ]);
 
-  const gainers = Array.isArray(gainersRaw) ? gainersRaw.slice(0, 5).map(normalizeMover) : [];
-  const losers  = Array.isArray(losersRaw)  ? losersRaw.slice(0, 5).map(normalizeMover) : [];
+  function parseMovers(res) {
+    if (res.status !== 'fulfilled' || !res.value) return [];
+    let raw = res.value;
+    if (typeof raw === 'string') {
+      try { raw = JSON.parse(raw); } catch { raw = []; }
+    }
+    const table = Array.isArray(raw)
+      ? raw
+      : (Array.isArray(raw?.Table) ? raw.Table : (Array.isArray(raw?.Table1) ? raw.Table1 : (Array.isArray(raw?.MktRGainerLoserDataeqto) ? raw.MktRGainerLoserDataeqto : [])));
+    
+    return table.slice(0, 5).map(item => {
+      const name = (item.scrip_name || item.scripname || item.SLONGNAME || item.scrip_cd || item.scripcode || item.scrip_id || '').trim();
+      const bseCode = String(item.scrip_cd || item.scripcode || '').trim();
+      const ltp = parseFloat(String(item.ltp || item.Ltp || item.LTP || item.ltradert || 0).replace(/,/g, '')) || 0;
+      const change = parseFloat(String(item.change || item.chg || item.change_val || 0).replace(/,/g, '')) || 0;
+      const changePercent = parseFloat(String(item.per_chg || item.perchg || item.pctChange || item.change_percent || 0).replace(/[,%]/g, '')) || 0;
+      return { name, bseCode, ltp, change, changePercent };
+    }).filter(m => m.name && m.ltp > 0);
+  }
 
-  const result = { gainers, losers };
+  const result = {
+    gainers: parseMovers(gainersRes),
+    losers:  parseMovers(losersRes),
+  };
+
   toCache(CACHE_KEY, result, 45_000);
   return result;
 }
 
+/** 4. Active IPO Symbols */
+const KFIN_FALLBACK = [
+  'MOLBIO DIAGNOSTICS LIMITED', 'DHOOT TRANSMISSION LIMITED', 'ARDEE INDUSTRIES LIMITED',
+  'MV ELECTROSYSTEMS LIMITED', 'JUNIPER GREEN ENERGY LIMITED', 'DHAVAL PACKAGING LIMITED',
+];
+
 async function fetchIpo() {
   const CACHE_KEY = 'dashboard:ipo';
-  const cached = fromCache(CACHE_KEY, 10 * 60_000); // 10 min
+  const cached = fromCache(CACHE_KEY, 10 * 60_000);
   if (cached) return cached;
 
-  const symbols = await fetchIpoSymbolsFromKfin();
+  let symbols = KFIN_FALLBACK;
+  try {
+    const homeRes = await axios.get('https://ipostatus.kfintech.com/', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      timeout: 8000,
+    });
+    const scriptMatch = homeRes.data.match(/src="(\.\/static\/js\/main\.[a-f0-9]+\.js)"/);
+    if (scriptMatch) {
+      const bundleUrl = 'https://ipostatus.kfintech.com' + scriptMatch[1].slice(1);
+      const bundleRes = await axios.get(bundleUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        timeout: 10000,
+      });
+      const jsonMatch = bundleRes.data.match(/JSON\.parse\('(\[.*?\])'\)/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[1]);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          symbols = parsed.map(c => String(c.name || c.clientId || '')).filter(Boolean);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[DashboardService] KFintech scrape fallback used:', e.message);
+  }
+
   const result = { activeCount: symbols.length, symbols: symbols.slice(0, 6) };
   toCache(CACHE_KEY, result, 10 * 60_000);
   return result;
 }
 
-
+/** 5. Upcoming Board Meetings */
 async function fetchBoardMeetings() {
   const CACHE_KEY = 'dashboard:board_meetings';
-  const cached = fromCache(CACHE_KEY, 10 * 60_000); // 10 min
+  const cached = fromCache(CACHE_KEY, 10 * 60_000);
   if (cached) return cached;
 
-  const raw = await bseGet('/ForthcomingBrdMtg/w', {}, 10_000);
-  const items = Array.isArray(raw?.Table)
-    ? raw.Table.filter(r => (r.MEETING_TYPE || '').toUpperCase().includes('BOARD') || !(r.MEETING_TYPE))
-        .slice(0, 5).map(normalizeMeeting)
-    : [];
+  const dates = getFormattedDates();
+  const cookies = await getBseCookies();
+  const sessionHdr = cookies ? { Cookie: cookies } : {};
+
+  const raw = await bseGet(
+    '/Corp_Fetch_BoardMeeting_With_Filter_ng/w',
+    {
+      SCRIPCODE: '',
+      fromDT: dates.todayDDMMYYYY,
+      ToDt: dates.futureDDMMYYYY,
+      purposeCode: '',
+      IsCanRev: '0',
+      FLAGDUR: '0',
+      ISUBGROUP_CODE: ' ',
+      LnFlag: 'en'
+    },
+    15_000,
+    sessionHdr
+  );
+
+  let list = [];
+  if (raw && typeof raw === 'object') {
+    list = raw.Corp_fetch_BoardMeeting_Table1 || raw.Table || (Array.isArray(raw) ? raw : []);
+  }
+
+  const items = list.slice(0, 5).map(r => ({
+    company: (r.Long_Name || r.SHORT_NAME || r.SLONGNAME || r.scripname || r.companyName || '').trim(),
+    bseCode: String(r.scrip_code || r.SCRIP_CD || r.scripcode || '').trim(),
+    date:    (r.MEETING_DATE || r.MEETING_BOARD_DATE || r.BOARD_DATE || '').trim(),
+    purpose: (r.PURPOSE_NAME || r.PURPOSE || r.purpose || '').trim(),
+    type:    'BOARD',
+  })).filter(i => i.company);
+
   toCache(CACHE_KEY, items, 10 * 60_000);
   return items;
 }
 
+/** 6. Upcoming AGMs */
 async function fetchAgms() {
   const CACHE_KEY = 'dashboard:agms';
-  const cached = fromCache(CACHE_KEY, 10 * 60_000); // 10 min
+  const cached = fromCache(CACHE_KEY, 10 * 60_000);
   if (cached) return cached;
 
-  const raw = await bseGet('/ForthcomingBrdMtg/w', {}, 10_000);
-  const items = Array.isArray(raw?.Table)
-    ? raw.Table.filter(r => (r.MEETING_TYPE || '').toUpperCase().includes('AGM'))
-        .slice(0, 5).map(normalizeMeeting)
-    : [];
+  const dates = getFormattedDates();
+  const cookies = await getBseCookies();
+  const sessionHdr = cookies ? { Cookie: cookies } : {};
+
+  const raw = await bseGet(
+    '/GetForthBoardMeeting/w',
+    {
+      SCRIPCODE: '',
+      fromDT: dates.todayYYYYMMDD,
+      ToDt: dates.futureYYYYMMDD,
+      purposeCode: '',
+      IsCanRev: '',
+      IsSubCode: ''
+    },
+    15_000,
+    sessionHdr
+  );
+
+  let list = [];
+  if (raw && typeof raw === 'object') {
+    list = raw.Table || raw.Table1 || (Array.isArray(raw) ? raw : []);
+  }
+
+  const items = list.slice(0, 5).map(r => ({
+    company: (r.Long_Name || r.Short_name || r.SLONGNAME || r.companyName || '').trim(),
+    bseCode: String(r.scrip_code || r.SCRIP_CD || r.scripcode || '').trim(),
+    date:    (r.MEETING_DATE || r.BOARD_DATE || r.date || '').trim(),
+    purpose: (r.PURPOSE_NAME || r.PURPOSE || r.purpose || '').trim(),
+    type:    'AGM',
+  })).filter(i => i.company);
+
   toCache(CACHE_KEY, items, 10 * 60_000);
   return items;
 }
 
+/** 7. Volume Spurts */
 async function fetchVolumeSpurts() {
   const CACHE_KEY = 'dashboard:spurts';
-  const cached = fromCache(CACHE_KEY, 45_000); // 45s
+  const cached = fromCache(CACHE_KEY, 45_000);
   if (cached) return cached;
 
-  const raw = await bseGet('/SpurtInVolume/w', {}, 10_000);
-  const items = Array.isArray(raw)
-    ? raw.slice(0, 5).map(normalizeSpurt)
-    : (Array.isArray(raw?.data) ? raw.data.slice(0, 5).map(normalizeSpurt) : []);
+  await ensureSpurtPoller();
+  let snapshot = getLatestSpurt();
+
+  const list = snapshot?.stocks || [];
+  const items = list.slice(0, 5).map(s => ({
+    name:       s.company || s.symbol || s.bseCode,
+    bseCode:    s.bseCode,
+    multiplier: s.volMultiple || 0,
+    volume:     s.currentVolume || 0,
+  }));
+
   toCache(CACHE_KEY, items, 45_000);
   return items;
 }
 
+/** 8. Bulk & Block Deals */
 async function fetchDeals() {
   const CACHE_KEY = 'dashboard:deals';
-  const cached = fromCache(CACHE_KEY, 2 * 60_000); // 2 min
+  const cached = fromCache(CACHE_KEY, 2 * 60_000);
   if (cached) return cached;
 
-  const raw = await bseGet('/BulkBlockDeal/w', {}, 10_000);
-  const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.Table) ? raw.Table : []);
-  const items = list.slice(0, 5).map(normalizeDeal);
+  const dates = getFormattedDates();
+  const cookies = await getBseCookies();
+  const sessionHdr = cookies ? { Cookie: cookies } : {};
+
+  const raw = await bseGet(
+    '/BulkDealData_ng/w',
+    { DealType: 1, sc_code: '', FDate: dates.pastDDMMYYYY, TDate: dates.todayDDMMYYYY },
+    15_000,
+    sessionHdr
+  );
+
+  let list = [];
+  if (raw && typeof raw === 'object') {
+    list = raw.Table || (Array.isArray(raw) ? raw : []);
+  }
+
+  const items = list.slice(0, 5).map(r => {
+    const qty   = Number(r.QUANTITY || r.quantity || 0);
+    const price = parseFloat(String(r.PRICE || r.price || 0));
+    return {
+      company:     (r.scripname || r.SCRIP_NAME || r.CompanyName || '').trim(),
+      bseCode:     String(r.SCRIP_CODE || r.SCRIP_CD || r.scripcode || '').trim(),
+      dealType:    r.DEAL_TYPE === 2 ? 'BLOCK' : 'BULK',
+      client:      (r.CLIENT_NAME || r.client_name || '').trim(),
+      quantity:    qty,
+      price:       price,
+      value:       qty && price ? qty * price : 0,
+    };
+  }).filter(d => d.company);
+
   toCache(CACHE_KEY, items, 2 * 60_000);
   return items;
 }
 
+/** 9. Watchlist Summary */
 async function buildWatchlistSummary(uid, allAnnouncements, boardMeetingItems, spurtItems) {
   const watchlist = await getWatchlist(uid);
   const scriptCount = watchlist.length;
@@ -261,22 +353,18 @@ async function buildWatchlistSummary(uid, allAnnouncements, boardMeetingItems, s
     ...watchlist.map(s => s.symbol).filter(Boolean),
   ]);
 
-  // Announcement count for watchlist
   const announcementCount = allAnnouncements.filter(
     a => watchlistCodes.has(a.scriptCode) || watchlistCodes.has(a.bseCode) || watchlistCodes.has(a.nseSymbol)
   ).length;
 
-  // Board meeting count — how many meetings involve a watchlisted company
   const boardMeetingCount = boardMeetingItems.filter(
     m => watchlistCodes.has(m.bseCode)
   ).length;
 
-  // Volume spurt count
   const volumeSpurtCount = spurtItems.filter(
     s => watchlistCodes.has(s.bseCode)
   ).length;
 
-  // Top companies by announcement count
   const companyMap = {};
   for (const a of allAnnouncements) {
     const code = a.scriptCode || a.bseCode || '';
@@ -291,7 +379,6 @@ async function buildWatchlistSummary(uid, allAnnouncements, boardMeetingItems, s
   const topCompanies = Object.values(companyMap)
     .sort((a, b) => b.total - a.total).slice(0, 5);
 
-  // Groups breakdown
   const groupMap = {};
   for (const s of watchlist) {
     const g = (s.group || '').trim();
@@ -303,15 +390,6 @@ async function buildWatchlistSummary(uid, allAnnouncements, boardMeetingItems, s
     .sort((a, b) => b.scripts - a.scripts)
     .slice(0, 6);
 
-  // Category breakdown from watchlisted announcements only
-  const catMap = {};
-  for (const a of allAnnouncements) {
-    const code = a.scriptCode || a.bseCode || '';
-    if (!watchlistCodes.has(code)) continue;
-    const cat = (a.category || 'Other').split(' / ')[0].trim();
-    catMap[cat] = (catMap[cat] || 0) + 1;
-  }
-
   return {
     scriptCount,
     announcementCount,
@@ -322,12 +400,11 @@ async function buildWatchlistSummary(uid, allAnnouncements, boardMeetingItems, s
   };
 }
 
-// ── Main aggregator ────────────────────────────────────────────────────────────
+// ── Main Aggregator ────────────────────────────────────────────────────────────
 
 async function getDashboardOverview(uid) {
   const generatedAt = new Date().toISOString();
 
-  // Fire all independent fetches in parallel
   const [
     indicesResult,
     annStatsResult,
@@ -350,12 +427,11 @@ async function getDashboardOverview(uid) {
     safe('announcements',    () => getAnnouncements({ limitCount: 2000 })),
   ]);
 
-  // Build watchlist summary using the loaded announcement data
-  let watchlistResult;
   const announcements = announcementsRaw.status === 'success' ? announcementsRaw.data : [];
   const boardItems    = boardResult.status === 'success'    ? boardResult.data  : [];
   const spurtItems    = spurtsResult.status === 'success'   ? spurtsResult.data : [];
 
+  let watchlistResult;
   try {
     const summary = await buildWatchlistSummary(uid, announcements, boardItems, spurtItems);
     watchlistResult = { status: 'success', data: summary };
@@ -364,7 +440,6 @@ async function getDashboardOverview(uid) {
     watchlistResult = { status: 'error', message: 'Could not load watchlist data' };
   }
 
-  // Build category distribution from all announcements (not just watchlisted)
   const catMap = {};
   for (const a of announcements) {
     const cat = (a.category || 'Other').split(' / ')[0].trim();
@@ -376,7 +451,7 @@ async function getDashboardOverview(uid) {
     .slice(0, 10);
 
   return {
-    success:     true,
+    success: true,
     generatedAt,
 
     sources: {
