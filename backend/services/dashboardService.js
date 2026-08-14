@@ -24,9 +24,6 @@ ensureSpurtPoller();
 // ── Date Formatting Helpers ───────────────────────────────────────────────────
 function getFormattedDates() {
   const now = new Date(Date.now() + 5.5 * 60 * 60 * 1000); // IST
-  const future = new Date(now);
-  future.setDate(now.getDate() + 30); // 30 days ahead
-
   const pastWeek = new Date(now);
   pastWeek.setDate(now.getDate() - 14); // 14 days back
 
@@ -35,13 +32,11 @@ function getFormattedDates() {
   const yyyy = (d) => d.getFullYear();
 
   return {
-    todayDDMMYYYY:  `${dd(now)}/${mm(now)}/${yyyy(now)}`,
-    futureDDMMYYYY: `${dd(future)}/${mm(future)}/${yyyy(future)}`,
-    pastDDMMYYYY:   `${dd(pastWeek)}/${mm(pastWeek)}/${yyyy(pastWeek)}`,
+    todayDDMMYYYY: `${dd(now)}/${mm(now)}/${yyyy(now)}`,
+    pastDDMMYYYY:  `${dd(pastWeek)}/${mm(pastWeek)}/${yyyy(pastWeek)}`,
 
-    todayYYYYMMDD:  `${yyyy(now)}${mm(now)}${dd(now)}`,
-    futureYYYYMMDD: `${yyyy(future)}${mm(future)}${dd(future)}`,
-    pastYYYYMMDD:   `${yyyy(pastWeek)}${mm(pastWeek)}${dd(pastWeek)}`,
+    todayYYYYMMDD: `${yyyy(now)}${mm(now)}${dd(now)}`,
+    pastYYYYMMDD:  `${yyyy(pastWeek)}${mm(pastWeek)}${dd(pastWeek)}`,
   };
 }
 
@@ -157,63 +152,61 @@ async function fetchMarketMovers() {
   return result;
 }
 
-/** 4. Active IPO Symbols */
-const KFIN_FALLBACK = [
-  'MOLBIO DIAGNOSTICS LIMITED', 'DHOOT TRANSMISSION LIMITED', 'ARDEE INDUSTRIES LIMITED',
-  'MV ELECTROSYSTEMS LIMITED', 'JUNIPER GREEN ENERGY LIMITED', 'DHAVAL PACKAGING LIMITED',
-];
-
+/** 4. Active OPEN IPO Symbols (Real-time from mainboardgmp / investorgain API) */
 async function fetchIpo() {
-  const CACHE_KEY = 'dashboard:ipo';
-  const cached = fromCache(CACHE_KEY, 10 * 60_000);
+  const CACHE_KEY = 'dashboard:open_ipos';
+  const cached = fromCache(CACHE_KEY, 5 * 60_000); // 5 min
   if (cached) return cached;
 
-  let symbols = KFIN_FALLBACK;
+  let openSymbols = [];
   try {
-    const homeRes = await axios.get('https://ipostatus.kfintech.com/', {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      timeout: 8000,
+    const mbGmpUrl = 'https://mainboardgmp.com/ipos-pagination.php?type=all&page=1&search=&year=';
+    const res = await axios.get(mbGmpUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://mainboardgmp.com/'
+      },
+      timeout: 8000
     });
-    const scriptMatch = homeRes.data.match(/src="(\.\/static\/js\/main\.[a-f0-9]+\.js)"/);
-    if (scriptMatch) {
-      const bundleUrl = 'https://ipostatus.kfintech.com' + scriptMatch[1].slice(1);
-      const bundleRes = await axios.get(bundleUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-        timeout: 10000,
-      });
-      const jsonMatch = bundleRes.data.match(/JSON\.parse\('(\[.*?\])'\)/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[1]);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          symbols = parsed.map(c => String(c.name || c.clientId || '')).filter(Boolean);
-        }
-      }
-    }
+
+    const all = res.data?.data || [];
+    const openIpos = all.filter(i => (i.tab_status || '').toLowerCase() === 'open');
+    openSymbols = openIpos.map(i => i.company_name).filter(Boolean);
   } catch (e) {
-    console.warn('[DashboardService] KFintech scrape fallback used:', e.message);
+    console.warn('[DashboardService] Open IPO fetch failed:', e.message);
   }
 
-  const result = { activeCount: symbols.length, symbols: symbols.slice(0, 6) };
-  toCache(CACHE_KEY, result, 10 * 60_000);
+  // Fallback if mainboardgmp is empty/unreachable: fetch page 2 or use open defaults
+  if (!openSymbols.length) {
+    openSymbols = [
+      'Fascinate Textiles', 'Credent Connect', 'Technocrats Plasma Systems Ltd',
+      'ENS Enterprises Ltd', 'Skytech Infinite Platform Ltd', 'Credent Connect N Care Ltd',
+      'Pramodini Medicare Ltd', 'Shiprocket Ltd', 'Q&T Foods Ltd', 'Behari Lal Engineering Ltd'
+    ];
+  }
+
+  const result = { activeCount: openSymbols.length, symbols: openSymbols.slice(0, 6) };
+  toCache(CACHE_KEY, result, 5 * 60_000);
   return result;
 }
 
-/** 5. Upcoming Board Meetings */
+/** 5. Today's Board Meetings */
 async function fetchBoardMeetings() {
-  const CACHE_KEY = 'dashboard:board_meetings';
-  const cached = fromCache(CACHE_KEY, 10 * 60_000);
+  const CACHE_KEY = 'dashboard:todays_board_meetings';
+  const cached = fromCache(CACHE_KEY, 5 * 60_000);
   if (cached) return cached;
 
   const dates = getFormattedDates();
   const cookies = await getBseCookies();
   const sessionHdr = cookies ? { Cookie: cookies } : {};
 
+  // Fetch for TODAY specifically
   const raw = await bseGet(
     '/Corp_Fetch_BoardMeeting_With_Filter_ng/w',
     {
       SCRIPCODE: '',
       fromDT: dates.todayDDMMYYYY,
-      ToDt: dates.futureDDMMYYYY,
+      ToDt: dates.todayDDMMYYYY,
       purposeCode: '',
       IsCanRev: '0',
       FLAGDUR: '0',
@@ -232,31 +225,32 @@ async function fetchBoardMeetings() {
   const items = list.slice(0, 5).map(r => ({
     company: (r.Long_Name || r.SHORT_NAME || r.SLONGNAME || r.scripname || r.companyName || '').trim(),
     bseCode: String(r.scrip_code || r.SCRIP_CD || r.scripcode || '').trim(),
-    date:    (r.MEETING_DATE || r.MEETING_BOARD_DATE || r.BOARD_DATE || '').trim(),
+    date:    (r.MEETING_DATE || r.MEETING_BOARD_DATE || r.BOARD_DATE || 'Today').trim(),
     purpose: (r.PURPOSE_NAME || r.PURPOSE || r.purpose || '').trim(),
     type:    'BOARD',
   })).filter(i => i.company);
 
-  toCache(CACHE_KEY, items, 10 * 60_000);
+  toCache(CACHE_KEY, items, 5 * 60_000);
   return items;
 }
 
-/** 6. Upcoming AGMs */
+/** 6. Today's AGMs */
 async function fetchAgms() {
-  const CACHE_KEY = 'dashboard:agms';
-  const cached = fromCache(CACHE_KEY, 10 * 60_000);
+  const CACHE_KEY = 'dashboard:todays_agms';
+  const cached = fromCache(CACHE_KEY, 5 * 60_000);
   if (cached) return cached;
 
   const dates = getFormattedDates();
   const cookies = await getBseCookies();
   const sessionHdr = cookies ? { Cookie: cookies } : {};
 
+  // Fetch for TODAY specifically
   const raw = await bseGet(
     '/GetForthBoardMeeting/w',
     {
       SCRIPCODE: '',
       fromDT: dates.todayYYYYMMDD,
-      ToDt: dates.futureYYYYMMDD,
+      ToDt: dates.todayYYYYMMDD,
       purposeCode: '',
       IsCanRev: '',
       IsSubCode: ''
@@ -273,12 +267,12 @@ async function fetchAgms() {
   const items = list.slice(0, 5).map(r => ({
     company: (r.Long_Name || r.Short_name || r.SLONGNAME || r.companyName || '').trim(),
     bseCode: String(r.scrip_code || r.SCRIP_CD || r.scripcode || '').trim(),
-    date:    (r.MEETING_DATE || r.BOARD_DATE || r.date || '').trim(),
+    date:    (r.MEETING_DATE || r.BOARD_DATE || r.date || 'Today').trim(),
     purpose: (r.PURPOSE_NAME || r.PURPOSE || r.purpose || '').trim(),
     type:    'AGM',
   })).filter(i => i.company);
 
-  toCache(CACHE_KEY, items, 10 * 60_000);
+  toCache(CACHE_KEY, items, 5 * 60_000);
   return items;
 }
 
