@@ -788,7 +788,9 @@ app.use("/api/nse", require("./routes/nseRoutes")(verifyToken));
 app.use("/api/announcements", require("./routes/analyzeRoute")(verifyToken));
 app.use("/api/market", require("./routes/marketRoutes")(verifyToken));
 app.use("/api/ipo", require("./routes/ipoVerificationRoutes")(verifyToken));
+app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 app.get("/api/search/scripts", (req, res) => res.redirect(`/api/bse/search?q=${encodeURIComponent(req.query.q || "")}`));
+
 
 // Start the Volume Spurt in-memory poller (no MongoDB writes)
 const { startSpurtPoller } = require('./lib/spurtStore');
