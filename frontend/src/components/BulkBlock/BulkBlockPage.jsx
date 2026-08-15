@@ -5,6 +5,7 @@ import { apiClient } from '../../services/apiClient'
 import { exportToXLSX } from '../../utils/csvParser'
 import ScriptSearchInput from '../Common/ScriptSearchInput'
 import PageTransition from '../Common/PageTransition'
+import Loader from '../Common/Loader'
 
 const today        = () => new Date().toISOString().slice(0, 10)
 const toYYYYMMDD   = (d) => d.replace(/-/g, '')
@@ -285,11 +286,8 @@ export default function BulkBlockPage() {
 
       {/* ── Loading ── */}
       {loading && (
-        <div className="animate-pulse space-y-3">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {[...Array(5)].map((_, i) => <div key={i} className="h-20 bg-surface border border-border rounded-xl" />)}
-          </div>
-          <div className="h-64 bg-surface border border-border rounded-xl" />
+        <div className="py-24">
+          <Loader />
         </div>
       )}
 

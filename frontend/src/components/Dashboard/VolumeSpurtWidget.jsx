@@ -1,5 +1,6 @@
 import { Activity, ArrowRight, AlertCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { SkeletonRow } from '../Common/Loader'
 
 function SpurtRow({ item }) {
   return (
@@ -37,15 +38,9 @@ export default function VolumeSpurtWidget({ data, loading, error }) {
       </div>
 
       {loading ? (
-        <div className="space-y-0 flex-1">
+        <div className="flex-1 divide-y divide-border/30">
           {[1,2,3,4,5].map(i => (
-            <div key={i} className="flex justify-between items-center py-2.5 border-b border-border/30">
-              <div className="space-y-1.5">
-                <div className="h-3.5 w-28 skeleton rounded" />
-                <div className="h-3 w-18 skeleton rounded" />
-              </div>
-              <div className="h-5 w-16 skeleton rounded-full" />
-            </div>
+            <SkeletonRow key={i} />
           ))}
         </div>
       ) : error ? (

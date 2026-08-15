@@ -11,6 +11,7 @@ import AiAnalyzeButton from '../Common/AiAnalyzeButton'
 import AiAnalysisPanel from '../Common/AiAnalysisPanel'
 import ScriptSearchInput from '../Common/ScriptSearchInput'
 import PageTransition from '../Common/PageTransition'
+import Loader from '../Common/Loader'
 
 const getISTDate = (d = new Date()) => new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10)
 const today = () => getISTDate()
@@ -343,24 +344,8 @@ export default function AllAnnouncementsPage() {
         </div>
       )}
 
-      {/* ── Loading skeleton ── */}
-      {loading && (
-        <div className="space-y-3 animate-pulse">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[...Array(4)].map((_, i) => <div key={i} className="h-20 bg-surface border border-border rounded-xl" />)}
-          </div>
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="bg-surface border border-border rounded-xl p-4 flex gap-3">
-              <div className="w-1 rounded-full bg-border" style={{ minHeight: 60 }} />
-              <div className="flex-1 space-y-2">
-                <div className="flex gap-2"><div className="h-4 w-20 bg-border rounded" /><div className="h-4 w-28 bg-border rounded" /></div>
-                <div className="h-4 w-48 bg-border rounded" />
-                <div className="h-3 w-full bg-border rounded" />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* ── Loading state ── */}
+      {loading && <Loader />}
 
       {/* ── Results ── */}
       {result && !loading && (

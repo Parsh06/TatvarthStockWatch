@@ -7,11 +7,22 @@
     --bg-base: #f8f9fa; /* Sleek, cool white */
     --bg-surface: #ffffff;
     --bg-surface-hover: rgba(255, 255, 255, 0.6);
-    --border: rgba(99, 102, 241, 0.15); /* Soft indigo border */
+    --border: rgba(14, 165, 233, 0.15); /* Soft brand-blue border */
     --text-primary: #111827;
     --text-muted: #4B5563;
     --glass-bg: rgba(255, 255, 255, 0.7);
     --glass-border: rgba(255, 255, 255, 0.9);
+
+    /* Brand accent tokens — same palette used across app components (preloader, spinner, toasts).
+       Kept separate from any Tailwind color config so they're usable directly in CSS/inline styles. */
+    --accent-teal: #38E1C6;
+    --accent-blue: #0EA5E9;
+    --accent-amber: #F5B942;
+    --accent-danger: #F43F5E;
+
+    --shadow-color: 0deg 0% 0%;
+    --radius-md: 0.75rem;
+    --radius-lg: 1rem;
   }
 
   .dark {
@@ -25,28 +36,70 @@
     --glass-border: rgba(255, 255, 255, 0.1);
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
     font-family: 'Inter', sans-serif;
     background-color: var(--bg-base);
-    background-image: 
-      radial-gradient(circle at 10% 20%, rgba(99,102,241,0.15) 0%, transparent 40%), 
-      radial-gradient(circle at 90% 80%, rgba(16,185,129,0.1) 0%, transparent 40%),
-      radial-gradient(circle at 50% 50%, rgba(139,92,246,0.1) 0%, transparent 50%);
+    background-image:
+      radial-gradient(circle at 10% 20%, rgba(14, 165, 233, 0.14) 0%, transparent 40%),
+      radial-gradient(circle at 90% 80%, rgba(56, 225, 198, 0.10) 0%, transparent 40%),
+      radial-gradient(circle at 50% 50%, rgba(245, 185, 66, 0.06) 0%, transparent 50%);
     background-attachment: fixed;
     color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
+  /* Dark mode keeps the same brand hues as light mode, just far dimmer — a quiet
+     ambient glow instead of a flat void, consistent with the preloader's atmosphere. */
   .dark body {
     background-color: var(--bg-base);
-    background-image: none;
+    background-image:
+      radial-gradient(circle at 15% 15%, rgba(14, 165, 233, 0.06) 0%, transparent 45%),
+      radial-gradient(circle at 85% 75%, rgba(56, 225, 198, 0.05) 0%, transparent 45%);
   }
 
   * {
     box-sizing: border-box;
   }
-  
+
   table {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Brand-tinted text selection instead of the browser's default blue */
+  ::selection {
+    background-color: rgba(14, 165, 233, 0.25);
+    color: var(--text-primary);
+  }
+
+  /* Baseline focus ring for any element without its own explicit focus styling.
+     Components that already set `focus:outline-none focus:ring-*` take precedence. */
+  :focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Respect the OS-level reduced-motion setting across every animation in the app —
+     a single global safety net rather than remembering to gate each keyframe individually. */
+  @media (prefers-color-scheme: no-preference) {
+    html { scroll-behavior: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
@@ -56,20 +109,37 @@
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--glass-border);
-    box-shadow: 
-      0 4px 6px -1px rgba(0, 0, 0, 0.05), 
-      0 2px 4px -1px rgba(0, 0, 0, 0.03),
+    border-radius: var(--radius-lg);
+    box-shadow:
+      0 4px 6px -1px hsl(var(--shadow-color) / 0.05),
+      0 2px 4px -1px hsl(var(--shadow-color) / 0.03),
       inset 0 1px 0 rgba(255, 255, 255, 0.6); /* Inner highlight */
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .dark .glass-panel {
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 10px 15px -3px hsl(var(--shadow-color) / 0.3);
     border: 1px solid var(--glass-border);
+  }
+
+  /* Opt-in variant for glass panels that are actually clickable (cards, menu items) —
+     base .glass-panel stays static so it doesn't move under non-interactive uses. */
+  .glass-panel--interactive {
+    cursor: pointer;
+  }
+  .glass-panel--interactive:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 8px 20px -4px hsl(var(--shadow-color) / 0.12),
+      0 2px 6px -1px hsl(var(--shadow-color) / 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+  .dark .glass-panel--interactive:hover {
+    box-shadow: 0 14px 24px -6px hsl(var(--shadow-color) / 0.4);
   }
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar — WebKit */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -85,6 +155,12 @@
   background: var(--text-muted);
 }
 
+/* Custom scrollbar — Firefox (the rules above only apply in Chromium/Safari) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
 /* Skeleton animation */
 @keyframes skeleton-pulse {
   0%, 100% { opacity: 1; }
@@ -92,20 +168,36 @@
 }
 
 .skeleton {
+  position: relative;
+  overflow: hidden;
   animation: skeleton-pulse 1.5s ease-in-out infinite;
   background-color: var(--bg-surface-hover);
   border-radius: 4px;
 }
 
-/* Grid background pattern for auth pages */
-.auth-grid-bg {
-  background-image:
-    linear-gradient(rgba(99, 102, 241, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(99, 102, 241, 0.05) 1px, transparent 1px);
-  background-size: 40px 40px;
+/* Adds a light sweep on top of the base pulse for any element using just className="skeleton"
+   (existing hand-built shimmer overlays elsewhere in the app are untouched and unaffected). */
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  animation: shimmer 2s infinite;
 }
 
-/* Line clamp utility */
+/* Grid background pattern for auth pages — brand-blue lines with a soft vignette
+   so the grid fades out at the edges instead of tiling harshly to the viewport border. */
+.auth-grid-bg {
+  background-image:
+    linear-gradient(rgba(14, 165, 233, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(14, 165, 233, 0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, #000 60%, transparent 100%);
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, #000 60%, transparent 100%);
+}
+
+/* Line clamp utility (kept as a fallback in case the Tailwind line-clamp plugin isn't installed) */
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -113,7 +205,8 @@
   overflow: hidden;
 }
 
-/* Shimmer animation for Skeleton */
+/* Shimmer animation for Skeleton — name kept identical since components reference it directly
+   via Tailwind arbitrary values, e.g. animate-[shimmer_2s_infinite] */
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }

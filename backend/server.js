@@ -181,8 +181,8 @@ app.post('/api/telegram-test', verifyToken, async (req, res) => {
 
 
 
-// ── PROTECTED: Announcements ──────────────────────────────────────────────────
-app.get('/api/announcements', verifyToken, async (req, res) => {
+// ── OPEN: Announcements ──────────────────────────────────────────────────
+app.get('/api/announcements', async (req, res) => {
   const { exchange, scriptCode, nseSymbol, limit: lim, since } = req.query;
   const { getAnnouncements } = require('./lib/announcementStore');
   try {
@@ -239,8 +239,8 @@ app.get('/api/announcements/my-count', verifyToken, async (req, res) => {
   }
 });
 
-// ── PROTECTED: Announcement stats (no limit) ─────────────────────────────────
-app.get('/api/announcements/stats', verifyToken, async (req, res) => {
+// ── OPEN: Announcement stats (no limit) ─────────────────────────────────
+app.get('/api/announcements/stats', async (req, res) => {
   try {
     const { getDb } = require('./lib/mongoClient');
     const mongoDb = await getDb();

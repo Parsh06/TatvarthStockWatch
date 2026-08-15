@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 import { exportToXLSX } from '../../utils/csvParser'
 import PageTransition from '../Common/PageTransition'
+import Loader from '../Common/Loader'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 
 const getISTDate = (d = new Date()) => new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -234,9 +235,8 @@ export default function AGMUpdatesPage() {
             <tbody className="divide-y divide-white/5">
               {loading ? (
                 <tr>
-                  <td colSpan="5" className="px-4 py-16 text-center text-textMuted">
-                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-50 text-primary" />
-                    <p>Loading AGM updates...</p>
+                  <td colSpan="5" className="p-0">
+                    <Loader />
                   </td>
                 </tr>
               ) : filteredAgms.length === 0 ? (

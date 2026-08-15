@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { TrendingUp, TrendingDown, ArrowRight, AlertCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
+import { SkeletonRow } from '../Common/Loader'
 
 function MoverRow({ item, type }) {
   const isGainer = type === 'gainer'
@@ -31,15 +32,9 @@ function MoverRow({ item, type }) {
 function MoverList({ items, type, loading, error }) {
   if (loading) {
     return (
-      <div className="space-y-3 pt-1">
+      <div className="divide-y divide-transparent">
         {[1,2,3,4,5].map(i => (
-          <div key={i} className="flex justify-between items-center py-1.5">
-            <div className="space-y-1.5">
-              <div className="h-3.5 w-28 skeleton rounded" />
-              <div className="h-3 w-16 skeleton rounded" />
-            </div>
-            <div className="h-4 w-14 skeleton rounded" />
-          </div>
+          <SkeletonRow key={i} />
         ))}
       </div>
     )

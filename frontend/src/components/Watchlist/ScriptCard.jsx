@@ -1,57 +1,18 @@
-import { useState, memo, useEffect, useRef } from 'react'
+import { useState, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trash2, TrendingUp, TrendingDown, Bell, BellRing, BarChart2, RefreshCw } from 'lucide-react'
+import { Trash2, Bell, BellRing, BarChart2 } from 'lucide-react'
 import clsx from 'clsx'
-import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts'
 import { getExchangeColor, formatRelativeDate } from '../../utils/formatters'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 import ConfirmDialog from '../Common/ConfirmDialog'
 import toast from 'react-hot-toast'
 
-function MiniSparkline({ rate, isUp }) {
-  if (!rate || rate.ltp == null) return null
-  const color = isUp ? '#34d399' : '#f87171'
-  const c = rate.ltp
-  const o = rate.open != null ? rate.open : c * (isUp ? 0.99 : 1.01)
-  const h = rate.high != null ? rate.high : c * (isUp ? 1.01 : 1.001)
-  const l = rate.low != null ? rate.low : c * (isUp ? 0.999 : 0.99)
-  
-  const sparkData = [
-    { val: o }, 
-    { val: isUp ? l : h }, 
-    { val: isUp ? h : l }, 
-    { val: c }
-  ]
-  return (
-    <div className="h-10 w-full mt-2 -ml-2 -mb-2">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={sparkData}>
-          <YAxis domain={['dataMin', 'dataMax']} hide />
-          <Line 
-            type="monotone" 
-            dataKey="val" 
-            stroke={color} 
-            strokeWidth={2} 
-            dot={false} 
-            isAnimationActive={false} 
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
-function fmt(n, dec = 2) {
-  if (n == null) return '—'
-  return n.toLocaleString('en-IN', { minimumFractionDigits: dec, maximumFractionDigits: dec })
-}
-
-function ScriptCard({ script, annStats = {}, rate = null, onOpenDrawer, onSetAlert, bulkMode, isSelected, onSelect }) {
+function ScriptCard({ script, annStats = {}, onOpenDrawer, onSetAlert, bulkMode, isSelected, onSelect }) {
   const navigate = useNavigate()
   const { removeScript } = useWatchlist()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [removing, setRemoving]       = useState(false)
-  const [flashClass, setFlashClass]   = useState('')
+
   const code   = script.ltdCode || script.bseCode || ''
   const symbol = script.symbol  || ''
   const count       = annStats.count      || 0
@@ -65,10 +26,9 @@ function ScriptCard({ script, annStats = {}, rate = null, onOpenDrawer, onSetAle
       toast.success(`${script.scriptName} removed`)
     } catch {
       toast.error('Failed to remove script')
-    } finally {
       setRemoving(false)
-      setConfirmOpen(false)
     }
+    setConfirmOpen(false)
   }
 
   function handleCardClick(e) {
@@ -82,77 +42,88 @@ function ScriptCard({ script, annStats = {}, rate = null, onOpenDrawer, onSetAle
       <div
         onClick={handleCardClick}
         className={clsx(
-          'relative flex flex-col bg-surface border rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 group animate-fade-in-up',
-          flashClass,
+          'relative flex flex-col overflow-hidden rounded-2xl cursor-pointer transition-all duration-300 group animate-fade-in-up h-full',
+          removing && 'opacity-40 scale-[0.98] pointer-events-none',
           isSelected
-            ? 'border-primary ring-2 ring-primary/30'
-            : 'border-border hover:border-primary/50 hover:shadow-xl hover:shadow-black/20 hover:-translate-y-1'
+            ? 'glass-panel ring-2 ring-primary/50 bg-primary/5'
+            : 'glass-panel glass-panel--interactive bg-gradient-to-br from-surface to-surface/30'
         )}
       >
+        {/* Subtle top glow line */}
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
         {/* Checkbox */}
         <div
           className={clsx(
-            'absolute top-3 left-3 z-10 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all cursor-pointer',
-            bulkMode || isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-60',
-            isSelected ? 'bg-primary border-primary' : 'border-border bg-background/80'
+            'absolute top-4 left-4 z-10 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 cursor-pointer',
+            bulkMode || isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+            isSelected ? 'bg-primary border-primary scale-110 shadow-lg shadow-primary/30' : 'border-border bg-background/80 hover:border-primary/50'
           )}
           onClick={(e) => { e.stopPropagation(); onSelect(script.id) }}
         >
           {isSelected && (
-            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           )}
         </div>
 
-        <div className="h-1 w-full bg-primary/20" />
-
         {/* Card body */}
-        <div className="flex flex-col flex-1 p-4 gap-3">
+        <div className="flex flex-col flex-1 p-5 gap-4 relative z-0">
 
           {/* Row 1 — name + exchange badge */}
-          <div className="flex items-start justify-between gap-2 pl-5">
+          <div className="flex items-start justify-between gap-3 pl-6">
             <div className="flex-1 min-w-0">
               <button
                 onClick={e => { e.stopPropagation(); navigate('/company-data', { state: { script: { bseCode: code, scripName: script.scriptName, symbol } } }) }}
-                className="font-semibold text-textPrimary text-sm leading-snug line-clamp-2 pr-1 hover:text-primary transition text-left"
+                className="font-bold text-textPrimary text-sm sm:text-base leading-snug line-clamp-2 pr-1 group-hover:text-primary transition-colors duration-200 text-left"
                 title="View company data"
-              >{script.scriptName}</button>
-              <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                {code   && <code className="text-[11px] font-mono text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded">{code}</code>}
-                {symbol && <code className="text-[11px] font-mono text-orange-400 bg-orange-400/10 px-1.5 py-0.5 rounded">{symbol}</code>}
+              >
+                {script.scriptName}
+              </button>
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                {code   && <code className="text-[10px] sm:text-[11px] font-mono font-medium text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">{code}</code>}
+                {symbol && <code className="text-[10px] sm:text-[11px] font-mono font-medium text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded border border-orange-400/20">{symbol}</code>}
               </div>
             </div>
-            <span className={clsx('shrink-0 text-[11px] font-semibold px-2 py-1 rounded-lg whitespace-nowrap', getExchangeColor(script.exchange))}>
+            <span className={clsx(
+              'shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg whitespace-nowrap mt-0.5 uppercase tracking-wide border',
+              getExchangeColor(script.exchange) === 'text-blue-400 bg-blue-400/15' ? 'bg-blue-400/10 text-blue-400 border-blue-400/20' :
+              getExchangeColor(script.exchange) === 'text-orange-400 bg-orange-400/15' ? 'bg-orange-400/10 text-orange-400 border-orange-400/20' :
+              'bg-primary/10 text-primary border-primary/20'
+            )}>
               {script.exchange || 'BSE'}
             </span>
           </div>
 
-          {/* Row 3 — announcements */}
-          <div className="flex-1">
+          {/* Row 2 — announcements */}
+          <div className="flex-1 mt-2">
             {count > 0 ? (
-              <div>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-400/10 text-amber-400 border border-amber-400/20 rounded-lg text-xs font-semibold">
-                  <Bell className="w-3 h-3" />
-                  {count} announcement{count !== 1 ? 's' : ''}
+              <div className="flex flex-col items-start gap-2.5">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold shadow-[0_0_12px_rgba(245,185,66,0.15)]">
+                  <Bell className="w-3.5 h-3.5 fill-amber-400/20" />
+                  {count} Announcement{count !== 1 ? 's' : ''}
                 </span>
                 {lastDate && (
-                  <p className="text-xs text-textMuted mt-1.5 line-clamp-1" title={lastSubject || ''}>
-                    {formatRelativeDate(lastDate)}
-                    {lastSubject && <span className="text-textMuted/60"> · {lastSubject.slice(0, 45)}{lastSubject.length > 45 ? '…' : ''}</span>}
+                  <p className="text-xs text-textMuted/80 line-clamp-2 leading-relaxed" title={lastSubject || ''}>
+                    <span className="text-textPrimary/80 font-medium">{formatRelativeDate(lastDate)}</span>
+                    {lastSubject && <span> — {lastSubject}</span>}
                   </p>
                 )}
               </div>
             ) : (
-              <span className="text-xs text-textMuted/40">No announcements yet</span>
+              <div className="flex items-center gap-2 mt-2 opacity-60">
+                <div className="w-1.5 h-1.5 rounded-full bg-textMuted/40" />
+                <span className="text-xs text-textMuted font-medium">No announcements yet</span>
+              </div>
             )}
           </div>
 
           {/* Alert active indicator */}
           {script.alertEnabled && (script.alertAbove != null || script.alertBelow != null) && (
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-400/10 border border-amber-400/20 rounded-lg">
-              <BellRing className="w-3 h-3 text-amber-400" />
-              <span className="text-[11px] text-amber-400 font-medium">
+            <div className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl mt-1">
+              <BellRing className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="text-[11px] text-amber-400 font-bold tracking-wide">
                 {script.alertAbove != null && `▲ ₹${script.alertAbove}`}
                 {script.alertAbove != null && script.alertBelow != null && ' · '}
                 {script.alertBelow != null && `▼ ₹${script.alertBelow}`}
@@ -160,25 +131,28 @@ function ScriptCard({ script, annStats = {}, rate = null, onOpenDrawer, onSetAle
             </div>
           )}
 
-          {/* Row 4 — actions */}
-          <div className="flex items-center gap-2 pt-1 border-t border-border/40">
+          {/* Row 3 — actions */}
+          <div className="flex items-center gap-2.5 pt-3.5 border-t border-white/5 mt-auto">
             <button
               onClick={(e) => { e.stopPropagation(); navigate(`/announcements?script=${code}`) }}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium rounded-lg transition"
+              className="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-3 py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white text-xs font-bold rounded-xl transition-all duration-200 shadow-sm hover:shadow-primary/20 hover:-translate-y-0.5"
             >
-              <BarChart2 className="w-3.5 h-3.5" />
-              Announcements
+              <BarChart2 className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="truncate">Announcements</span>
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onSetAlert?.(script) }}
-              className="w-8 h-8 flex items-center justify-center text-textMuted hover:text-amber-400 hover:bg-amber-400/10 rounded-lg transition"
+              aria-label={`Set price alert for ${script.scriptName}`}
               title="Set price alert"
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-textMuted hover:text-amber-400 bg-surface/40 hover:bg-amber-500/10 rounded-xl transition-all duration-200 border border-transparent hover:border-amber-500/20 shadow-sm hover:-translate-y-0.5"
             >
               <Bell className="w-4 h-4" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setConfirmOpen(true) }}
-              className="w-8 h-8 flex items-center justify-center text-textMuted hover:text-red-400 hover:bg-red-400/10 rounded-lg transition"
+              aria-label={`Remove ${script.scriptName} from watchlist`}
+              title="Remove from watchlist"
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-textMuted hover:text-red-400 bg-surface/40 hover:bg-red-500/10 rounded-xl transition-all duration-200 border border-transparent hover:border-red-500/20 shadow-sm hover:-translate-y-0.5"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -200,7 +174,6 @@ function ScriptCard({ script, annStats = {}, rate = null, onOpenDrawer, onSetAle
 }
 
 // Only re-render when the data this card actually displays has changed.
-// With 5000 cards and rates updating every 2s, this prevents 4999 unnecessary re-renders per poll.
 export default memo(ScriptCard, (prev, next) => {
   return (
     prev.script.id           === next.script.id           &&
@@ -210,8 +183,6 @@ export default memo(ScriptCard, (prev, next) => {
     prev.script.alertEnabled === next.script.alertEnabled &&
     prev.annStats.count      === next.annStats.count      &&
     prev.annStats.lastDate   === next.annStats.lastDate   &&
-    prev.rate?.ltp           === next.rate?.ltp           &&
-    prev.rate?.pctChange     === next.rate?.pctChange     &&
     prev.bulkMode            === next.bulkMode            &&
     prev.isSelected          === next.isSelected
   )

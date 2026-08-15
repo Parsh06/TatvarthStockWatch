@@ -7,7 +7,7 @@ import { useWatchlist } from '../../contexts/WatchlistContext'
 import AnnouncementCard from './AnnouncementCard'
 import AnnouncementFilters from './AnnouncementFilters'
 import EmptyState from '../Common/EmptyState'
-import { SkeletonAnnouncementCard } from '../Common/Loader'
+import Loader from '../Common/Loader'
 import { exportToXLSX } from '../../utils/csvParser'
 import { formatRelativeDate } from '../../utils/formatters'
 import PageTransition from '../Common/PageTransition'
@@ -178,9 +178,7 @@ export default function AnnouncementsPage() {
 
       {/* List */}
       {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map((i) => <SkeletonAnnouncementCard key={i} />)}
-        </div>
+        <Loader />
       ) : filtered.length === 0 && announcements.length > 0 ? (
         <EmptyState icon={Bell} title="No matching announcements" subtitle="Try adjusting your filters or clearing the category selection" />
       ) : filtered.length === 0 ? null : (

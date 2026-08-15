@@ -3,6 +3,7 @@ import { TrendingUp, TrendingDown, RefreshCw, AlertCircle, ArrowUpRight, ArrowDo
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 import PageTransition from '../Common/PageTransition'
+import { Spinner } from '../Common/Loader'
 
 
 
@@ -264,7 +265,7 @@ export default function GainersLosersPage() {
       <div className="relative mt-6">
         {loading && (
           <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-30 flex items-center justify-center rounded-xl">
-            <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+            <Spinner size="lg" />
           </div>
         )}
         

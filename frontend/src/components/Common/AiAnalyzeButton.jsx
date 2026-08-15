@@ -33,7 +33,6 @@ export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysi
   const [stageIdx, setStageIdx] = useState(0)
   const stageTimer = useRef(null)
 
-  // If parent passes updated initialAnalysis (e.g. after page re-render), sync
   useEffect(() => {
     if (initialAnalysis?.generated && state === 'idle') {
       setState('cached')
@@ -59,7 +58,6 @@ export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysi
   async function handleClick(e) {
     e.stopPropagation()
 
-    // If cached, just surface the result immediately
     if (state === 'cached' && initialAnalysis?.analysis) {
       onResult?.(initialAnalysis.analysis)
       return
@@ -79,7 +77,6 @@ export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysi
     } catch (err) {
       stopStageTimer()
       setState('error')
-      // Parse friendly error message
       const raw = err.message || ''
       if (raw.includes('PDF unavailable') || raw.includes('NO_PDF')) {
         setErrorMsg('PDF unavailable for this filing.')
@@ -91,20 +88,47 @@ export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysi
     }
   }
 
-  // ── No PDF → hide button entirely ──────────────────────────────────────────
   if (!pdfUrl) return null
+
+  const keyframeStyles = (
+    <style>{`
+      @keyframes tswStageFade {
+        0%   { opacity: 0; transform: translateY(3px); }
+        15%  { opacity: 1; transform: translateY(0); }
+        100% { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes tswReadyGlow {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.18); }
+        50%      { box-shadow: 0 0 0 5px rgba(52,211,153,0); }
+      }
+      @keyframes tswShimmer {
+        0%   { transform: translateX(-120%); }
+        100% { transform: translateX(220%); }
+      }
+      @keyframes tswFadeIn {
+        from { opacity: 0; transform: translateY(-2px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+    `}</style>
+  )
 
   // ── Error state ─────────────────────────────────────────────────────────────
   if (state === 'error') {
     return (
-      <div className="flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-1.5 text-red-400 text-xs">
+      <div
+        className="flex items-center gap-2 flex-wrap max-w-full"
+        style={{ animation: 'tswFadeIn 0.2s ease-out' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {keyframeStyles}
+        <div className="flex items-center gap-1.5 text-red-400 text-xs min-w-0">
           <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-          <span>{errorMsg}</span>
+          <span className="truncate">{errorMsg}</span>
         </div>
         <button
           onClick={handleClick}
-          className="text-xs px-2.5 py-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition"
+          className="flex-shrink-0 text-xs px-2.5 py-1 rounded-lg border border-red-500/30 text-red-400
+                     hover:bg-red-500/10 hover:border-red-500/50 active:scale-95 transition-all duration-150"
         >
           Retry
         </button>
@@ -114,15 +138,27 @@ export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysi
 
   // ── Loading state ───────────────────────────────────────────────────────────
   if (state === 'loading') {
+    const progressPct = ((stageIdx + 1) / LOADING_STAGES.length) * 100
     return (
       <div
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/25 cursor-default"
+        className="inline-flex flex-col gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/25
+                   cursor-default w-full max-w-[240px] sm:w-auto sm:max-w-none"
         onClick={(e) => e.stopPropagation()}
       >
-        <RefreshCw className="w-3.5 h-3.5 text-primary animate-spin flex-shrink-0" />
-        <span className="text-xs text-primary font-medium transition-all duration-500">
-          {LOADING_STAGES[stageIdx]}
-        </span>
+        {keyframeStyles}
+        <div className="flex items-center gap-2 min-w-0">
+          <RefreshCw className="w-3.5 h-3.5 text-primary animate-spin flex-shrink-0" />
+          <span key={stageIdx} className="text-xs text-primary font-medium truncate" style={{ animation: 'tswStageFade 0.4s ease-out' }}>
+            {LOADING_STAGES[stageIdx]}
+          </span>
+        </div>
+        {/* Stage progress — gives a real sense of "how close", not just spinning text */}
+        <div className="h-[3px] w-full sm:w-32 bg-primary/10 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-primary/70 to-primary rounded-full transition-all duration-700 ease-out"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
       </div>
     )
   }
@@ -130,42 +166,60 @@ export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysi
   // ── Cached state — green "AI Ready" pill ────────────────────────────────────
   if (state === 'cached') {
     return (
-      <button
-        onClick={handleClick}
-        title="AI analysis available — click to view"
-        className={clsx(
-          'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold',
-          'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400',
-          'hover:bg-emerald-500/20 hover:border-emerald-500/50 transition-all duration-200',
-          'hover:shadow-[0_0_12px_rgba(52,211,153,0.15)]'
-        )}
-      >
-        <Sparkles className="w-3.5 h-3.5" />
-        AI Ready
-      </button>
+      <>
+        {keyframeStyles}
+        <button
+          onClick={handleClick}
+          title="AI analysis available — click to view"
+          aria-label="View AI analysis"
+          className={clsx(
+            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold',
+            'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400',
+            'hover:bg-emerald-500/20 hover:border-emerald-500/50 hover:-translate-y-0.5',
+            'active:scale-95 transition-all duration-200'
+          )}
+          style={{ animation: 'tswReadyGlow 2.5s ease-in-out infinite' }}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          AI Ready
+        </button>
+      </>
     )
   }
 
   // ── Idle state — gradient "AI Analyze" button ───────────────────────────────
   return (
-    <button
-      onClick={handleClick}
-      title="Generate AI investment analysis (~15–30s)"
-      className={clsx(
-        'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold',
-        'text-white transition-all duration-200 group',
-        'bg-gradient-to-r from-violet-600 to-indigo-600',
-        'hover:from-violet-500 hover:to-indigo-500',
-        'hover:shadow-[0_0_16px_rgba(139,92,246,0.35)] hover:scale-[1.02]',
-        'active:scale-[0.98]'
-      )}
-    >
-      <Sparkles className="w-3.5 h-3.5 group-hover:rotate-12 transition-transform duration-200" />
-      <span>AI Analyze</span>
-      <span className="flex items-center gap-1 text-white/60 font-normal text-[10px]">
-        <Clock className="w-2.5 h-2.5" />
-        ~20s
-      </span>
-    </button>
+    <>
+      {keyframeStyles}
+      <button
+        onClick={handleClick}
+        title="Generate AI investment analysis (~15–30s)"
+        aria-label="Generate AI investment analysis"
+        className={clsx(
+          'relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold',
+          'text-white transition-all duration-200 group overflow-hidden',
+          'bg-gradient-to-r from-violet-600 to-indigo-600',
+          'hover:from-violet-500 hover:to-indigo-500',
+          'hover:shadow-[0_0_16px_rgba(139,92,246,0.35)] hover:scale-[1.02]',
+          'active:scale-[0.98]'
+        )}
+      >
+        {/* Diagonal shimmer sweep on hover — signals "this triggers something special" (an AI action) */}
+        <span className="absolute inset-0 overflow-hidden rounded-lg pointer-events-none">
+          <span
+            className="absolute inset-y-0 w-8 bg-white/20 -skew-x-12 opacity-0 group-hover:opacity-100"
+            style={{ animation: 'tswShimmer 1s ease-in-out infinite' }}
+          />
+        </span>
+
+        <Sparkles className="w-3.5 h-3.5 group-hover:rotate-12 transition-transform duration-200 relative z-10" />
+        <span className="relative z-10">AI Analyze</span>
+        {/* Hidden on very narrow layouts (mobile announcement cards) to keep the button compact */}
+        <span className="hidden xs:flex sm:flex items-center gap-1 text-white/60 font-normal text-[10px] relative z-10">
+          <Clock className="w-2.5 h-2.5" />
+          ~20s
+        </span>
+      </button>
+    </>
   )
 }

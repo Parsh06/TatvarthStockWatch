@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   Sparkles, ChevronDown, ChevronUp,
   TrendingUp, TrendingDown, Minus,
@@ -28,7 +28,7 @@ function Metric({ label, value, qoq, yoy, prev, prevLabel = 'Prev Qtr' }) {
     const neg = num < 0
     return (
       <span className={clsx(
-        'inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded border',
+        'inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap',
         pos && 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
         neg && 'text-red-400 bg-red-400/10 border-red-400/20',
         !pos && !neg && 'text-textMuted bg-surface/50 border-border/50'
@@ -41,13 +41,18 @@ function Metric({ label, value, qoq, yoy, prev, prevLabel = 'Prev Qtr' }) {
   }
 
   const display = hasVal(value) ? value : '—'
+  const trendTint = yoyNum > 0 ? 'hover:border-emerald-500/25' : yoyNum < 0 ? 'hover:border-red-500/25' : 'hover:border-primary/20'
 
   return (
-    <div className="flex flex-col p-3 bg-surface border border-border/50 rounded-xl">
-      <span className="text-[10px] text-textMuted mb-1 font-semibold uppercase tracking-wider">{label}</span>
-      <span className="text-base font-bold text-textPrimary mb-2">{display}</span>
+    <div className={clsx(
+      'flex flex-col p-3 bg-surface border border-border/50 rounded-xl',
+      'transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/10',
+      trendTint
+    )}>
+      <span className="text-[10px] text-textMuted mb-1 font-semibold uppercase tracking-wider truncate">{label}</span>
+      <span className="text-base font-bold text-textPrimary mb-2 truncate">{display}</span>
       {hasVal(prev) && (
-        <span className="text-[10px] text-textMuted mb-1.5">{prevLabel}: {prev}</span>
+        <span className="text-[10px] text-textMuted mb-1.5 truncate">{prevLabel}: {prev}</span>
       )}
       <div className="flex items-center gap-1.5 flex-wrap mt-auto">
         {pill(qoqNum, 'QoQ ')}
@@ -66,19 +71,21 @@ function BulletList({ items, color = 'text-primary' }) {
       {filtered.map((item, i) => (
         <li key={i} className="flex items-start gap-2 text-sm text-textPrimary leading-relaxed">
           <span className={clsx('mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0', color.replace('text-', 'bg-'))} />
-          <span>{String(item).replace(/^[\d.\-•]+\s*/, '')}</span>
+          <span className="min-w-0">{String(item).replace(/^[\d.\-•]+\s*/, '')}</span>
         </li>
       ))}
     </ul>
   )
 }
 
-// ── Kv Row (label: value) ────────────────────────────────────────────────────
+// ── Kv Row (label: value) — stacks on mobile so long labels never crush the value */
 function KvRow({ label, value }) {
   if (!hasVal(value)) return null
   return (
-    <div className="flex items-start gap-3 text-sm py-2 border-b border-white/5 last:border-b-0">
-      <span className="text-textMuted w-40 flex-shrink-0 font-medium text-xs leading-relaxed">{label}</span>
+    <div className="flex flex-col sm:flex-row sm:items-start gap-0.5 sm:gap-3 text-sm py-2.5 border-b border-white/5 last:border-b-0">
+      <span className="text-textMuted sm:w-40 flex-shrink-0 font-semibold sm:font-medium text-[10px] sm:text-xs uppercase sm:normal-case tracking-wide sm:tracking-normal leading-relaxed">
+        {label}
+      </span>
       <span className="text-textPrimary leading-relaxed">{value}</span>
     </div>
   )
@@ -90,7 +97,7 @@ function RiskRow({ label, value }) {
   return (
     <div className="flex items-start gap-2 text-sm py-2.5 border-b border-red-500/10 last:border-b-0">
       <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
-      <div>
+      <div className="min-w-0">
         <span className="text-red-400 font-semibold text-xs">{label}: </span>
         <span className="text-textPrimary">{value}</span>
       </div>
@@ -104,7 +111,7 @@ function SentimentBadge({ value }) {
   const lc = value.toLowerCase()
   return (
     <span className={clsx(
-      'inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide border',
+      'inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide border whitespace-nowrap',
       lc === 'positive' && 'bg-emerald-400/10 text-emerald-400 border-emerald-400/25',
       lc === 'negative' && 'bg-red-400/10 text-red-400 border-red-400/25',
       lc === 'neutral'  && 'bg-surface text-textMuted border-border',
@@ -121,7 +128,7 @@ function ImportanceBadge({ value }) {
   const lc = value.toLowerCase()
   return (
     <span className={clsx(
-      'inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide border',
+      'inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide border whitespace-nowrap',
       lc === 'high'   && 'bg-amber-400/10 text-amber-400 border-amber-400/25',
       lc === 'medium' && 'bg-blue-400/10 text-blue-400 border-blue-400/25',
       lc === 'low'    && 'bg-surface text-textMuted border-border',
@@ -134,9 +141,12 @@ function ImportanceBadge({ value }) {
 // ── Section wrapper ──────────────────────────────────────────────────────────
 function Section({ icon: Icon, title, children, iconColor = 'text-primary', borderColor }) {
   return (
-    <div className={clsx('rounded-xl border p-4', borderColor || 'border-white/5 bg-surface/30')}>
+    <div className={clsx(
+      'rounded-xl border p-3.5 sm:p-4 transition-colors duration-200',
+      borderColor || 'border-white/5 bg-surface/30'
+    )}>
       <div className="flex items-center gap-2 mb-3">
-        <div className={clsx('p-1 rounded-md', iconColor.replace('text-', 'bg-') + '/10')}>
+        <div className={clsx('p-1 rounded-md flex-shrink-0', iconColor.replace('text-', 'bg-') + '/10')}>
           <Icon className={clsx('w-3.5 h-3.5', iconColor)} />
         </div>
         <h5 className="text-xs font-bold text-textMuted uppercase tracking-wider">{title}</h5>
@@ -149,6 +159,8 @@ function Section({ icon: Icon, title, children, iconColor = 'text-primary', bord
 // ── Main Component ───────────────────────────────────────────────────────────
 export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
   const [expanded, setExpanded] = useState(true)
+  const [mounted, setMounted] = useState(true)
+  useEffect(() => { setMounted(true) }, [])
 
   if (!analysis || typeof analysis !== 'object') return null
   const a = analysis
@@ -202,20 +214,32 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
 
   return (
     <div className="mt-3 border border-primary/20 bg-gradient-to-br from-primary/5 to-violet-900/5 rounded-2xl overflow-hidden">
+      <style>{`
+        @keyframes tswPanelIn {
+          from { opacity: 0; transform: translateY(-6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes tswSectionIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+
       {/* ── Header / toggle ── */}
       <button
         onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }}
-        className="w-full flex items-center justify-between p-3.5 hover:bg-primary/8 transition-colors"
+        aria-expanded={expanded}
+        className="w-full flex items-start sm:items-center justify-between gap-3 p-3 sm:p-3.5 hover:bg-primary/8 transition-colors duration-150"
       >
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 bg-gradient-to-br from-violet-500/20 to-indigo-500/20 rounded-lg border border-violet-500/20">
+        <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+          <div className="p-1.5 bg-gradient-to-br from-violet-500/20 to-indigo-500/20 rounded-lg border border-violet-500/20 flex-shrink-0">
             <Sparkles className="w-4 h-4 text-violet-400" />
           </div>
-          <div className="text-left">
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-bold text-primary">Tatvarth AI Analysis</h4>
+          <div className="text-left min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="text-sm font-bold text-primary whitespace-nowrap">Tatvarth AI Analysis</h4>
               {cached && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold whitespace-nowrap">
                   CACHED
                 </span>
               )}
@@ -225,11 +249,11 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {generatedLabel && (
-            <span className="text-[10px] text-textMuted opacity-60">{generatedLabel}</span>
+            <span className="text-[10px] text-textMuted opacity-60 hidden xs:inline whitespace-nowrap">{generatedLabel}</span>
           )}
-          <div className="text-primary/50">
+          <div className={clsx('text-primary/50 transition-transform duration-200', expanded && 'rotate-0')}>
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </div>
         </div>
@@ -237,7 +261,11 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
 
       {/* ── Body ── */}
       {expanded && (
-        <div className="px-4 pb-5 space-y-4 border-t border-primary/10" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="px-3.5 sm:px-4 pb-5 space-y-4 border-t border-primary/10"
+          style={{ animation: 'tswPanelIn 0.25s ease-out' }}
+          onClick={(e) => e.stopPropagation()}
+        >
 
           {/* Badges Row */}
           <div className="flex items-center gap-2 flex-wrap pt-4">
@@ -270,7 +298,7 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
           {/* Financial Highlights */}
           {hasFinancials && (
             <Section icon={BarChart3} title="Financial Highlights" iconColor="text-emerald-400">
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 mb-3">
                 {hasVal(fin.revenue?.current) && (
                   <Metric label="Revenue" value={fin.revenue.current}
                     prev={fin.revenue.previousQuarter}
@@ -331,12 +359,12 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
                   <p className="text-[10px] font-bold text-textMuted uppercase tracking-wider mb-2 flex items-center gap-1">
                     <Banknote className="w-3 h-3" /> Balance Sheet Snapshot
                   </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 sm:gap-x-6 gap-y-1.5">
                     {Object.entries(fin.balanceSheetSnapshot).map(([k, v]) =>
                       hasVal(v) ? (
-                        <div key={k} className="flex items-baseline gap-1.5">
-                          <span className="text-[10px] text-textMuted capitalize">{k.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                          <span className="text-xs text-textPrimary font-semibold">{v}</span>
+                        <div key={k} className="flex flex-col xs:flex-row xs:items-baseline gap-0 xs:gap-1.5 min-w-0">
+                          <span className="text-[10px] text-textMuted capitalize truncate">{k.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                          <span className="text-xs text-textPrimary font-semibold truncate">{v}</span>
                         </div>
                       ) : null
                     )}
@@ -350,12 +378,12 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
                   <p className="text-[10px] font-bold text-textMuted uppercase tracking-wider mb-2 flex items-center gap-1">
                     <ArrowRightLeft className="w-3 h-3" /> Cash Flow Highlights
                   </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 sm:gap-x-6 gap-y-1.5">
                     {Object.entries(fin.cashFlowHighlights).map(([k, v]) =>
                       hasVal(v) ? (
-                        <div key={k} className="flex items-baseline gap-1.5">
-                          <span className="text-[10px] text-textMuted capitalize">{k.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                          <span className="text-xs text-textPrimary font-semibold">{v}</span>
+                        <div key={k} className="flex flex-col xs:flex-row xs:items-baseline gap-0 xs:gap-1.5 min-w-0">
+                          <span className="text-[10px] text-textMuted capitalize truncate">{k.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                          <span className="text-xs text-textPrimary font-semibold truncate">{v}</span>
                         </div>
                       ) : null
                     )}
@@ -372,7 +400,7 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
                 {a.keyHighlights.filter(h => hasVal(h)).map((h, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-textPrimary leading-relaxed">
                     <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
-                    <span>{h}</span>
+                    <span className="min-w-0">{h}</span>
                   </li>
                 ))}
               </ul>
@@ -402,8 +430,8 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
               <div className="space-y-2.5">
                 {mgmt.filter(m => hasVal(m)).map((m, i) => (
                   <div key={i} className="flex items-start gap-2.5">
-                    <div className="w-1 h-full min-h-[1.25rem] rounded-full bg-violet-400/40 flex-shrink-0 mt-1" />
-                    <p className="text-sm text-textPrimary leading-relaxed italic">"{m}"</p>
+                    <div className="w-1 self-stretch rounded-full bg-violet-400/40 flex-shrink-0" />
+                    <p className="text-sm text-textPrimary leading-relaxed italic min-w-0">"{m}"</p>
                   </div>
                 ))}
               </div>

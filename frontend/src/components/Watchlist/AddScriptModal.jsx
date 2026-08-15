@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 import ScriptSearchInput from '../Common/ScriptSearchInput'
 import toast from 'react-hot-toast'
+import { Spinner } from '../Common/Loader'
 
 const BACKEND    = import.meta.env.VITE_BACKEND_URL || ''
 const EXCHANGES  = ['BSE', 'NSE', 'BOTH']
@@ -172,7 +173,7 @@ export default function AddScriptModal({ isOpen, onClose }) {
                 {/* Live price */}
                 {quoteLoading ? (
                   <div className="flex items-center gap-2 text-xs text-primary/60">
-                    <span className="w-3.5 h-3.5 border-2 border-primary/50 border-t-transparent rounded-full animate-spin inline-block" />
+                    <Spinner size="sm" className="scale-75" />
                     Fetching live price…
                   </div>
                 ) : liveQuote && ltp != null ? (
@@ -278,7 +279,7 @@ export default function AddScriptModal({ isOpen, onClose }) {
                       ? 'bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 cursor-default'
                       : 'bg-primary hover:bg-primary/90 disabled:opacity-50 text-white'
                   )}>
-                  {adding && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  {adding && <Spinner size="sm" className="scale-75" />}
                   {alreadyInWL ? '✓ Already in Watchlist' : adding ? 'Adding…' : `Add ${selected.scripName?.split(' ')[0]} to Watchlist`}
                 </button>
               </div>

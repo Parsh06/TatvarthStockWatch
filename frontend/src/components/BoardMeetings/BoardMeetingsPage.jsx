@@ -5,6 +5,7 @@ import { apiClient } from '../../services/apiClient'
 import { getAnnouncementsFromDB } from '../../services/announcementService'
 import { exportToXLSX } from '../../utils/csvParser'
 import PageTransition from '../Common/PageTransition'
+import { Spinner } from '../Common/Loader'
 
 const getISTDate = (d = new Date()) => new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const today = () => getISTDate();
@@ -259,7 +260,7 @@ export default function BoardMeetingsPage() {
               {loading ? (
                 <tr>
                   <td colSpan="6" className="px-4 py-16 text-center text-textMuted">
-                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-50 text-primary" />
+                    <Spinner size="lg" className="mx-auto mb-4" />
                     <p>Loading board meetings...</p>
                   </td>
                 </tr>

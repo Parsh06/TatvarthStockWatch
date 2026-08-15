@@ -4,6 +4,7 @@ import { Mail, Lock, User, TrendingUp, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
+import { Spinner } from '../Common/Loader'
 
 export default function RegisterPage() {
   const { register, loginWithGoogle } = useAuth()
@@ -156,7 +157,7 @@ export default function RegisterPage() {
               disabled={loading}
               className="w-full bg-primary hover:bg-primary/90 disabled:opacity-60 text-white font-medium py-2.5 rounded-lg transition flex items-center justify-center gap-2 mt-2"
             >
-              {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              {loading && <Spinner size="sm" />}
               {loading ? 'Creating account...' : 'Create Account'}
             </button>
           </form>
@@ -173,7 +174,7 @@ export default function RegisterPage() {
             className="w-full flex items-center justify-center gap-3 bg-background border border-border hover:border-primary/50 text-textPrimary font-medium py-2.5 rounded-lg transition disabled:opacity-60"
           >
             {googleLoading ? (
-              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <Spinner size="sm" />
             ) : (
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />

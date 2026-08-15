@@ -4,6 +4,7 @@ import clsx from 'clsx';
 import { apiClient } from '../../services/apiClient';
 import { exportToXLSX } from '../../utils/csvParser';
 import PageTransition from '../Common/PageTransition';
+import { Spinner } from '../Common/Loader';
 
 function StatCard({ label, value, sub, color = 'text-textPrimary', icon: Icon, iconColor }) {
   return (
@@ -184,7 +185,7 @@ export default function IPOGmpPage() {
               {loading && ipos.length === 0 ? (
                 <tr>
                   <td colSpan="10" className="px-4 py-16 text-center text-textMuted">
-                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-50 text-primary" />
+                    <Spinner size="lg" className="mx-auto mb-4" />
                     <p>Loading IPO data...</p>
                   </td>
                 </tr>

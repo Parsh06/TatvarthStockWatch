@@ -76,7 +76,6 @@ export default function Sidebar({ collapsed, onToggle }) {
             onClick={() => {
               if (to === '/announcements') {
                 markSeen()
-                setAnnCount(0)
               }
             }}
             className={({ isActive }) =>

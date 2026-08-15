@@ -3,6 +3,7 @@ import { TrendingUp, ShieldCheck, Zap, Activity } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
+import { Spinner } from '../Common/Loader'
 
 function GoogleIcon() {
   return (
@@ -106,7 +107,7 @@ export default function LoginPage() {
               <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/5 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               
               {googleLoading ? (
-                <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <Spinner size="sm" />
               ) : (
                 <GoogleIcon />
               )}

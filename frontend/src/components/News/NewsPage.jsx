@@ -6,6 +6,7 @@ import {
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 import ScriptSearchInput from '../Common/ScriptSearchInput'
+import { SkeletonAnnouncementCard } from '../Common/Loader'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function parseBseDate(str) {
@@ -143,25 +144,7 @@ function NewsItem({ item }) {
   )
 }
 
-function SkeletonItem() {
-  return (
-    <div className="flex gap-3 bg-surface border border-border rounded-xl p-4 animate-pulse">
-      <div className="w-1 rounded-full bg-border self-stretch min-h-[60px]" />
-      <div className="flex-1 space-y-2.5">
-        <div className="flex gap-1.5">
-          <div className="h-4 w-20 bg-border rounded-full" />
-          <div className="h-4 w-28 bg-border rounded-full" />
-        </div>
-        <div className="h-4 w-full bg-border rounded" />
-        <div className="h-4 w-3/4 bg-border rounded" />
-        <div className="flex gap-2 mt-1">
-          <div className="h-6 w-20 bg-border rounded-lg" />
-          <div className="h-6 w-16 bg-border rounded-lg" />
-        </div>
-      </div>
-    </div>
-  )
-}
+
 
 // ── main page ─────────────────────────────────────────────────────────────────
 const PAGE_SIZE = 30
@@ -440,7 +423,7 @@ export default function NewsPage() {
             <RefreshCw className="w-4 h-4 animate-spin" />
             Loading filings for {selectedScript?.scripName}…
           </div>
-          {[...Array(6)].map((_, i) => <SkeletonItem key={i} />)}
+          {[...Array(6)].map((_, i) => <SkeletonAnnouncementCard key={i} />)}
         </div>
       )}
 

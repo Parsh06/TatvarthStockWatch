@@ -2,168 +2,675 @@
  * Service Worker for Tatvarth Stock Watch
  *
  * Handles:
- * - Push notifications (display, click, actions)
- * - Push subscription change (auto re-subscribe)
- * - Basic offline caching for app shell
+ * - Rich push notifications
+ * - Notification types, priorities & contextual actions
+ * - Secure notification URL routing
+ * - Notification click handling
+ * - Push subscription changes
+ * - Service Worker lifecycle management
+ * - Cache version management
  */
 
-const CACHE_NAME = 'sw-cache-v1';
+const CACHE_NAME = 'stockwatch-sw-v2';
 const APP_URL = 'https://tatvarthstockwatch.web.app';
+const APP_ORIGIN = new URL(APP_URL).origin;
 
-// ── Push Notification Handler ─────────────────────────────────────────────────
-self.addEventListener('push', function(event) {
-  if (!event.data) return;
+// ─────────────────────────────────────────────────────────────────────────────
+// Notification Configuration
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NOTIFICATION_TYPES = {
+  announcement: {
+    icon: '/logo2.png',
+    defaultTitle: 'Market Announcement',
+  },
+  result: {
+    icon: '/logo2.png',
+    defaultTitle: 'Financial Results',
+  },
+  boardMeeting: {
+    icon: '/logo2.png',
+    defaultTitle: 'Board Meeting',
+  },
+  agm: {
+    icon: '/logo2.png',
+    defaultTitle: 'AGM / EGM Update',
+  },
+  corporateAction: {
+    icon: '/logo2.png',
+    defaultTitle: 'Corporate Action',
+  },
+  insiderTrading: {
+    icon: '/logo2.png',
+    defaultTitle: 'Insider Trading',
+  },
+  deal: {
+    icon: '/logo2.png',
+    defaultTitle: 'Bulk / Block Deal',
+  },
+  ipo: {
+    icon: '/logo2.png',
+    defaultTitle: 'IPO Update',
+  },
+  general: {
+    icon: '/logo2.png',
+    defaultTitle: 'StockWatch Update',
+  },
+};
+
+const PRIORITY_CONFIG = {
+  critical: {
+    vibrate: [200, 100, 200, 100, 300],
+    renotify: true,
+    requireInteraction: true,
+  },
+
+  high: {
+    vibrate: [150, 75, 150],
+    renotify: true,
+    requireInteraction: false,
+  },
+
+  normal: {
+    vibrate: [100, 50, 100],
+    renotify: false,
+    requireInteraction: false,
+  },
+
+  low: {
+    vibrate: [],
+    renotify: false,
+    requireInteraction: false,
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function parsePushData(event) {
+  if (!event.data) return {};
 
   try {
-    const data = event.data.json();
-    const title = data.title || 'Tatvarth Stock Watch';
-    const options = {
-      body: data.body || 'You have a new announcement.',
-      icon: '/logo2.png',
-      badge: '/logo2.png',
-      vibrate: [100, 50, 100],
-      // Use tag for deduplication — same tag replaces previous notification
-      tag: data.tag || 'default',
-      renotify: true,  // Vibrate again even if tag matches an existing notification
-      requireInteraction: false,
-      data: {
-        url: data.url || APP_URL,
-        timestamp: Date.now(),
-      },
-      actions: [
-        { action: 'view', title: 'View' },
-        { action: 'dismiss', title: 'Dismiss' },
-      ],
-    };
-
-    event.waitUntil(
-      self.registration.showNotification(title, options)
-    );
-  } catch (e) {
-    console.error('[SW] Error parsing push data:', e);
-    // Fallback: show a generic notification
-    event.waitUntil(
-      self.registration.showNotification('Tatvarth Stock Watch', {
-        body: 'You have a new notification.',
-        icon: '/logo2.png',
-        badge: '/logo2.png',
-        data: { url: APP_URL },
-      })
-    );
+    return event.data.json();
+  } catch (jsonError) {
+    try {
+      return {
+        body: event.data.text(),
+      };
+    } catch (textError) {
+      console.error('[SW] Unable to parse push payload:', textError);
+      return {};
+    }
   }
-});
+}
 
-// ── Notification Click Handler ────────────────────────────────────────────────
-self.addEventListener('notificationclick', function(event) {
-  event.notification.close();
+function normalizePriority(priority) {
+  const value = String(priority || 'normal').toLowerCase();
 
-  // If user clicked "Dismiss", just close
-  if (event.action === 'dismiss') return;
+  return PRIORITY_CONFIG[value]
+    ? value
+    : 'normal';
+}
 
-  // URL to open (from notification data, or fallback)
-  const urlToOpen = event.notification?.data?.url || APP_URL;
+function getNotificationType(data) {
+  const type = String(data?.type || 'announcement');
 
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(windowClients) {
-      // Try to focus an existing tab with the target URL
-      for (let i = 0; i < windowClients.length; i++) {
-        const client = windowClients[i];
-        // Check if we already have a tab on the same origin
-        try {
-          const clientUrl = new URL(client.url);
-          const targetUrl = new URL(urlToOpen);
-          if (clientUrl.origin === targetUrl.origin && 'focus' in client) {
-            // Navigate existing tab to the notification URL
-            client.navigate(urlToOpen);
-            return client.focus();
-          }
-        } catch (e) {
-          // URL parsing failed, just check equality
-          if (client.url === urlToOpen && 'focus' in client) {
-            return client.focus();
-          }
-        }
-      }
-      // No existing tab — open a new window
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
-      }
-    })
+  return NOTIFICATION_TYPES[type]
+    ? type
+    : 'announcement';
+}
+
+function getNotificationIcon(type) {
+  return NOTIFICATION_TYPES[type]?.icon || '/logo2.png';
+}
+
+function sanitizeUrl(rawUrl) {
+  if (!rawUrl) return APP_URL;
+
+  try {
+    const url = new URL(rawUrl, APP_URL);
+
+    // Only allow URLs belonging to StockWatch.
+    if (url.origin !== APP_ORIGIN) {
+      return APP_URL;
+    }
+
+    return url.href;
+  } catch (error) {
+    return APP_URL;
+  }
+}
+
+function buildNotificationTag(data, type) {
+  if (data?.tag) {
+    return String(data.tag);
+  }
+
+  const announcementId =
+    data?.announcementId ||
+    data?.announcement?.id;
+
+  const companyCode =
+    data?.company?.bseCode ||
+    data?.company?.code ||
+    data?.companyCode;
+
+  if (announcementId) {
+    return `${type}-${announcementId}`;
+  }
+
+  if (companyCode) {
+    return `${type}-${companyCode}`;
+  }
+
+  return `${type}-${Date.now()}`;
+}
+
+function getNotificationTitle(data, type) {
+  if (data?.title) {
+    return String(data.title);
+  }
+
+  const companyName =
+    data?.company?.name ||
+    data?.companyName;
+
+  const exchange =
+    data?.company?.exchange ||
+    data?.exchange;
+
+  const category =
+    data?.announcement?.subCategory ||
+    data?.announcement?.category ||
+    data?.category;
+
+  if (companyName && category && exchange) {
+    return `${companyName} • ${exchange} • ${category}`;
+  }
+
+  if (companyName && category) {
+    return `${companyName} • ${category}`;
+  }
+
+  if (companyName && exchange) {
+    return `${companyName} • ${exchange}`;
+  }
+
+  if (companyName) {
+    return companyName;
+  }
+
+  return NOTIFICATION_TYPES[type]?.defaultTitle || 'Tatvarth Stock Watch';
+}
+
+function getNotificationBody(data) {
+  if (data?.body) {
+    return String(data.body);
+  }
+
+  if (data?.announcement?.summary) {
+    return String(data.announcement.summary);
+  }
+
+  if (data?.summary) {
+    return String(data.summary);
+  }
+
+  if (data?.announcement?.subject) {
+    return String(data.announcement.subject);
+  }
+
+  return 'You have a new market update.';
+}
+
+function getNotificationActions(type) {
+  switch (type) {
+    case 'ipo':
+      return [
+        {
+          action: 'check-ipo',
+          title: 'Check Allotment',
+        },
+        {
+          action: 'view',
+          title: 'View IPO',
+        },
+      ];
+
+    case 'announcement':
+    case 'result':
+    case 'boardMeeting':
+    case 'agm':
+    case 'corporateAction':
+    case 'insiderTrading':
+    case 'deal':
+      return [
+        {
+          action: 'view',
+          title: 'View',
+        },
+        {
+          action: 'open-company',
+          title: 'Company',
+        },
+      ];
+
+    default:
+      return [
+        {
+          action: 'view',
+          title: 'View',
+        },
+      ];
+  }
+}
+
+function buildNotification(data) {
+  const type = getNotificationType(data);
+  const priority = normalizePriority(data?.priority);
+  const priorityConfig = PRIORITY_CONFIG[priority];
+
+  const url = sanitizeUrl(
+    data?.url ||
+    data?.announcement?.url ||
+    '/'
   );
-});
 
-// ── Notification Close Handler (analytics) ────────────────────────────────────
-self.addEventListener('notificationclose', function(event) {
-  // Could send analytics here in the future
-});
+  const companyUrl = sanitizeUrl(
+    data?.company?.url ||
+    data?.companyUrl ||
+    url
+  );
 
-// ── Push Subscription Change Handler ──────────────────────────────────────────
-// Fired when the browser automatically refreshes the push subscription.
-// We need to re-subscribe and update the backend.
-self.addEventListener('pushsubscriptionchange', function(event) {
-  console.log('[SW] Push subscription changed, re-subscribing...');
+  const ipoUrl = sanitizeUrl(
+    data?.ipoUrl ||
+    '/ipo-verification'
+  );
 
+  return {
+    title: getNotificationTitle(data, type),
+
+    body: getNotificationBody(data),
+
+    icon: getNotificationIcon(type),
+
+    badge: '/logo2.png',
+
+    tag: buildNotificationTag(data, type),
+
+    renotify: priorityConfig.renotify,
+
+    requireInteraction: priorityConfig.requireInteraction,
+
+    vibrate: priorityConfig.vibrate,
+
+    timestamp:
+      data?.timestamp ||
+      data?.createdAt ||
+      Date.now(),
+
+    actions: getNotificationActions(type),
+
+    data: {
+      version: data?.version || 2,
+
+      type,
+
+      priority,
+
+      notificationId:
+        data?.notificationId ||
+        null,
+
+      announcementId:
+        data?.announcementId ||
+        data?.announcement?.id ||
+        null,
+
+      companyCode:
+        data?.company?.bseCode ||
+        data?.company?.code ||
+        data?.companyCode ||
+        null,
+
+      companyName:
+        data?.company?.name ||
+        data?.companyName ||
+        null,
+
+      symbol:
+        data?.company?.symbol ||
+        data?.symbol ||
+        null,
+
+      exchange:
+        data?.company?.exchange ||
+        data?.exchange ||
+        null,
+
+      category:
+        data?.announcement?.category ||
+        data?.category ||
+        null,
+
+      subCategory:
+        data?.announcement?.subCategory ||
+        data?.subCategory ||
+        null,
+
+      url,
+
+      companyUrl,
+
+      ipoUrl,
+
+      timestamp: Date.now(),
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Push Notification Handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+self.addEventListener('push', function(event) {
   event.waitUntil(
     (async function() {
       try {
-        // Get the VAPID public key from the old subscription's options
-        const oldSubscription = event.oldSubscription;
-        const newSubscription = event.newSubscription;
+        const data = parsePushData(event);
 
-        if (newSubscription) {
-          // Browser already created a new subscription, just need to update backend
-          const deviceId = ''; // We can't access localStorage from SW
-          // Instead, we'll post a message to the client to handle re-registration
-          const allClients = await clients.matchAll({ type: 'window' });
-          for (const client of allClients) {
-            client.postMessage({
-              type: 'PUSH_SUBSCRIPTION_CHANGED',
-              newSubscription: newSubscription.toJSON(),
-            });
-          }
-        } else if (oldSubscription) {
-          // Need to re-subscribe with the same applicationServerKey
-          const sub = await self.registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: oldSubscription.options.applicationServerKey,
-          });
-
-          // Notify clients to update the backend
-          const allClients = await clients.matchAll({ type: 'window' });
-          for (const client of allClients) {
-            client.postMessage({
-              type: 'PUSH_SUBSCRIPTION_CHANGED',
-              newSubscription: sub.toJSON(),
-            });
-          }
+        // Ignore completely empty push messages.
+        if (!data || Object.keys(data).length === 0) {
+          return;
         }
-      } catch (e) {
-        console.error('[SW] Failed to handle subscription change:', e);
+
+        const notification = buildNotification(data);
+
+        await self.registration.showNotification(
+          notification.title,
+          notification
+        );
+      } catch (error) {
+        console.error(
+          '[SW] Error displaying push notification:',
+          error
+        );
+
+        try {
+          await self.registration.showNotification(
+            'Tatvarth Stock Watch',
+            {
+              body: 'You have a new notification.',
+              icon: '/logo2.png',
+              badge: '/logo2.png',
+              tag: `stockwatch-fallback-${Date.now()}`,
+              data: {
+                version: 2,
+                url: APP_URL,
+                timestamp: Date.now(),
+              },
+              actions: [
+                {
+                  action: 'view',
+                  title: 'View',
+                },
+              ],
+            }
+          );
+        } catch (fallbackError) {
+          console.error(
+            '[SW] Failed to display fallback notification:',
+            fallbackError
+          );
+        }
       }
     })()
   );
 });
 
-// ── Install: Activate immediately ─────────────────────────────────────────────
-self.addEventListener('install', function(event) {
-  console.log('[SW] Installing...');
-  self.skipWaiting(); // Take control immediately
+// ─────────────────────────────────────────────────────────────────────────────
+// Notification Click Handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+
+  const notificationData =
+    event.notification?.data || {};
+
+  let targetUrl = APP_URL;
+
+  switch (event.action) {
+    case 'dismiss':
+      return;
+
+    case 'open-company':
+      targetUrl =
+        notificationData.companyUrl ||
+        notificationData.url ||
+        APP_URL;
+      break;
+
+    case 'check-ipo':
+      targetUrl =
+        notificationData.ipoUrl ||
+        '/ipo-verification';
+      break;
+
+    case 'view':
+    default:
+      targetUrl =
+        notificationData.url ||
+        APP_URL;
+      break;
+  }
+
+  targetUrl = sanitizeUrl(targetUrl);
+
+  event.waitUntil(
+    (async function() {
+      try {
+        const windowClients = await clients.matchAll({
+          type: 'window',
+          includeUncontrolled: true,
+        });
+
+        const target = new URL(targetUrl);
+
+        // Prefer an existing StockWatch tab.
+        for (const client of windowClients) {
+          try {
+            const clientUrl = new URL(client.url);
+
+            if (
+              clientUrl.origin === APP_ORIGIN &&
+              'focus' in client
+            ) {
+              if ('navigate' in client) {
+                await client.navigate(target.href);
+              }
+
+              await client.focus();
+
+              return;
+            }
+          } catch (error) {
+            console.warn(
+              '[SW] Unable to process existing client:',
+              error
+            );
+          }
+        }
+
+        // No existing application window.
+        if (clients.openWindow) {
+          await clients.openWindow(target.href);
+        }
+      } catch (error) {
+        console.error(
+          '[SW] Failed to handle notification click:',
+          error
+        );
+
+        if (clients.openWindow) {
+          await clients.openWindow(APP_URL);
+        }
+      }
+    })()
+  );
 });
 
-// ── Activate: Claim clients and clean old caches ──────────────────────────────
-self.addEventListener('activate', function(event) {
-  console.log('[SW] Activating...');
+// ─────────────────────────────────────────────────────────────────────────────
+// Notification Close Handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+self.addEventListener('notificationclose', function(event) {
+  try {
+    const data = event.notification?.data || {};
+
+    console.log(
+      '[SW] Notification closed:',
+      data.notificationId || data.announcementId || 'unknown'
+    );
+
+    // Analytics can be added here later.
+    // Do not perform blocking network requests.
+  } catch (error) {
+    console.error(
+      '[SW] Notification close handler error:',
+      error
+    );
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Push Subscription Change Handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+self.addEventListener('pushsubscriptionchange', function(event) {
+  console.log(
+    '[SW] Push subscription changed, synchronizing...'
+  );
+
   event.waitUntil(
-    Promise.all([
-      self.clients.claim(), // Take control of all open tabs
-      // Clean up any old caches
-      caches.keys().then(function(cacheNames) {
-        return Promise.all(
-          cacheNames
-            .filter(function(name) { return name !== CACHE_NAME; })
-            .map(function(name) { return caches.delete(name); })
+    (async function() {
+      try {
+        const oldSubscription =
+          event.oldSubscription;
+
+        const newSubscription =
+          event.newSubscription;
+
+        let subscription =
+          newSubscription;
+
+        // Some browsers provide the new subscription automatically.
+        if (!subscription && oldSubscription) {
+          const applicationServerKey =
+            oldSubscription.options?.applicationServerKey;
+
+          if (!applicationServerKey) {
+            console.warn(
+              '[SW] Missing applicationServerKey; client re-registration required.'
+            );
+          } else {
+            subscription =
+              await self.registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey,
+              });
+          }
+        }
+
+        if (!subscription) {
+          console.warn(
+            '[SW] No new subscription available.'
+          );
+          return;
+        }
+
+        const subscriptionJson =
+          subscription.toJSON();
+
+        const allClients =
+          await clients.matchAll({
+            type: 'window',
+            includeUncontrolled: true,
+          });
+
+        // Notify every open StockWatch client.
+        for (const client of allClients) {
+          client.postMessage({
+            type: 'PUSH_SUBSCRIPTION_CHANGED',
+            newSubscription: subscriptionJson,
+          });
+        }
+
+        console.log(
+          '[SW] Subscription change sent to',
+          allClients.length,
+          'client(s).'
         );
-      }),
-    ])
+      } catch (error) {
+        console.error(
+          '[SW] Failed to handle subscription change:',
+          error
+        );
+      }
+    })()
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Install
+// ─────────────────────────────────────────────────────────────────────────────
+
+self.addEventListener('install', function(event) {
+  console.log('[SW] Installing:', CACHE_NAME);
+
+  event.waitUntil(
+    (async function() {
+      self.skipWaiting();
+    })()
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Activate
+// ─────────────────────────────────────────────────────────────────────────────
+
+self.addEventListener('activate', function(event) {
+  console.log('[SW] Activating:', CACHE_NAME);
+
+  event.waitUntil(
+    (async function() {
+      try {
+        await self.clients.claim();
+
+        const cacheNames =
+          await caches.keys();
+
+        await Promise.all(
+          cacheNames
+            .filter(function(name) {
+              return name !== CACHE_NAME;
+            })
+            .map(function(name) {
+              return caches.delete(name);
+            })
+        );
+
+        console.log(
+          '[SW] Activated successfully:',
+          CACHE_NAME
+        );
+      } catch (error) {
+        console.error(
+          '[SW] Activation error:',
+          error
+        );
+      }
+    })()
   );
 });

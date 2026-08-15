@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { apiClient } from '../../services/apiClient'
 import toast from 'react-hot-toast'
+import Loader, { Spinner } from '../Common/Loader'
 
 // ── PAN Validation Regex ──────────────────────────────────────────────────────
 const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]$/
@@ -324,7 +325,7 @@ export default function IpoVerificationPage() {
                       disabled={addingApplicant || !isNameValid || !isPanValid}
                       className="w-full py-2.5 rounded-xl text-sm font-semibold bg-primary text-white hover:bg-primaryHover disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                     >
-                      {addingApplicant ? <Loader2 className="w-4 h-4 animate-spin mx-auto text-white" /> : 'Save to Portfolio'}
+                      {addingApplicant ? <Spinner size="sm" className="mx-auto" /> : 'Save to Portfolio'}
                     </button>
                   </div>
                 </motion.form>
@@ -334,7 +335,7 @@ export default function IpoVerificationPage() {
             {/* Applicant List */}
             {applicantsLoading ? (
               <div className="flex items-center justify-center py-10">
-                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                <Spinner size="md" />
               </div>
             ) : applicants.length === 0 ? (
               <div className="text-center py-8 px-4 border border-dashed border-border rounded-2xl bg-surfaceHover/50">
@@ -383,7 +384,7 @@ export default function IpoVerificationPage() {
                 >
                   {bulkVerifying ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Spinner size="sm" className="scale-75" />
                       Querying {applicants.length} Bids...
                     </>
                   ) : (
@@ -460,8 +461,8 @@ export default function IpoVerificationPage() {
 
                       <div className="max-h-56 overflow-y-auto scrollbar-hide divide-y divide-border">
                         {symbolsLoading ? (
-                          <div className="flex items-center justify-center py-8 text-textMuted">
-                            <Loader2 className="w-5 h-5 animate-spin mr-2 text-primary" />
+                          <div className="flex items-center justify-center py-8 text-textMuted gap-2">
+                            <Spinner size="sm" />
                             Loading registry offers...
                           </div>
                         ) : filteredSymbols.length === 0 ? (
@@ -531,7 +532,7 @@ export default function IpoVerificationPage() {
             >
               {verifying ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin text-white" />
+                  <Spinner size="sm" className="scale-75" />
                   Querying Allotment Registry...
                 </>
               ) : (
@@ -543,9 +544,24 @@ export default function IpoVerificationPage() {
             </button>
           </form>
 
+          {/* ── LOADER VIEW ───────────────────────────────────────────────────── */}
+          <AnimatePresence mode="wait">
+            {(verifying || bulkVerifying) && (
+              <motion.div
+                key="loading"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="bg-surface rounded-3xl border border-border shadow-sm min-h-[300px] flex items-center justify-center"
+              >
+                <Loader />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* ── SINGLE VERIFICATION RESULT VIEW ───────────────────────────────── */}
           <AnimatePresence mode="wait">
-            {verifyResult && (
+            {verifyResult && !verifying && !bulkVerifying && (
               <motion.div
                 key="single-result"
                 initial={{ opacity: 0, y: 15 }}
@@ -701,7 +717,7 @@ export default function IpoVerificationPage() {
 
           {/* ── BULK DASHBOARD RESULTS VIEW ───────────────────────────────────── */}
           <AnimatePresence mode="wait">
-            {bulkResult && (
+            {bulkResult && !verifying && !bulkVerifying && (
               <motion.div
                 key="bulk-result"
                 initial={{ opacity: 0, y: 15 }}

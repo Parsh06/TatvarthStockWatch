@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { useDashboardOverview } from '../../hooks/useDashboardOverview'
 import PageTransition from '../Common/PageTransition'
+import Loader from '../Common/Loader'
 
 import DashboardHeader               from './DashboardHeader'
 import PrimaryIndicesWidget          from './PrimaryIndicesWidget'
@@ -42,6 +43,16 @@ export default function DashboardPage() {
   } = useDashboardOverview()
 
   const d = data || {}
+
+  if (loading && (!data || Object.keys(data).length === 0)) {
+    return (
+      <PageTransition>
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <Loader />
+        </div>
+      </PageTransition>
+    )
+  }
 
   return (
     <PageTransition>

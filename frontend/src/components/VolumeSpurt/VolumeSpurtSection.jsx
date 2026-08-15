@@ -3,6 +3,7 @@ import { RefreshCw, AlertCircle, Search, Activity, TrendingUp, TrendingDown, Bar
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 import VolumeSpurtTable from './VolumeSpurtTable'
+import { Spinner } from '../Common/Loader'
 
 // ── Summary card data ─────────────────────────────────────────────────────────
 function getSummaryCards(stocks) {
@@ -128,7 +129,7 @@ export default function VolumeSpurtSection() {
       <div className="glass-panel rounded-2xl overflow-hidden border border-border relative">
         {loading && stocks.length === 0 && (
           <div className="flex items-center justify-center h-48">
-            <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+            <Spinner size="lg" />
           </div>
         )}
         {stocks.length > 0 && (

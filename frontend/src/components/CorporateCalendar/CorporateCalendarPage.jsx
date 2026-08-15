@@ -6,6 +6,7 @@ import {
 import clsx from 'clsx'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 import PageTransition from '../Common/PageTransition'
+import Loader from '../Common/Loader'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || ''
 
@@ -389,9 +390,8 @@ export default function CorporateCalendarPage() {
 
       {/* Loading & Error */}
       {loading && (
-        <div className="flex items-center justify-center py-16 gap-3 text-textMuted flex-1">
-          <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm">Fetching corporate events…</span>
+        <div className="flex-1 flex flex-col justify-center">
+          <Loader />
         </div>
       )}
       {!loading && error && (

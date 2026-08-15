@@ -1,6 +1,6 @@
 import React from 'react'
 import PageTransition from '../Common/PageTransition'
-import VolumeSpurtSection from '../GainersLosers/VolumeSpurtSection'
+import VolumeSpurtSection from './VolumeSpurtSection'
 
 export default function VolumeSpurtPage() {
   return (
