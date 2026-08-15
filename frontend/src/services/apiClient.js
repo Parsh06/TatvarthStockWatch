@@ -8,15 +8,45 @@
  * Drop-in replacement for raw `fetch` — same signature, returns parsed JSON.
  */
 
+import { onAuthStateChanged } from 'firebase/auth'
 import { auth, FIREBASE_ENABLED } from './firebase'
 
 async function getToken() {
-  if (!FIREBASE_ENABLED || !auth?.currentUser) return null
-  try {
-    return await auth.currentUser.getIdToken(/* forceRefresh= */ false)
-  } catch {
-    return null
+  if (!FIREBASE_ENABLED) return null
+
+  if (auth?.currentUser) {
+    try {
+      return await auth.currentUser.getIdToken(/* forceRefresh= */ false)
+    } catch {
+      return null
+    }
   }
+
+  // If Firebase is initializing on app start, wait for initial Auth state
+  return new Promise((resolve) => {
+    let resolved = false
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (resolved) return
+      resolved = true
+      try { unsubscribe() } catch {}
+      if (user) {
+        try {
+          resolve(await user.getIdToken(false))
+        } catch {
+          resolve(null)
+        }
+      } else {
+        resolve(null)
+      }
+    })
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true
+        try { unsubscribe() } catch {}
+        resolve(null)
+      }
+    }, 2500)
+  })
 }
 
 export async function apiClient(url, options = {}) {

@@ -1,11 +1,13 @@
 import { useState, useCallback, useEffect } from 'react'
 import { getAnnouncementsFromDB } from '../services/announcementService'
 import { auth, FIREBASE_ENABLED } from '../services/firebase'
+import { useAuth } from '../contexts/AuthContext'
 import { useCronStatus } from './useCronStatus'
 
 const LOCAL_MODE = !FIREBASE_ENABLED
 
 export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
+  const { currentUser, loading: authLoading } = useAuth()
   const [announcements, setAnnouncements] = useState([])
   const [loading, setLoading]             = useState(false)
   const [error, setError]                 = useState(null)
@@ -106,8 +108,10 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
   }, [watchlist]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (autoFetch) fetch()
-  }, [autoFetch, fetch, cronStatus?.lastRun]) 
+    if (autoFetch && !authLoading && (!FIREBASE_ENABLED || currentUser)) {
+      fetch()
+    }
+  }, [autoFetch, authLoading, currentUser, fetch, cronStatus?.lastRun]) 
 
   // Dynamically compute watchlisted status during render to avoid stale closures
   const annotatedAnnouncements = announcements.map((a) => {
