@@ -632,146 +632,100 @@ app.post('/api/push/heartbeat', verifyToken, async (req, res) => {
   }
 });
 
-// ── PROTECTED: Trigger — fetch BSE/NSE announcements + kick off rates ─────────
-app.post('/api/trigger', verifyToken, async (req, res) => {
-  const scripts = await watchlistStore.getWatchlist(req.uid);
-  
-  if (!scripts.length) {
-    return res.json({ announcements: [], total: 0, emailSent: false, message: 'No scripts in watchlist' });
-  }
+// ── Midnight Wipe helper (IST) ─────────────────────────────────────────────
+async function performMidnightWipeIfNeeded() {
+  try {
+    const admin = require('firebase-admin');
+    const dbAdmin = admin.firestore();
+    const metaRef = dbAdmin.collection('system_meta').doc('cron_status');
+    const metaSnap = await metaRef.get();
 
-  const { fetchAllBSEAnnouncements } = require('./lib/bseScraper');
-  const { fetchAllNSEAnnouncements } = require('./lib/nseScraper');
+    const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+    const nowIST = new Date(Date.now() + IST_OFFSET);
+    const todayDateStr = nowIST.toISOString().split('T')[0];
 
-  const bseSet = new Set(), nseSet = new Set(), metaMap = new Map();
-  for (const s of scripts) {
-    const ltd = (s.ltdCode || s.bseCode || '').trim();
-    const sym = (s.symbol  || '').trim().toUpperCase();
-    if (ltd) { bseSet.add(ltd); metaMap.set(ltd, { scriptName: s.scriptName || ltd }); }
-    if (sym) { nseSet.add(sym); metaMap.set(sym, { scriptName: s.scriptName || sym }); }
-  }
+    let lastWipeDate = '';
+    if (metaSnap.exists) {
+      lastWipeDate = metaSnap.data().lastWipeDate || '';
+    }
 
-  console.log(`[Trigger] BSE: ${bseSet.size} codes | NSE: ${nseSet.size} symbols`);
-
-  // --- Midnight Wipe (IST) ---
-  const IST_OFFSET = 5.5 * 60 * 60 * 1000;
-  const getISTDateString = (d) => new Date(d.getTime() + IST_OFFSET).toISOString().slice(0, 10);
-  
-  const existingMeta = readAnnouncements();
-  const lastDate = existingMeta.lastTriggeredAt ? getISTDateString(new Date(existingMeta.lastTriggeredAt)) : null;
-  const todayDate = getISTDateString(new Date());
-
-  if (lastDate && lastDate !== todayDate) {
-    console.log(`[Trigger] New day detected! Wiping MongoDB for fresh start (${lastDate} -> ${todayDate})`);
-    try {
+    if (lastWipeDate !== todayDateStr) {
+      console.log(`[Midnight Wipe] New day in IST (${todayDateStr})! Wiping announcements & dedup locks...`);
       const { getDb } = require('./lib/mongoClient');
       const mongoDb = await getDb();
-      await mongoDb.collection('announcements').deleteMany({});
+
+      await Promise.all([
+        mongoDb.collection('announcements').deleteMany({}),
+        mongoDb.collection('alert_dedup_locks').deleteMany({}),
+      ]);
+
       writeAnnouncements([], { lastTriggeredAt: new Date().toISOString() });
-    } catch (e) {
-      console.error('[Trigger] Error during midnight wipe:', e.message);
+
+      await metaRef.set({
+        lastWipeDate: todayDateStr,
+        lastWipedAt: new Date().toISOString(),
+      }, { merge: true });
+
+      console.log(`[Midnight Wipe] Successfully cleared MongoDB for ${todayDateStr}`);
+      return { wiped: true, date: todayDateStr };
     }
+
+    return { wiped: false, date: todayDateStr };
+  } catch (err) {
+    console.error('[Midnight Wipe] Error executing midnight wipe:', err.message);
+    return { wiped: false, error: err.message };
   }
-  // -----------------------------
+}
+
+// ── PROTECTED: Trigger — fetch BSE/NSE announcements + kick off rates ─────────
+app.post('/api/trigger', verifyToken, async (req, res) => {
+  // Midnight Wipe (IST) check
+  await performMidnightWipeIfNeeded();
 
   try {
-    const nseWatchedMap = new Map([...nseSet].map((c) => [c.toUpperCase(), metaMap.get(c) || {}]));
+    const { fetchAllBSEAnnouncements } = require('./lib/bseScraper');
+    const { fetchAllNSEAnnouncements } = require('./lib/nseScraper');
+    const { saveAnnouncements }        = require('./lib/announcementStore');
+    const { processNewAnnouncements }  = require('./lib/notificationEngine');
+
+    // Fetch ALL announcements — not gated on watchlist size
+    // (users with ALL_ANNOUNCEMENTS scope need the full market dataset)
     const [bseAll, nseAll] = await Promise.all([
-      bseSet.size > 0 ? fetchAllBSEAnnouncements() : Promise.resolve([]),
-      fetchAllNSEAnnouncements(nseWatchedMap), // Always fetch NSE for All Announcements page
+      fetchAllBSEAnnouncements(),
+      fetchAllNSEAnnouncements(new Map()), // NSE with empty map = fetch all
     ]);
 
-
-
-    const bseMatched = bseAll.filter((a) => bseSet.has(a.scriptCode));
-    const nseMatched = nseAll.filter((a) => nseSet.has((a.scriptCode || '').toUpperCase()));
-    const matched    = [...bseMatched, ...nseMatched];
-    console.log(`[Trigger] BSE ${bseMatched.length} | NSE ${nseMatched.length}`);
-
-    const { saveAnnouncements } = require('./lib/announcementStore');
-    
-    let freshAnnouncements = [];
-    if (bseAll.length > 0 || nseAll.length > 0) {
-      const allFetched = [];
-      const seenFetched = new Set();
-      for (const a of [...bseAll, ...nseAll]) {
-        const id = String(a.id);
-        if (!seenFetched.has(id)) {
-          seenFetched.add(id);
-          allFetched.push(a);
-        }
-      }
-
-      // 1. Save ALL to MongoDB (only writes if genuinely new)
-      const { saved, newAnnouncements } = await saveAnnouncements(allFetched);
-      
-      // But only alert for the ones in the watchlist!
-      const freshAll = newAnnouncements || [];
-      freshAnnouncements = freshAll.filter((a) => bseSet.has(a.scriptCode) || nseSet.has((a.scriptCode || '').toUpperCase()));
-      
-      // AI analysis is now on-demand only — generated when user clicks "AI Analyze"
-      // See POST /api/announcements/:id/analyze
-      
-      console.log(`[Trigger] Saved ${saved} new announcements to MongoDB`);
-      
-      // 2. Also keep memory cache updated (for email preview, etc)
-      const existing = readAnnouncements();
-      writeAnnouncements([...freshAnnouncements, ...existing].slice(0, 1000), {
-        lastTriggeredAt: new Date().toISOString(),
-        lastBSEFetched:  bseAll.length,
-        lastNSEFetched:  nseAll.length,
-      });
+    // Global dedup — unique by announcement ID
+    const seenIds    = new Set();
+    const allFetched = [];
+    for (const a of [...bseAll, ...nseAll]) {
+      const id = String(a.id);
+      if (!seenIds.has(id)) { seenIds.add(id); allFetched.push(a); }
     }
 
-    const { sendTelegramAlert, isConfigured: isTelegramOk } = require('./lib/telegramNotifier');
-    const { sendWebPushToUser } = require('./lib/webPushNotifier');
-    const { shouldNotify } = require('./lib/notificationFilter');
+    // Persist all to MongoDB — returns only genuinely new announcements
+    const { saved, newAnnouncements } = await saveAnnouncements(allFetched);
+    console.log(`[Trigger] BSE=${bseAll.length} NSE=${nseAll.length} total=${allFetched.length} new=${saved}`);
 
-    // Per-user filtered notification dispatch (same as cron)
-    let telegramSent = false, telegramError = null;
-    if (freshAnnouncements.length > 0) {
-      try {
-        let prefs = null;
-        try {
-          prefs = await prefsStore.getPrefs(req.uid);
-          if (!prefs) throw new Error("Empty preferences returned");
-        } catch (err) {
-          console.error(`[Manual Trigger] Failed to get prefs for ${req.uid}, aborting notifications:`, err.message);
-          return res.json({ success: true, count: 0, _note: "Failed to load preferences safely." });
-        }
-        // Evaluate filter once per announcement, log channel at each dispatch
-        const filteredForUser = freshAnnouncements.filter(ann => {
-          const decision = shouldNotify({ prefs, announcement: ann, uid: req.uid, notificationChannel: 'push+telegram' });
-          return decision.shouldNotify;
-        });
+    // Update memory cache (for email preview, latency, etc)
+    writeAnnouncements(allFetched.slice(0, 1000), {
+      lastTriggeredAt: new Date().toISOString(),
+      lastBSEFetched:  bseAll.length,
+      lastNSEFetched:  nseAll.length,
+    });
 
-        if (filteredForUser.length > 0) {
-          // Telegram
-          if (isTelegramOk() && prefs.telegramEnabled !== false) {
-            const targetChat = prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID;
-            const r = await sendTelegramAlert(filteredForUser, targetChat);
-            telegramSent = r.sent;
-            if (!r.sent) telegramError = r.errors?.join(', ') || r.reason;
-          }
-
-          // Web Push (multi-device)
-          for (const ann of filteredForUser) {
-            await sendWebPushToUser(req.uid, {
-              title: `${ann.scriptName || ann.scriptCode} (${ann.exchange || 'BSE'})`,
-              body: `[${ann.category || 'Announcement'}] ${ann.subject || 'New update'}`,
-              url: ann.pdfUrl || `https://tatvarthstockwatch.web.app/`,
-              tag: `ann-${String(ann.id).slice(0, 20)}`,
-            });
-          }
-        }
-      } catch (e) { telegramError = e.message; }
+    // Run notification engine — handles ALL scope partition + dedup per user
+    let engineStats = {};
+    if ((newAnnouncements || []).length > 0) {
+      engineStats = await processNewAnnouncements(newAnnouncements);
     }
 
     res.json({
-      announcements: matched, total: matched.length,
-      bseMatched: bseMatched.length, nseMatched: nseMatched.length,
-      bseFetched: bseAll.length,    nseFetched: nseAll.length,
-      telegramSent, telegramConfigured: isTelegramOk(), telegramError,
+      bseFetched:     bseAll.length,
+      nseFetched:     nseAll.length,
+      totalFetched:   allFetched.length,
+      newSaved:       saved,
+      engine:         engineStats,
     });
   } catch (e) {
     console.error('[Trigger] Error:', e.message);
@@ -900,196 +854,71 @@ app.all('/api/cron/trigger', async (req, res) => {
   }
 
   try {
-    const admin = require('firebase-admin');
-    const dbAdmin = admin.firestore();
-    const metaRef = dbAdmin.collection('system_meta').doc('cron_status');
-    const metaSnap = await metaRef.get();
-    
-    // Get current date in IST
-    const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-    const todayDateStr = nowIST.toISOString().split('T')[0];
-    
-    let lastWipeDate = '';
-    if (metaSnap.exists) {
-      lastWipeDate = metaSnap.data().lastWipeDate || '';
-    }
-    
-    // If we've crossed midnight IST, wipe the database clean
-    if (lastWipeDate !== todayDateStr) {
-      console.log(`[Global Cron] New day detected (${todayDateStr})! Wiping legacy announcements...`);
-      const { getDb } = require('./lib/mongoClient');
-      const mongoDb = await getDb();
-      await mongoDb.collection('announcements').deleteMany({});
-      await mongoDb.collection('alert_dedup_locks').deleteMany({});
-      
-      await metaRef.set({ lastWipeDate: todayDateStr }, { merge: true });
-      console.log('[Global Cron] Midnight wipe complete.');
-    }
+    // ── Midnight Wipe (IST) ──────────────────────────────────────────────────
+    const wipeResult = await performMidnightWipeIfNeeded();
 
     const watchlistStore = require('./lib/watchlistStore');
-    const scripts = await watchlistStore.getAllTrackedScripts();
-
+    // ── Fetch ALL announcements from BSE/NSE ──────────────────────────────────
+    // Not gated on watchlist — users with ALL_ANNOUNCEMENTS scope need full data
     const { fetchAllBSEAnnouncements } = require('./lib/bseScraper');
     const { fetchAllNSEAnnouncements } = require('./lib/nseScraper');
+    const { saveAnnouncements }        = require('./lib/announcementStore');
+    const { processNewAnnouncements }  = require('./lib/notificationEngine');
 
-    const bseSet = new Set(), nseSet = new Set(), metaMap = new Map();
-    for (const s of scripts) {
-      const ltd = (s.ltdCode || s.bseCode || '').trim();
-      const sym = (s.symbol  || '').trim().toUpperCase();
-      if (ltd) { bseSet.add(ltd); metaMap.set(ltd, { scriptName: s.scriptName || ltd }); }
-      if (sym) { nseSet.add(sym); metaMap.set(sym, { scriptName: s.scriptName || sym }); }
-    }
-
-    console.log('[Global Cron] Triggering for BSE: ' + bseSet.size + ' codes | NSE: ' + nseSet.size + ' symbols');
-
-    const nseWatchedMap = new Map([...nseSet].map((c) => [c.toUpperCase(), metaMap.get(c) || {}]));
     const [bseAll, nseAll] = await Promise.all([
       fetchAllBSEAnnouncements(),
-      fetchAllNSEAnnouncements(nseWatchedMap), // Always fetch NSE — data needs to be in DB for All Announcements page
+      fetchAllNSEAnnouncements(new Map()),
     ]);
 
+    // Global dedup — unique by announcement ID
+    const seenIds    = new Set();
     const allFetched = [];
-    const seenFetched = new Set();
     for (const a of [...bseAll, ...nseAll]) {
       const id = String(a.id);
-      if (!seenFetched.has(id)) {
-        seenFetched.add(id);
-        allFetched.push(a);
-      }
+      if (!seenIds.has(id)) { seenIds.add(id); allFetched.push(a); }
     }
 
-    const bseMatched = allFetched.filter((a) => bseSet.has(a.scriptCode));
-    const nseMatched = allFetched.filter((a) => nseSet.has((a.scriptCode || '').toUpperCase()));
-    const matched = [...bseMatched, ...nseMatched];
+    console.log(`[Global Cron] BSE=${bseAll.length} NSE=${nseAll.length} unique=${allFetched.length}`);
 
+    let newAnnouncements = [];
     if (allFetched.length > 0) {
-      const { saveAnnouncements } = require('./lib/announcementStore');
       const saveResult = await saveAnnouncements(allFetched);
-      const newAnns = saveResult.newAnnouncements || [];
-      
-      const newMatched = newAnns.filter((a) => {
-        const code = (a.scriptCode || '').toUpperCase();
-        return bseSet.has(a.scriptCode) || nseSet.has(code);
-      });
-      
-      if (newMatched.length > 0) {
-        const { getDb } = require('./lib/mongoClient');
-        const mongoDb = await getDb();
-        const alertDedupLocksCol = mongoDb.collection('alert_dedup_locks');
-        
-        const admin = require('firebase-admin');
-        const prefsStore = require('./lib/prefsStore');
-        const { sendTelegramAlert } = require('./lib/telegramNotifier');
-
-        const getDedupId = (ann, uid) => {
-          const dateStr = new Date().toISOString().slice(0, 10);
-          const company = (ann.scriptName || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 8);
-          let subj = (ann.subject || '').toLowerCase();
-          subj = subj.replace(/outcome of board meeting/g, '').replace(/press release/g, '').replace(/announcement under regulation/g, '').replace(/regarding/g, '').replace(/update/g, '').replace(/copy of newspaper publication/g, '').replace(/newspaper publication/g, '').replace(/[^a-z0-9]/g, '');
-          return `DEDUP_${dateStr}_${company}_${subj.substring(0, 15)}_${uid}`;
-        };
-
-        let pageToken;
-        do {
-          const result = await admin.auth().listUsers(100, pageToken);
-          for (const user of result.users) {
-            const uid = user.uid;
-            const uScripts = await watchlistStore.getWatchlist(uid);
-            if (!uScripts || uScripts.length === 0) continue;
-
-            const uBse = new Set(), uNse = new Set();
-            for (const s of uScripts) {
-              if (s.ltdCode || s.bseCode) uBse.add((s.ltdCode || s.bseCode).trim());
-              if (s.symbol || s.nseSymbol) uNse.add((s.symbol || s.nseSymbol).trim().toUpperCase());
-            }
-
-            const uMatched = newMatched.filter((a) => {
-              const code = (a.scriptCode || '').toUpperCase();
-              return uBse.has(code) || uNse.has(code);
-            });
-
-            if (uMatched.length > 0) {
-              let prefs = null;
-              try {
-                prefs = await prefsStore.getPrefs(uid);
-                if (!prefs) throw new Error("Empty preferences returned");
-              } catch (err) {
-                console.error(`[Global Cron] Failed to get prefs for ${uid}, skipping notifications for safety:`, err.message);
-                continue; // Skip so we don't accidentally send notifications that should be blocked
-              }
-              const { shouldNotify } = require('./lib/notificationFilter');
-
-              const uActuallyPending = [];
-              for (const ann of uMatched) {
-                const decision = shouldNotify({ prefs, announcement: ann, uid, notificationChannel: 'push+telegram' });
-                if (!decision.shouldNotify) continue;
-
-                try {
-                  await alertDedupLocksCol.insertOne({ _id: `${ann.id}_${uid}`, announcementId: String(ann.id), userId: uid, createdAt: new Date() });
-                  const dedupId = getDedupId(ann, uid);
-                  await alertDedupLocksCol.insertOne({ _id: dedupId, type: 'dedup_lock', userId: uid, createdAt: new Date() });
-                  
-                  uActuallyPending.push(ann);
-                } catch (e) {
-                  if (e.code !== 11000) console.error(`[Global Cron] Error getting lock for ${uid}:`, e.message);
-                }
-              }
-
-              if (uActuallyPending.length > 0) {
-                try {
-                  // Telegram Dispatch
-                  const isTelegramOk = () => !!(process.env.TELEGRAM_BOT_TOKEN && (prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID));
-                  if (isTelegramOk() && prefs.telegramEnabled !== false) {
-                    for (const ann of uActuallyPending) {
-                      const targetChat = prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID;
-                      const tgRes = await sendTelegramAlert([ann], targetChat);
-                      if (tgRes.sent && tgRes.messageIds && tgRes.messageIds.length > 0) {
-                        try {
-                          await mongoDb.collection('announcements').updateOne(
-                            { _id: String(ann.id) },
-                            { $push: { telegramMessages: { userId: uid, chatId: targetChat, messageId: tgRes.messageIds[0] } } }
-                          );
-                        } catch (err) {
-                          console.error('[Global Cron] Failed to save telegram message ID:', err);
-                        }
-                      }
-                    }
-                  }
-                  
-                  // Web Push Dispatch (multi-device)
-                  const { sendWebPushToUser } = require('./lib/webPushNotifier');
-                  for (const ann of uActuallyPending) {
-                    await sendWebPushToUser(uid, {
-                      title: `${ann.scriptName || ann.scriptCode} (${ann.exchange || 'BSE'})`,
-                      body: `[${ann.category || 'Announcement'}] ${ann.subject || 'New update'}`,
-                      url: ann.pdfUrl || `https://tatvarthstockwatch.web.app/`,
-                      tag: `ann-${String(ann.id).slice(0, 20)}`,
-                    });
-                  }
-                } catch (err) {
-                  console.error(`[Global Cron] Error dispatching announcements for ${uid}:`, err.message);
-                }
-              }
-            }
-          }
-          pageToken = result.pageToken;
-        } while (pageToken);
-      }
+      newAnnouncements = saveResult.newAnnouncements || [];
+      console.log(`[Global Cron] Saved ${saveResult.saved} new announcements`);
     }
+
+    // Notification engine handles scope partitioning, category filtering,
+    // per-user dedup, and channel dispatch for ALL users
+    const engineStats = newAnnouncements.length > 0
+      ? await processNewAnnouncements(newAnnouncements)
+      : { newAnnouncements: 0 };
     
     // Write meta status to Firestore for real-time frontend updates
     try {
       const admin = require('firebase-admin');
       const db = admin.firestore();
       await db.collection('system_meta').doc('cron_status').set({
-        lastRun: new Date().toISOString(),
-        matchedAnnouncements: matched.length
+        lastRun:              new Date().toISOString(),
+        fetchedBSE:           bseAll.length,
+        fetchedNSE:           nseAll.length,
+        newAnnouncements:     newAnnouncements.length,
+        notificationUsers:    engineStats.usersProcessed  || 0,
+        notificationQueued:   engineStats.queued          || 0,
+        notificationSent:     (engineStats.pushSent || 0) + (engineStats.telegramSent || 0),
+        durationMs:           engineStats.durationMs      || 0,
       }, { merge: true });
     } catch (metaErr) {
       console.error('[Global Cron] Meta update failed:', metaErr.message);
     }
 
-    res.json({ started: true, scriptsFetched: scripts.length, matchedAnnouncements: matched.length });
+    res.json({
+      started:          true,
+      bseFetched:       bseAll.length,
+      nseFetched:       nseAll.length,
+      totalFetched:     allFetched.length,
+      newAnnouncements: newAnnouncements.length,
+      engine:           engineStats,
+    });
   } catch (err) {
     console.error('[Global Cron] Error:', err);
     res.status(500).json({ error: err.message });

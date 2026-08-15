@@ -18,8 +18,6 @@ import CompanyDataPage from './components/CompanyData/CompanyDataPage'
 import NewsPage from './components/News/NewsPage'
 import GainersLosersPage from './components/GainersLosers/GainersLosersPage'
 import VolumeSpurtPage from './components/VolumeSpurt/VolumeSpurtPage'
-
-import PremiumPage from './components/Premium/PremiumPage'
 import SettingsPage from './components/Settings/SettingsPage'
 import PortfolioPage from './components/Portfolio/PortfolioPage'
 import CorporateCalendarPage from './components/CorporateCalendar/CorporateCalendarPage'
@@ -187,16 +185,6 @@ function AppRoutes() {
         }
       />
 
-      <Route
-        path="/premium"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <PremiumPage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
       <Route
         path="/settings"
         element={

@@ -92,7 +92,7 @@ export default function IpoVerificationPage() {
       setShowAddForm(false)
       fetchApplicants()
     } catch (err) {
-      toast.error(err.message?.includes('already saved') ? 'This PAN is already in your portfolio' : err.message?.includes('Maximum') ? 'Maximum 10 family applicants allowed' : 'Failed to save applicant')
+      toast.error(err.message?.includes('already saved') ? 'This PAN is already in your portfolio' : 'Failed to save applicant')
     } finally {
       setAddingApplicant(false)
     }
@@ -240,7 +240,7 @@ export default function IpoVerificationPage() {
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-textPrimary">Family Portfolio</h2>
-                  <p className="text-xs text-textMuted">{applicants.length}/10 saved applicants</p>
+                  <p className="text-xs text-textMuted">{applicants.length} saved applicants</p>
                 </div>
               </div>
               

@@ -96,8 +96,6 @@ export default function WatchlistPage() {
 
 
   const { watchlist, loading, removeScript, clearWatchlist, filtered } = useWatchlist({ search, exchange })
-  const { isPremium, limits } = useTier()
-  const atScriptLimit = !isPremium && watchlist.length >= limits.maxScripts
 
   const { announcements: storedAnnouncements, lastFetched } = useAnnouncements({ watchlist, autoFetch: true })
 
@@ -309,15 +307,6 @@ export default function WatchlistPage() {
         </div>
 
         </div>
-
-      {/* ── Free tier limit warning ── */}
-      {atScriptLimit && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-amber-400/10 border border-amber-400/25 rounded-xl text-sm">
-          <span className="text-amber-400">⚡</span>
-          <span className="text-amber-400 flex-1">You've reached the 10-script limit on the Free plan.</span>
-          <a href="/premium" className="shrink-0 px-3 py-1 bg-amber-400/20 hover:bg-amber-400/30 text-amber-400 font-semibold rounded-lg text-xs transition">Upgrade</a>
-        </div>
-      )}
 
       {/* ── Bulk action bar ── */}
       {bulkMode && selected.size > 0 && (

@@ -11,6 +11,7 @@ import { auth } from '../../services/firebase'
 import { useWebPush } from '../../hooks/useWebPush'
 import { apiClient } from '../../services/apiClient'
 import { ALERT_CATEGORIES } from '../../utils/bseCategories'
+import NotificationScopeSettings from './NotificationScopeSettings'
 
 function Section({ title, icon: Icon, children }) {
   return (
@@ -38,11 +39,13 @@ export default function SettingsPage() {
   const [savingPw, setSavingPw] = useState(false)
 
   const [notifPrefs, setNotifPrefs] = useState({
-    telegramEnabled: true,
-    telegramChatId: '',
-    inAppEnabled: true,
-    frequency: 'realtime',
-    blockedCategories: [],
+    telegramEnabled:        true,
+    telegramChatId:         '',
+    inAppEnabled:           true,
+    frequency:              'realtime',
+    blockedCategories:      [],
+    notifyWatchlist:        true,
+    notifyAllAnnouncements: false,
   })
   const [savingPrefs, setSavingPrefs] = useState(false)
 
@@ -255,6 +258,14 @@ export default function SettingsPage() {
               </div>
             </label>
           ))}
+          {/* ── Announcement Notification Scope ── */}
+          <div className="pt-2 border-t border-border/50">
+            <NotificationScopeSettings
+              prefs={notifPrefs}
+              onPrefsChange={(updated) => setNotifPrefs(updated)}
+            />
+          </div>
+
           {isSupported && (
             <div className="space-y-3 p-4 bg-background border border-border rounded-lg">
               <div className="flex items-center justify-between">
@@ -573,34 +584,6 @@ export default function SettingsPage() {
             Clear All Scripts
           </button>
         </div>
-      </Section>
-
-      {/* System status */}
-      <Section title="System Status" icon={Activity}>
-        {health ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {[
-              { label: 'Backend',       ok: true,              value: `Online · ${Math.floor(health.uptime / 60)}m uptime` },
-              { label: 'Auth Mode',     ok: true,              value: health.authMode === 'secure' ? 'Firebase (Secure)' : 'Local (Dev)' },
-              { label: 'Rates Store',   ok: true,              value: health.ratesStore === 'redis' ? 'Upstash Redis' : 'Local JSON' },
-              { label: 'Telegram',      ok: health.telegramOk, value: health.telegramOk ? 'Configured' : 'Not configured' },
-              { label: 'Watchlist',     ok: true,              value: `${health.scriptCount} scripts` },
-            ].map(({ label, ok, value }) => (
-              <div key={label} className="flex items-start gap-2.5 p-3 bg-background border border-border/50 rounded-lg">
-                {ok
-                  ? <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                  : <XCircle    className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                }
-                <div>
-                  <p className="text-xs font-semibold text-textPrimary">{label}</p>
-                  <p className="text-xs text-textMuted mt-0.5">{value}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-textMuted">Loading health status…</p>
-        )}
       </Section>
 
       {/* Danger zone */}

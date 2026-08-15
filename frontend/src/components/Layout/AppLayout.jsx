@@ -32,7 +32,6 @@ const mobileNav = [
   { to: '/bulk-block',        icon: Layers,          label: 'Deals'     },
   { to: '/insider',           icon: Eye,             label: 'Insider'   },
 
-  { to: '/premium',           icon: Crown,           label: 'Premium'   },
   { to: '/settings',          icon: Settings,        label: 'Settings'  },
 ]
 

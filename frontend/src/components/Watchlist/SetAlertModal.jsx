@@ -10,7 +10,6 @@ import { useNavigate } from 'react-router-dom'
 
 export default function SetAlertModal({ script, rate, onClose, onSaved }) {
   const { currentUser } = useAuth()
-  const { isPremium }   = useTier()
   const { refresh }     = useWatchlist()
   const navigate        = useNavigate()
 
@@ -33,7 +32,6 @@ export default function SetAlertModal({ script, rate, onClose, onSaved }) {
 
   async function handleSave(e) {
     e.preventDefault()
-    if (!isPremium) return
     setSaving(true)
     try {
       const payload = {
@@ -106,25 +104,7 @@ export default function SetAlertModal({ script, rate, onClose, onSaved }) {
           </div>
         )}
 
-        {/* Premium gate */}
-        {!isPremium ? (
-          <div className="px-5 py-6 text-center space-y-4">
-            <div className="w-12 h-12 bg-amber-400/10 rounded-full flex items-center justify-center mx-auto">
-              <Lock className="w-6 h-6 text-amber-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-textPrimary mb-1">Premium Feature</p>
-              <p className="text-sm text-textMuted">Price alerts are available on the Premium plan. Upgrade to get notified when stocks cross your target price.</p>
-            </div>
-            <button
-              onClick={() => { onClose(); navigate('/premium') }}
-              className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-semibold rounded-xl transition"
-            >
-              Upgrade to Premium
-            </button>
-          </div>
-        ) : (
-          <form onSubmit={handleSave} className="px-5 py-4 space-y-4">
+        <form onSubmit={handleSave} className="px-5 py-4 space-y-4">
 
             {/* Enable toggle */}
             <label className="flex items-center justify-between cursor-pointer">
@@ -216,7 +196,6 @@ export default function SetAlertModal({ script, rate, onClose, onSaved }) {
               </button>
             </div>
           </form>
-        )}
       </div>
     </div>
   )
