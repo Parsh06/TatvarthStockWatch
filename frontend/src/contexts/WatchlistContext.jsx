@@ -74,7 +74,7 @@ export function WatchlistProvider({ children }) {
 
   // Stable object reference — consumers only re-render when watchlist or loading actually changes
   const value = useMemo(() => ({
-    watchlist, loading, usingMock: false, addScript, removeScript, bulkAdd, clearWatchlist, refresh
+    watchlist, loading, addScript, removeScript, bulkAdd, clearWatchlist, refresh
   }), [watchlist, loading, addScript, removeScript, bulkAdd, clearWatchlist, refresh])
 
   return (

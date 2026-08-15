@@ -79,17 +79,11 @@ export default function SettingsPage() {
   // Telegram status
   const [telegramStatus, setTelegramStatus] = useState(null)
   const [telegramTesting, setTelegramTesting] = useState(false)
-  // System health
-  const [health, setHealth] = useState(null)
 
   useEffect(() => {
     apiClient('/api/telegram-status')
       .then(setTelegramStatus)
       .catch(() => setTelegramStatus({ configured: false, hasBotToken: false, hasChatId: false }))
-    fetch('/api/health')
-      .then((r) => r.json())
-      .then(setHealth)
-      .catch(() => {})
   }, [])
 
   async function handleTelegramTest() {
@@ -422,16 +416,21 @@ export default function SettingsPage() {
                 {isExpanded && subCats.length > 0 && (
                   <div className="px-12 py-2 pb-4 space-y-2 border-t border-border/50 bg-background/50">
                     {subCats.map(subCat => {
-                      const isSubBlocked = (notifPrefs.blockedCategories || []).includes(subCat) || isCatBlocked
+                      const isExplicitlySubBlocked = (notifPrefs.blockedCategories || []).includes(subCat)
+                      // Visual indicator: it's actively blocked by the parent OR explicitly blocked by user
+                      const isEffectivelyBlocked = isCatBlocked || isExplicitlySubBlocked
+                      
                       return (
-                        <label key={subCat} className="flex items-center gap-2 cursor-pointer select-none py-1">
+                        <label key={subCat} className={`flex items-center gap-2 cursor-pointer select-none py-1 ${isCatBlocked ? 'opacity-60' : ''}`}>
                           <div 
-                            onClick={() => !isCatBlocked && toggleBlockedCategory(subCat)}
-                            className={`w-4 h-4 rounded flex items-center justify-center transition-colors border ${isCatBlocked ? 'opacity-50 cursor-not-allowed' : ''} ${!isSubBlocked ? 'bg-emerald-500/20 border-emerald-500/50' : 'bg-red-500/10 border-red-500/30'}`}
+                            onClick={() => toggleBlockedCategory(subCat)}
+                            className={`w-4 h-4 rounded flex items-center justify-center transition-colors border ${!isExplicitlySubBlocked ? 'bg-emerald-500/20 border-emerald-500/50' : 'bg-red-500/10 border-red-500/30'}`}
                           >
-                            {!isSubBlocked ? <CheckCircle className="w-3 h-3 text-emerald-500" /> : <XCircle className="w-2.5 h-2.5 text-red-500/70" />}
+                            {!isExplicitlySubBlocked ? <CheckCircle className="w-3 h-3 text-emerald-500" /> : <XCircle className="w-2.5 h-2.5 text-red-500/70" />}
                           </div>
-                          <span className={`text-xs transition-colors ${!isSubBlocked ? 'text-textPrimary' : 'text-textMuted'}`}>{subCat}</span>
+                          <span className={`text-xs transition-colors ${!isEffectivelyBlocked ? 'text-textPrimary' : 'text-textMuted'}`}>
+                            {subCat} {isCatBlocked && !isExplicitlySubBlocked && <span className="text-[10px] ml-1 opacity-70">(Blocked by parent)</span>}
+                          </span>
                         </label>
                       )
                     })}

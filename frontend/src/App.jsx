@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { WatchlistProvider } from './contexts/WatchlistContext'
-import { TierProvider } from './contexts/TierContext'
 import LoginPage from './components/Auth/LoginPage'
 import RegisterPage from './components/Auth/RegisterPage'
 import DashboardPage from './components/Dashboard/DashboardPage'
@@ -236,7 +235,6 @@ export default function App() {
     <BrowserRouter>
       <SecurityGuard />
       <AuthProvider>
-        <TierProvider>
         <WatchlistProvider>
           <AppRoutes />
           <Toaster
@@ -258,7 +256,6 @@ export default function App() {
             }}
           />
         </WatchlistProvider>
-        </TierProvider>
       </AuthProvider>
     </BrowserRouter>
   )

@@ -152,7 +152,7 @@ async function fetchMarketMovers() {
   return result;
 }
 
-/** 4. Active OPEN IPO Symbols (Real-time from mainboardgmp / investorgain API) */
+/** 4. Active OPEN IPO Symbols (Real-time from ipoService) */
 async function fetchIpo() {
   const CACHE_KEY = 'dashboard:open_ipos';
   const cached = fromCache(CACHE_KEY, 5 * 60_000); // 5 min
@@ -160,31 +160,18 @@ async function fetchIpo() {
 
   let openSymbols = [];
   try {
-    const mbGmpUrl = 'https://mainboardgmp.com/ipos-pagination.php?type=all&page=1&search=&year=';
-    const res = await axios.get(mbGmpUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'https://mainboardgmp.com/'
-      },
-      timeout: 8000
-    });
-
-    const all = res.data?.data || [];
+    const { fetchIpoGmpData } = require('./ipoService');
+    const ipoData = await fetchIpoGmpData(1, '');
+    
+    const all = ipoData?.data || [];
     const openIpos = all.filter(i => (i.tab_status || '').toLowerCase() === 'open');
     openSymbols = openIpos.map(i => i.company_name).filter(Boolean);
   } catch (e) {
     console.warn('[DashboardService] Open IPO fetch failed:', e.message);
   }
 
-  // Fallback if mainboardgmp is empty/unreachable: fetch page 2 or use open defaults
-  if (!openSymbols.length) {
-    openSymbols = [
-      'Fascinate Textiles', 'Credent Connect', 'Technocrats Plasma Systems Ltd',
-      'ENS Enterprises Ltd', 'Skytech Infinite Platform Ltd', 'Credent Connect N Care Ltd',
-      'Pramodini Medicare Ltd', 'Shiprocket Ltd', 'Q&T Foods Ltd', 'Behari Lal Engineering Ltd'
-    ];
-  }
-
+  // No dummy fallback data! If it's empty, it returns 0.
+  
   const result = { activeCount: openSymbols.length, symbols: openSymbols.slice(0, 6) };
   toCache(CACHE_KEY, result, 5 * 60_000);
   return result;

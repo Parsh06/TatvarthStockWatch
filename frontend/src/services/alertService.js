@@ -93,17 +93,4 @@ export async function ensureUserProfile(uid, { displayName, email }) {
   }
 }
 
-// ── Tier helpers ──────────────────────────────────────────────────────────────
-
-export async function getUserTier(uid) {
-  if (LOCAL_MODE) return 'premium'   // local dev = full access
-  try {
-    const snap = await getDoc(doc(db, 'users', uid))
-    return snap.exists() ? (snap.data().tier || 'free') : 'free'
-  } catch { return 'free' }
-}
-
-export async function upgradeToPremium(uid) {
-  if (LOCAL_MODE) return
-  await setDoc(doc(db, 'users', uid), { tier: 'premium' }, { merge: true })
-}
+// ── Tier helpers removed ──────────────────────────────────────────────────────

@@ -3,7 +3,6 @@ import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, Star, Bell, Settings, TrendingUp, ChevronLeft, ChevronRight, LogOut, Crown, Layers, BarChart2, Globe, Newspaper, Briefcase, CalendarDays, Eye, Presentation, Zap, Users, Rocket, FileCheck2 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../contexts/AuthContext'
-import { useTier } from '../../contexts/TierContext'
 import { apiClient } from '../../services/apiClient'
 import toast from 'react-hot-toast'
 

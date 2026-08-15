@@ -1,3 +1,6 @@
+'use strict';
+
+// Shared category mapping for backend notification filtering
 export const ALERT_CATEGORIES = {
   "Board Meeting": [
     "Board Meeting",
@@ -282,3 +285,22 @@ export const ALERT_CATEGORIES = {
   "Regulation 61(4) - PCS Certificate for Transfer / Transmission / Transposition"
   ]
 };
+
+/**
+ * Given a specific subcategory/category string from BSE/NSE,
+ * resolves the parent group name (e.g. "Financial Results" -> "Result").
+ * If no match is found, returns the original string or "Others".
+ */
+export function resolveCategoryGroup(categoryStr) {
+  if (!categoryStr) return "Others";
+  const cat = categoryStr.trim();
+  
+  for (const [groupName, subcats] of Object.entries(ALERT_CATEGORIES)) {
+    if (groupName.toLowerCase() === cat.toLowerCase()) return groupName;
+    if (subcats.some(sub => sub.toLowerCase() === cat.toLowerCase())) {
+      return groupName;
+    }
+  }
+  
+  return cat;
+}
