@@ -11,43 +11,7 @@ const KFIN_HEADERS = {
   'Referer': 'https://ipostatus.kfintech.com/',
 };
 
-// ── Dynamic Scraper Helper ───────────────────────────────────────────────────
-async function scrapeKfinCompanies() {
-  try {
-    const homeRes = await axios.get('https://ipostatus.kfintech.com/', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      },
-      timeout: 8000
-    });
-    const scriptMatch = homeRes.data.match(/src="(\.\/static\/js\/main\.[a-f0-9]+\.js)"/);
-    if (!scriptMatch) throw new Error('Script tag not found in KFintech homepage');
-
-    const bundleUrl = 'https://ipostatus.kfintech.com' + scriptMatch[1].slice(1);
-    const bundleRes = await axios.get(bundleUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      },
-      timeout: 10000
-    });
-
-    const jsonMatch = bundleRes.data.match(/JSON\.parse\('(\[.*?\])'\)/);
-    if (!jsonMatch) throw new Error('JSON.parse company list pattern not found in JS bundle');
-
-    const parsed = JSON.parse(jsonMatch[1]);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed.map(c => ({ clientId: String(c.clientId), symbol: String(c.name) }));
-    }
-    throw new Error('Parsed KFintech company list is empty');
-  } catch (err) {
-    console.error('[KFintech Live Fetch Error]', err.message);
-    throw new Error(`Failed to fetch live IPO symbols from KFintech: ${err.message}`);
-  }
-}
-
-// ── Symbols Cache ─────────────────────────────────────────────────────────────
-let _symbolCache = { data: null, fetchedAt: 0 };
-const SYMBOL_CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours
+const { scrapeKfinCompanies } = require('../lib/ipoScraper');
 
 // ── Per-user IPO Rate Limiter ─────────────────────────────────────────────────
 const _ipoRl = new Map();
@@ -132,20 +96,10 @@ module.exports = function (verifyToken) {
   // ── GET /api/ipo/symbols ────────────────────────────────────────────────────
   router.get('/symbols', verifyToken, async (req, res) => {
     try {
-      const now = Date.now();
-      if (_symbolCache.data && (now - _symbolCache.fetchedAt) < SYMBOL_CACHE_TTL) {
-        return res.json({ success: true, symbols: _symbolCache.data, source: 'KFINTECH', cached: true });
-      }
-
       const symbols = await scrapeKfinCompanies();
-      _symbolCache = { data: symbols, fetchedAt: now };
-
-      res.json({ success: true, symbols, source: 'KFINTECH', cached: false });
+      res.json({ success: true, symbols, source: 'KFINTECH' });
     } catch (err) {
       console.error('[IPO Symbols KFintech]', err.message);
-      if (_symbolCache.data) {
-        return res.json({ success: true, symbols: _symbolCache.data, source: 'KFINTECH', cached: true, stale: true });
-      }
       res.status(400).json({ success: false, error: 'Unable to fetch IPO symbols from KFintech' });
     }
   });

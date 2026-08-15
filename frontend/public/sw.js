@@ -453,8 +453,10 @@ self.addEventListener('notificationclick', function(event) {
       break;
 
     case 'check-ipo':
+    case 'view_ipo':
       targetUrl =
         notificationData.ipoUrl ||
+        notificationData.url ||
         '/ipo-verification';
       break;
 

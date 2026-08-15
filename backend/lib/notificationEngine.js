@@ -262,4 +262,99 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
   return stats;
 }
 
-module.exports = { processNewAnnouncements };
+/**
+ * processNewIpos
+ *
+ * Process and dispatch notifications for newly discovered IPOs.
+ *
+ * @param {Object[]} newIpos — Genuinely new IPO objects
+ * @returns {Promise<Object>} — Summary stats
+ */
+async function processNewIpos(newIpos) {
+  const stats = { newIpos: newIpos.length, pushSent: 0, telegramSent: 0, failed: 0 };
+  if (!Array.isArray(newIpos) || newIpos.length === 0) return stats;
+
+  try {
+    const admin = require('firebase-admin');
+    const prefsStore = require('./prefsStore');
+    const { sendTelegramIpoAlert, isConfigured: isTelegramOk } = require('./telegramNotifier');
+    const { sendWebPushToUser } = require('./webPushNotifier');
+    const { acquireDedupLock } = require('./notificationDedup');
+    const db = await getDb();
+
+    let pageToken;
+    do {
+      const result = await admin.auth().listUsers(100, pageToken);
+
+      for (const user of result.users) {
+        const uid = user.uid;
+        let prefs;
+        try {
+          prefs = await prefsStore.getPrefs(uid);
+        } catch {
+          continue;
+        }
+
+        // Skip user if they explicitly disabled IPO allotment alerts
+        if (prefs.notifyIpoAllotment === false) continue;
+
+        for (const ipo of newIpos) {
+          const symbol = ipo.symbol;
+          const fakeAnn = { id: `IPO_NEW_${symbol}` };
+
+          // Per-user atomic dedup lock
+          let acquired = false;
+          try {
+            acquired = await acquireDedupLock(db, uid, fakeAnn);
+          } catch {
+            continue;
+          }
+
+          if (!acquired) continue;
+
+          // Dispatch Web Push
+          try {
+            const pushRes = await sendWebPushToUser(uid, {
+              title: 'New IPO Allotment Check Available',
+              body: `${ipo.name || symbol} is now available for allotment verification.`,
+              url: '/ipo-verification',
+              tag: `ipo-${symbol}`,
+              type: 'ipo',
+              actions: [
+                { action: 'view_ipo', title: 'Check IPO' },
+                { action: 'dismiss', title: 'Dismiss' }
+              ]
+            });
+            stats.pushSent += (pushRes.sent || 0);
+          } catch (err) {
+            console.error(`[NotifEngine:IPO] Web push failed for uid=${uid}:`, err.message);
+            stats.failed++;
+          }
+
+          // Dispatch Telegram if enabled
+          const targetChat = prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID;
+          if (isTelegramOk(targetChat) && prefs.telegramEnabled !== false) {
+            try {
+              const tgRes = await sendTelegramIpoAlert(ipo, targetChat);
+              if (tgRes.sent) {
+                stats.telegramSent++;
+                await _delay(TELEGRAM_DELAY_MS);
+              }
+            } catch (err) {
+              console.error(`[NotifEngine:IPO] Telegram failed for uid=${uid}:`, err.message);
+            }
+          }
+        }
+      }
+      pageToken = result.pageToken;
+    } while (pageToken);
+
+  } catch (err) {
+    console.error('[NotifEngine:IPO] Error processing new IPOs:', err.message);
+  }
+
+  console.log(`[NotifEngine:IPO] Processed ${newIpos.length} new IPOs: PushSent=${stats.pushSent} TelegramSent=${stats.telegramSent}`);
+  return stats;
+}
+
+module.exports = { processNewAnnouncements, processNewIpos };

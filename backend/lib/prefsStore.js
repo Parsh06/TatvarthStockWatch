@@ -28,6 +28,9 @@ const DEFAULT_PREFS = {
   notifyWatchlist:        true,
   notifyAllAnnouncements: false,
 
+  // IPO allotment notification preference
+  notifyIpoAllotment:     true,
+
   // Derived canonical scope (stored for debugging/fast reads)
   notificationScope:      'WATCHLIST_ONLY',
 
@@ -69,12 +72,14 @@ async function savePrefs(uid, prefs) {
   // Strict boolean validation for scope fields
   const notifyWatchlist        = prefs.notifyWatchlist        === true  ? true  : prefs.notifyWatchlist        === false ? false : DEFAULT_PREFS.notifyWatchlist;
   const notifyAllAnnouncements = prefs.notifyAllAnnouncements === true  ? true  : prefs.notifyAllAnnouncements === false ? false : DEFAULT_PREFS.notifyAllAnnouncements;
+  const notifyIpoAllotment     = prefs.notifyIpoAllotment     === true  ? true  : prefs.notifyIpoAllotment     === false ? false : DEFAULT_PREFS.notifyIpoAllotment;
 
   const merged = {
     ...DEFAULT_PREFS,
     ...prefs,
     notifyWatchlist,
     notifyAllAnnouncements,
+    notifyIpoAllotment,
   };
 
   // Always persist the computed canonical scope

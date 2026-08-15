@@ -712,11 +712,13 @@ async function performMidnightWipeIfNeeded() {
     if (lastWipeDate !== todayDateStr) {
       console.log(`[Midnight Wipe] New day in IST (${todayDateStr})! Wiping announcements & dedup locks...`);
       const { getDb } = require('./lib/mongoClient');
+      const { cleanupHistoricalIpos } = require('./lib/ipoStore');
       const mongoDb = await getDb();
 
       await Promise.all([
         mongoDb.collection('announcements').deleteMany({}),
         mongoDb.collection('alert_dedup_locks').deleteMany({}),
+        cleanupHistoricalIpos().catch(() => {}),
       ]);
 
       writeAnnouncements([], { lastTriggeredAt: new Date().toISOString() });
@@ -956,6 +958,24 @@ app.all('/api/cron/trigger', async (req, res) => {
     const engineStats = newAnnouncements.length > 0
       ? await processNewAnnouncements(newAnnouncements)
       : { newAnnouncements: 0 };
+
+    // ── IPO Allotment Symbol Discovery & Alert Pipeline ─────────────────────
+    let ipoStats = { newIpos: 0 };
+    try {
+      const { scrapeKfinCompanies } = require('./lib/ipoScraper');
+      const { saveIpoSymbols, reconcileMissingIpos } = require('./lib/ipoStore');
+      const { processNewIpos } = require('./lib/notificationEngine');
+
+      const scrapedIpos = await scrapeKfinCompanies();
+      const newIpos = await saveIpoSymbols(scrapedIpos);
+      await reconcileMissingIpos(scrapedIpos).catch(() => {});
+
+      if (newIpos && newIpos.length > 0) {
+        ipoStats = await processNewIpos(newIpos);
+      }
+    } catch (ipoErr) {
+      console.error('[Global Cron] IPO Discovery Error:', ipoErr.message);
+    }
     
     // Write meta status to Firestore for real-time frontend updates
     try {

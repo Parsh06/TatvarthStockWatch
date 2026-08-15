@@ -232,9 +232,29 @@ async function sendTelegramPriceAlert(alert, userChatId) {
   }
 }
 
+/**
+ * Send an IPO allotment check alert to Telegram.
+ */
+async function sendTelegramIpoAlert(ipo, userChatId) {
+  if (!isConfigured(userChatId)) return { sent: false, reason: 'not_configured' };
+  const name = esc(ipo.name || ipo.symbol);
+  const text = `🚨 <b>NEW IPO ALLOTMENT CHECK AVAILABLE</b>\n\n` +
+    `<b>${name}</b>\n\n` +
+    `The IPO is now available for allotment verification on StockWatch.\n\n` +
+    `👉 <a href="https://tatvarthstockwatch.web.app/ipo-verification">Check Allotment Status</a>`;
+  try {
+    await sendMessage(text, userChatId);
+    return { sent: true };
+  } catch (e) {
+    const errorDetail = e.response?.data?.description || e.message;
+    return { sent: false, error: errorDetail };
+  }
+}
+
 module.exports = { 
   sendTelegramAlert, 
   sendTelegramPriceAlert, 
+  sendTelegramIpoAlert,
   sendTelegramTest, 
   editTelegramMessage,
   isConfigured,

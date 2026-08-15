@@ -47,6 +47,7 @@ export default function SettingsPage() {
     blockedCategories:      [],
     notifyWatchlist:        true,
     notifyAllAnnouncements: false,
+    notifyIpoAllotment:     true,
   })
   const [savingPrefs, setSavingPrefs] = useState(false)
 
@@ -237,8 +238,9 @@ export default function SettingsPage() {
       <Section title="Notification Preferences" icon={Bell}>
         <div className="space-y-4">
           {[
-            { key: 'telegramEnabled', label: 'Telegram Notifications',  desc: 'Send alerts to your configured Telegram bot' },
-            { key: 'inAppEnabled',    label: 'In-App Notifications',    desc: 'Show toast notifications inside the app' },
+            { key: 'telegramEnabled',    label: 'Telegram Notifications',  desc: 'Send alerts to your configured Telegram bot' },
+            { key: 'inAppEnabled',       label: 'In-App Notifications',    desc: 'Show toast notifications inside the app' },
+            { key: 'notifyIpoAllotment', label: 'IPO Allotment Alerts',    desc: 'Get notified when a newly detected IPO becomes available for allotment verification' },
           ].map(({ key, label, desc }) => (
             <label key={key} className="flex items-center justify-between cursor-pointer">
               <div>
