@@ -42,7 +42,7 @@ export default function Sidebar({ collapsed, onToggle }) {
     if (!currentUser) return
     const since = getLastSeen()
     const qs = since ? `?since=${encodeURIComponent(since)}` : ''
-    apiClient(`/api/announcements${qs}`)
+    apiClient(`/api/announcements/my-count${qs}`)
       .then((d) => setAnnCount(d?.total || 0))
       .catch(() => {})
   }

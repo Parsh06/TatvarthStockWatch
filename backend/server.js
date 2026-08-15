@@ -190,6 +190,46 @@ app.get('/api/announcements', verifyToken, async (req, res) => {
   }
 });
 
+app.get('/api/announcements/my-count', verifyToken, async (req, res) => {
+  try {
+    const since = req.query.since;
+    if (!since) return res.json({ total: 0 }); // if no since date, 0 new announcements
+
+    const { getWatchlist } = require('./lib/watchlistStore');
+    const { getDb } = require('./lib/mongoClient');
+
+    const watchlist = await getWatchlist(req.uid);
+    if (!watchlist || !watchlist.length) return res.json({ total: 0 });
+
+    const codes = new Set();
+    const symbols = new Set();
+
+    watchlist.forEach(s => {
+      const bse = s.ltdCode || s.bseCode;
+      const nse = s.nseSymbol || s.symbol;
+      if (bse) codes.add(String(bse).trim());
+      if (nse) symbols.add(String(nse).trim().toUpperCase());
+    });
+
+    const $or = [];
+    if (codes.size > 0) $or.push({ scriptCode: { $in: Array.from(codes) } });
+    if (symbols.size > 0) $or.push({ nseSymbol: { $in: Array.from(symbols) } });
+
+    if ($or.length === 0) return res.json({ total: 0 });
+
+    const db = await getDb();
+    const count = await db.collection('announcements').countDocuments({
+      announcementDate: { $gt: since },
+      $or
+    });
+
+    res.json({ total: count });
+  } catch (e) {
+    console.error('my-count error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── PROTECTED: Announcement stats (no limit) ─────────────────────────────────
 app.get('/api/announcements/stats', verifyToken, async (req, res) => {
   try {
