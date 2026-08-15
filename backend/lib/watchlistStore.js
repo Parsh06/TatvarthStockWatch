@@ -73,31 +73,55 @@ async function addScript(uid, scriptData) {
 }
 
 /**
- * Remove a single script by document ID.
+ * Remove a single script by document ID strictly scoped to user.
  */
 async function removeScript(uid, docId) {
+  if (!uid || !docId) return { deletedCount: 0 };
   const db = await getDb();
   try {
-    await db.collection('watchlists').deleteOne({ _id: new ObjectId(docId), userId: uid });
+    const query = { userId: uid };
+    try {
+      query._id = new ObjectId(docId);
+    } catch {
+      query._id = String(docId);
+    }
+    const result = await db.collection('watchlists').deleteOne(query);
     invalidateWatchlistCache();
+    return { deletedCount: result.deletedCount || 0 };
   } catch (e) {
     console.error('[WatchlistStore] removeScript error:', e);
+    return { deletedCount: 0 };
   }
 }
 
 /**
- * Update a specific script.
+ * Update a specific script strictly scoped to user.
  */
 async function updateScript(uid, docId, updates) {
+  if (!uid || !docId) return { modifiedCount: 0 };
   const db = await getDb();
   try {
-    await db.collection('watchlists').updateOne(
-      { _id: new ObjectId(docId), userId: uid },
+    const query = { userId: uid };
+    try {
+      query._id = new ObjectId(docId);
+    } catch {
+      query._id = String(docId);
+    }
+    // Remove unallowed ownership overrides from updates
+    delete updates.userId;
+    delete updates.uid;
+    delete updates.id;
+    delete updates._id;
+
+    const result = await db.collection('watchlists').updateOne(
+      query,
       { $set: updates }
     );
     invalidateWatchlistCache();
+    return { modifiedCount: result.modifiedCount || 0 };
   } catch (e) {
     console.error('[WatchlistStore] updateScript error:', e);
+    return { modifiedCount: 0 };
   }
 }
 

@@ -217,17 +217,19 @@ module.exports = function (verifyToken) {
   router.get('/applicants', verifyToken, async (req, res) => {
     try {
       const { db } = require('../lib/firebaseAdmin');
+      const { sanitizeApplicant } = require('../utils/sanitizeResponse');
       const snap = await db.collection('users').doc(req.uid).collection('familyPans').orderBy('createdAt', 'asc').get();
 
       const applicants = [];
       snap.forEach(doc => {
         const d = doc.data();
-        applicants.push({
+        const appObj = sanitizeApplicant({
           id: doc.id,
           name: d.name || 'Unknown',
-          maskedPan: d.panLast4 ? maskPan('XXXXXX' + d.panLast4) : 'XXXX',
-          createdAt: d.createdAt?.toDate?.()?.toISOString() || null,
+          panLast4: d.panLast4,
+          createdAt: d.createdAt?.toDate?.()?.toISOString() || d.createdAt,
         });
+        if (appObj) applicants.push(appObj);
       });
 
       res.json({ success: true, applicants });

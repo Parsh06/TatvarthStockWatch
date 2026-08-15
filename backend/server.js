@@ -12,14 +12,35 @@ const prefsStore                = require('./lib/prefsStore');
 const ratesStore                = require('./lib/ratesStore');
 const watchlistStore            = require('./lib/watchlistStore');
 
+const { requestIdMiddleware }   = require('./utils/requestId');
+const { stripClientUserParams } = require('./middleware/authorization');
+const { globalRateLimiter, strictRateLimiter, userMutationRateLimiter } = require('./middleware/rateLimiter');
+const secureLogger              = require('./utils/secureLogger');
+const { sanitizeWatchlistScript, sanitizeDashboardOverview } = require('./utils/sanitizeResponse');
+
 const app                = express();
 // WebSockets removed for Vercel Serverless compatibility
 
 const PORT               = process.env.PORT || 3000;
 
+// ── Security Headers ──────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  next();
+});
+
+// ── Request ID & Parameter Strip Middleware ────────────────────────────────────
+app.use(requestIdMiddleware);
+app.use(stripClientUserParams);
+
 // ── CORS ──────────────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL,
+  'https://tatvarthstockwatch.web.app',
+  'https://tatvarthstockwatch.firebaseapp.com',
   'http://localhost:5173',
   'http://localhost:4173',
 ].filter(Boolean);
@@ -35,22 +56,8 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// ── Simple in-memory rate limiter (120 req / min per IP) ─────────────────────
-const _rlMap    = new Map();
-// In-memory quote cache (pseudo-Redis, 5-min TTL per BSE code)
-const _qCache   = new Map();
-const QUOTE_TTL = 5 * 60 * 1000;
-function rateLimiter(req, res, next) {
-  const ip  = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
-  const now = Date.now();
-  const WIN = 60_000, MAX = 120;
-  let e = _rlMap.get(ip);
-  if (!e || now > e.resetAt) { e = { count: 0, resetAt: now + WIN }; _rlMap.set(ip, e); }
-  if (++e.count > MAX) return res.status(429).json({ error: 'Too many requests — slow down.' });
-  next();
-}
-app.use(rateLimiter);
-setInterval(() => { const now = Date.now(); for (const [k, v] of _rlMap) if (now > v.resetAt + 60_000) _rlMap.delete(k); }, 5 * 60_000);
+// ── Global Rate Limiter ───────────────────────────────────────────────────────
+app.use(globalRateLimiter);
 
 // ── In-memory cache (announcements only — rates handled by ratesStore)
 const _cache = { announcements: [] };
@@ -311,11 +318,13 @@ app.post('/api/prefs', verifyToken, async (req, res) => {
 
 // ── PROTECTED: Watchlist CRUD ─────────────────────────────────────────────────
 app.get('/api/watchlist', verifyToken, async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
   try {
     const scripts = await watchlistStore.getWatchlist(req.uid);
-    res.json({ scripts });
+    const sanitized = scripts.map(s => sanitizeWatchlistScript(s)).filter(Boolean);
+    res.json({ scripts: sanitized });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: 'Failed to retrieve watchlist' });
   }
 });
 
@@ -524,24 +533,33 @@ app.patch('/api/prefs', verifyToken, async (req, res) => {
   }
 });
 
-app.delete('/api/watchlist/:id', verifyToken, async (req, res) => {
-  await watchlistStore.removeScript(req.uid, req.params.id);
+app.delete('/api/watchlist/:id', verifyToken, userMutationRateLimiter, async (req, res) => {
+  const result = await watchlistStore.removeScript(req.uid, req.params.id);
+  if (!result || result.deletedCount === 0) {
+    return res.status(404).json({ success: false, error: 'Script not found or access denied', code: 'NOT_FOUND' });
+  }
   res.json({ success: true });
 });
 
-app.patch('/api/watchlist/:id', verifyToken, async (req, res) => {
-  await watchlistStore.updateScript(req.uid, req.params.id, req.body);
+app.patch('/api/watchlist/:id', verifyToken, userMutationRateLimiter, async (req, res) => {
+  const result = await watchlistStore.updateScript(req.uid, req.params.id, req.body || {});
+  if (!result || result.modifiedCount === 0) {
+    return res.status(404).json({ success: false, error: 'Script not found or access denied', code: 'NOT_FOUND' });
+  }
   res.json({ success: true });
 });
 
-app.patch('/api/watchlist/:id/alert', verifyToken, async (req, res) => {
-  const { alertAbove, alertBelow, alertEnabled } = req.body;
+app.patch('/api/watchlist/:id/alert', verifyToken, userMutationRateLimiter, async (req, res) => {
+  const { alertAbove, alertBelow, alertEnabled } = req.body || {};
   const updates = {
     alertAbove:   alertAbove   != null ? Number(alertAbove)    : null,
     alertBelow:   alertBelow   != null ? Number(alertBelow)    : null,
     alertEnabled: alertEnabled != null ? Boolean(alertEnabled) : true,
   };
-  await watchlistStore.updateScript(req.uid, req.params.id, updates);
+  const result = await watchlistStore.updateScript(req.uid, req.params.id, updates);
+  if (!result || result.modifiedCount === 0) {
+    return res.status(404).json({ success: false, error: 'Script not found or access denied', code: 'NOT_FOUND' });
+  }
   res.json({ success: true });
 });
 
@@ -791,23 +809,27 @@ const { startSpurtPoller } = require('./lib/spurtStore');
 startSpurtPoller().catch(e => console.error('[Spurt Poller] init error:', e.message));
 
 
-// ── Portfolio storage (local mode) ────────────────────────────────────────────
-app.get('/api/portfolio', (req, res) => {
+// ── PROTECTED: Portfolio storage (User Scoped) ──────────────────────────────
+app.get('/api/portfolio', verifyToken, async (req, res) => {
   try {
-    const raw = fs.readFileSync(PORTFOLIO_FILE, 'utf8');
-    res.json(JSON.parse(raw));
-  } catch { res.json({ holdings: [], updatedAt: null }); }
+    const portfolioStore = require('./lib/portfolioStore');
+    const data = await portfolioStore.getPortfolio(req.uid);
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load portfolio' });
+  }
 });
 
-app.put('/api/portfolio', (req, res) => {
-  const { holdings } = req.body;
+app.put('/api/portfolio', verifyToken, async (req, res) => {
+  const { holdings } = req.body || {};
   if (!Array.isArray(holdings)) return res.status(400).json({ error: 'holdings must be an array' });
-  const data = { holdings, updatedAt: new Date().toISOString() };
   try {
-    fs.writeFileSync(PORTFOLIO_FILE, JSON.stringify(data, null, 2), 'utf8');
+    const portfolioStore = require('./lib/portfolioStore');
+    const payload = { holdings, updatedAt: new Date().toISOString() };
+    await portfolioStore.savePortfolio(req.uid, payload);
     res.json({ ok: true, count: holdings.length });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: 'Failed to save portfolio' });
   }
 });
 
