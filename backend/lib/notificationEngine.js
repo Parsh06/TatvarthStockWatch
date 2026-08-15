@@ -136,14 +136,25 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
           stats.allScopeUsers++;
         }
 
-        // ── 2d. Compile user's blocked filter ONCE (before announcement loop)
+        // ── 2d. User creation timestamp for onboarding safeguard ────────────
+        const userCreatedAtMs = new Date(user.metadata?.creationTime || 0).getTime();
+
+        // ── 2e. Compile user's blocked filter ONCE (before announcement loop)
         // This is crucial: O(blockedCategories.length), not O(announcements)
         const compiledFilter = compileBlockedFilter(prefs.blockedCategories);
 
-        // ── 2e. Resolve candidate pool based on scope ───────────────────────
-        const candidates = classified.filter(({ announcement: ann }) =>
-          matchesNotificationScope({ announcement: ann, scope, bseSet, nseSet }).inScope
-        );
+        // ── 2f. Resolve candidate pool based on scope & onboarding age ──────
+        const candidates = classified.filter(({ announcement: ann }) => {
+          if (userCreatedAtMs > 0) {
+            const annTimeMs = new Date(ann.announcementDate || ann.savedAt || ann.createdAt || Date.now()).getTime();
+            // Safeguard for newly onboarded users:
+            // Do NOT notify user for announcements published BEFORE they registered
+            if (userCreatedAtMs > (annTimeMs + 5 * 60 * 1000)) {
+              return false;
+            }
+          }
+          return matchesNotificationScope({ announcement: ann, scope, bseSet, nseSet }).inScope;
+        });
 
         if (candidates.length === 0) continue;
         stats.candidatesTotal += candidates.length;
@@ -277,6 +288,7 @@ async function processNewIpos(newIpos) {
   try {
     const admin = require('firebase-admin');
     const prefsStore = require('./prefsStore');
+    const { markNotificationsSent } = require('./ipoStore');
     const { sendTelegramIpoAlert, isConfigured: isTelegramOk } = require('./telegramNotifier');
     const { sendWebPushToUser } = require('./webPushNotifier');
     const { acquireDedupLock } = require('./notificationDedup');
@@ -298,8 +310,20 @@ async function processNewIpos(newIpos) {
         // Skip user if they explicitly disabled IPO allotment alerts
         if (prefs.notifyIpoAllotment === false) continue;
 
+        // User creation timestamp in ms
+        const userCreatedAtMs = new Date(user.metadata?.creationTime || 0).getTime();
+
         for (const ipo of newIpos) {
           const symbol = ipo.symbol;
+          const ipoSeenMs = new Date(ipo.firstSeenAt || ipo.createdAt || Date.now()).getTime();
+
+          // Safeguard for newly onboarded users:
+          // If the user's account was created AFTER this IPO was first discovered,
+          // do NOT bombard the new user with past IPO notifications.
+          if (userCreatedAtMs > 0 && userCreatedAtMs > (ipoSeenMs + 5 * 60 * 1000)) {
+            continue;
+          }
+
           const fakeAnn = { id: `IPO_NEW_${symbol}` };
 
           // Per-user atomic dedup lock
@@ -321,7 +345,7 @@ async function processNewIpos(newIpos) {
               tag: `ipo-${symbol}`,
               type: 'ipo',
               actions: [
-                { action: 'view_ipo', title: 'Check IPO' },
+                { action: 'check-ipo', title: 'Check Allotment' },
                 { action: 'dismiss', title: 'Dismiss' }
               ]
             });
@@ -348,6 +372,9 @@ async function processNewIpos(newIpos) {
       }
       pageToken = result.pageToken;
     } while (pageToken);
+
+    // Update notificationSent = true in MongoDB iposymbols collection
+    await markNotificationsSent(newIpos).catch((e) => console.error('[NotifEngine:IPO] Failed to mark notificationSent:', e.message));
 
   } catch (err) {
     console.error('[NotifEngine:IPO] Error processing new IPOs:', err.message);

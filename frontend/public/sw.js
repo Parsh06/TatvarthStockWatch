@@ -233,8 +233,8 @@ function getNotificationActions(type) {
           title: 'Check Allotment',
         },
         {
-          action: 'view',
-          title: 'View IPO',
+          action: 'dismiss',
+          title: 'Dismiss',
         },
       ];
 

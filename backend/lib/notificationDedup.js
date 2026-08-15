@@ -92,16 +92,6 @@ async function acquireDedupLock(db, uid, ann) {
     throw e; // Unexpected error — propagate
   }
 
-  // Also insert legacy key formats for backward compatibility
-  // These use insertOne with catch so they don't block if already present
-  try {
-    await col.insertOne({ _id: legacyKey,   type: 'legacy_dedup',   userId: uid, announcementId, createdAt: now });
-  } catch { /* already exists — that's fine */ }
-
-  try {
-    await col.insertOne({ _id: semanticKey, type: 'semantic_dedup', userId: uid, announcementId, createdAt: now });
-  } catch { /* already exists — that's fine */ }
-
   return true; // Lock acquired — safe to send
 }
 

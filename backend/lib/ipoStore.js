@@ -161,9 +161,30 @@ async function cleanupHistoricalIpos() {
   return result.deletedCount;
 }
 
+/**
+ * Mark notificationSent = true for given symbols in iposymbols collection.
+ *
+ * @param {Array<Object|string>} symbols
+ */
+async function markNotificationsSent(symbols) {
+  if (!Array.isArray(symbols) || symbols.length === 0) return;
+  const symbolStrings = symbols.map(s => (typeof s === 'string' ? s : s.symbol)).filter(Boolean);
+  if (symbolStrings.length === 0) return;
+
+  const db = await getDb();
+  const col = db.collection('iposymbols');
+  const now = new Date();
+
+  await col.updateMany(
+    { symbol: { $in: symbolStrings } },
+    { $set: { notificationSent: true, lastNotificationAt: now, updatedAt: now } }
+  );
+}
+
 module.exports = {
   saveIpoSymbols,
   getActiveIpoSymbols,
   reconcileMissingIpos,
   cleanupHistoricalIpos,
+  markNotificationsSent,
 };
