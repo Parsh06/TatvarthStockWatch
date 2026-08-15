@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useMemo, useCallback } from 'react'
 import { useWatchlist } from './WatchlistContext'
+import { useAuth } from './AuthContext'
 import { useAnnouncements } from '../hooks/useAnnouncements'
 
 const AnnouncementsContext = createContext()
@@ -16,9 +17,15 @@ function saveReadSet(s) {
 }
 
 export function AnnouncementsProvider({ children }) {
+  const { currentUser, loading: authLoading } = useAuth()
   const { watchlist } = useWatchlist()
-  // Fetch globally using the custom hook
-  const { announcements, watchlistedAnnouncements, loading, lastFetched, fetch } = useAnnouncements({ watchlist, autoFetch: true })
+
+  const shouldAutoFetch = !authLoading && !!currentUser
+  // Fetch globally using the custom hook only when user is authenticated
+  const { announcements, watchlistedAnnouncements, loading, lastFetched, fetch } = useAnnouncements({
+    watchlist,
+    autoFetch: shouldAutoFetch
+  })
   const [readIds, setReadIds] = useState(loadReadSet)
 
   const unreadCount = useMemo(

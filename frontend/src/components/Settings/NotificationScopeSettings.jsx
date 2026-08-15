@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Radio, Globe, BookMarked, BellOff, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { savePrefs } from '../../services/alertService'
+import { useAuth } from '../../contexts/AuthContext'
 
 /**
  * NotificationScopeSettings
@@ -63,6 +64,7 @@ function scopeToPrefsFields(scope) {
 }
 
 export default function NotificationScopeSettings({ prefs, onPrefsChange }) {
+  const { currentUser } = useAuth()
   const [saving, setSaving]           = useState(false)
   const [confirmAll, setConfirmAll]   = useState(false) // dialog for ALL scope warning
 
@@ -87,7 +89,7 @@ export default function NotificationScopeSettings({ prefs, onPrefsChange }) {
     onPrefsChange({ ...prefs, ...fields })
 
     try {
-      const updated = await savePrefs({ ...prefs, ...fields })
+      const updated = await savePrefs(currentUser?.uid, { ...prefs, ...fields })
       onPrefsChange(updated)
       toast.success('Notification scope updated')
     } catch (err) {

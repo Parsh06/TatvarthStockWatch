@@ -7,17 +7,30 @@ const LOCAL_MODE = !FIREBASE_ENABLED
 // ── Notification preferences ──────────────────────────────────────────────────
 
 export async function getPrefs(uid) {
-  if (LOCAL_MODE) return apiClient('/api/prefs')
+  if (typeof uid === 'object' && uid !== null) {
+    uid = uid.uid || null
+  }
   try {
+    return await apiClient('/api/prefs')
+  } catch (err) {
+    if (LOCAL_MODE || !uid) return {}
     const snap = await getDoc(doc(db, 'users', uid))
     return snap.exists() ? (snap.data().prefs || {}) : {}
-  } catch { return {} }
+  }
 }
 
 export async function savePrefs(uid, prefs) {
-  if (LOCAL_MODE) return apiClient('/api/prefs', { method: 'POST', body: JSON.stringify(prefs) })
-  await setDoc(doc(db, 'users', uid), { prefs }, { merge: true })
-  return prefs
+  if (typeof uid === 'object' && uid !== null && prefs === undefined) {
+    prefs = uid
+    uid = null
+  }
+  try {
+    return await apiClient('/api/prefs', { method: 'POST', body: JSON.stringify(prefs) })
+  } catch (err) {
+    if (LOCAL_MODE || !uid) throw err
+    await setDoc(doc(db, 'users', uid), { prefs }, { merge: true })
+    return prefs
+  }
 }
 
 // ── Alert history ─────────────────────────────────────────────────────────────

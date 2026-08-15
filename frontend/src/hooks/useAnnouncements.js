@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { getAnnouncementsFromDB } from '../services/announcementService'
-import { FIREBASE_ENABLED } from '../services/firebase'
+import { auth, FIREBASE_ENABLED } from '../services/firebase'
 import { useCronStatus } from './useCronStatus'
 
 const LOCAL_MODE = !FIREBASE_ENABLED
@@ -40,6 +40,10 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
   }
 
   const fetch = useCallback(async (opts = {}) => {
+    if (FIREBASE_ENABLED && !auth?.currentUser) {
+      return
+    }
+
     setLoading(true)
     setError(null)
 

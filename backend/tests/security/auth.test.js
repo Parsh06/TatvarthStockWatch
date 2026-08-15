@@ -5,10 +5,11 @@ const assert = require('assert');
 async function testAuthMiddleware() {
   console.log('  [Security Test] Testing Authentication Middleware...');
 
-  // 1. Missing Authorization header (in secure mode simulation)
-  {
-    const { verifyToken } = require('../../middleware/authenticateFirebase');
-    const req = { headers: {} };
+  const { verifyToken, SECURE_MODE } = require('../../middleware/authenticateFirebase');
+
+  // Mock Request & Response objects
+  function createMockReqRes(headers = {}) {
+    const req = { headers };
     const res = {
       statusCode: 200,
       jsonPayload: null,
@@ -21,18 +22,42 @@ async function testAuthMiddleware() {
         return this;
       }
     };
+    return { req, res };
+  }
 
+  if (SECURE_MODE) {
+    // 1. Missing Authorization header (secure mode)
+    {
+      const { req, res } = createMockReqRes({});
+      let nextCalled = false;
+      await verifyToken(req, res, () => { nextCalled = true; });
+
+      assert.strictEqual(res.statusCode, 401, 'Missing token must return 401 in secure mode');
+      assert.strictEqual(nextCalled, false, 'Next should not be called when unauthenticated');
+      assert.strictEqual(res.jsonPayload.code, 'UNAUTHORIZED', 'Error code must be UNAUTHORIZED');
+    }
+
+    // 2. Invalid Bearer Token format
+    {
+      const { req, res } = createMockReqRes({ authorization: 'Bearer invalid.jwt.token' });
+      let nextCalled = false;
+      await verifyToken(req, res, () => { nextCalled = true; });
+
+      assert.strictEqual(res.statusCode, 401, 'Invalid token must return 401');
+      assert.strictEqual(nextCalled, false, 'Next should not be called for invalid token');
+      assert.strictEqual(res.jsonPayload.code, 'INVALID_TOKEN', 'Error code must be INVALID_TOKEN');
+    }
+  } else {
+    // Local mode test
+    const { req, res } = createMockReqRes({});
     let nextCalled = false;
     await verifyToken(req, res, () => { nextCalled = true; });
 
-    // Since SECURE_MODE checks env vars, if no env vars are present, it runs in local mode.
-    // Let's test local mode attachment:
-    assert.strictEqual(req.uid, 'local', 'In local mode without credentials, req.uid is assigned local');
-    assert.strictEqual(req.user.uid, 'local', 'In local mode without credentials, req.user.uid is assigned local');
-    assert.strictEqual(nextCalled, true, 'In local mode, next should be called');
+    assert.strictEqual(req.uid, 'local');
+    assert.strictEqual(nextCalled, true);
   }
 
-  // 2. Test Parameter Stripping & Ownership Helper
+  // 3. Test Parameter Stripping & Ownership Helper
   const { stripClientUserParams, checkOwnership } = require('../../middleware/authorization');
   {
     const userA = 'uid_user_A';
