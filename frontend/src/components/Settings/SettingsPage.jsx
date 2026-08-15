@@ -242,18 +242,27 @@ export default function SettingsPage() {
             { key: 'inAppEnabled',       label: 'In-App Notifications',    desc: 'Show toast notifications inside the app' },
             { key: 'notifyIpoAllotment', label: 'IPO Allotment Alerts',    desc: 'Get notified when a newly detected IPO becomes available for allotment verification' },
           ].map(({ key, label, desc }) => (
-            <label key={key} className="flex items-center justify-between cursor-pointer">
-              <div>
-                <p className="text-sm font-medium text-textPrimary">{label}</p>
-                <p className="text-xs text-textMuted">{desc}</p>
+            <div
+              key={key}
+              onClick={() => setNotifPrefs((p) => ({ ...p, [key]: !p[key] }))}
+              className="flex items-start sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-xl bg-background/50 hover:bg-background border border-border/60 hover:border-border transition-all cursor-pointer select-none"
+            >
+              <div className="flex-1 min-w-0 pr-1">
+                <p className="text-sm font-semibold text-textPrimary leading-snug">{label}</p>
+                <p className="text-xs text-textMuted leading-relaxed mt-0.5">{desc}</p>
               </div>
               <div
-                onClick={() => setNotifPrefs((p) => ({ ...p, [key]: !p[key] }))}
-                className={`relative w-10 h-5 rounded-full transition-colors ${notifPrefs[key] ? 'bg-primary' : 'bg-border'}`}
+                className={`relative shrink-0 w-11 h-6 rounded-full transition-colors duration-200 ease-in-out mt-0.5 sm:mt-0 ${
+                  notifPrefs[key] ? 'bg-primary shadow-sm shadow-primary/30' : 'bg-border/80'
+                }`}
               >
-                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${notifPrefs[key] ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                <div
+                  className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform duration-200 ease-in-out ${
+                    notifPrefs[key] ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
               </div>
-            </label>
+            </div>
           ))}
           {/* ── Announcement Notification Scope ── */}
           <div className="pt-2 border-t border-border/50">
