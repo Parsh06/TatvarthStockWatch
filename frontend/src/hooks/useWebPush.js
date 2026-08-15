@@ -105,13 +105,20 @@ export function useWebPush() {
           if (sub) {
             setIsSubscribed(true);
 
-            // Send heartbeat once per session to keep device alive
+            // Sync active subscription and device info once per session
             if (!heartbeatSent.current) {
               heartbeatSent.current = true;
               const deviceId = getDeviceId();
-              apiClient('/api/push/heartbeat', {
+              const deviceInfo = getDeviceInfo();
+              apiClient('/api/push/subscribe', {
                 method: 'POST',
-                body: JSON.stringify({ deviceId }),
+                body: JSON.stringify({
+                  subscription: sub.toJSON(),
+                  deviceId,
+                  platform: deviceInfo.platform,
+                  browser: deviceInfo.browser,
+                  userAgent: deviceInfo.userAgent,
+                }),
               }).catch(() => {}); // best-effort
             }
           }
