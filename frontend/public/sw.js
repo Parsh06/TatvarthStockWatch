@@ -293,7 +293,7 @@ function buildNotification(data) {
 
     body: getNotificationBody(data),
 
-    icon: getNotificationIcon(type),
+    icon: data?.icon || getNotificationIcon(type) || '/logo2.png',
 
     badge: '/logo2.png',
 
@@ -310,7 +310,7 @@ function buildNotification(data) {
       data?.createdAt ||
       Date.now(),
 
-    actions: getNotificationActions(type),
+    actions: data?.actions || getNotificationActions(type),
 
     data: {
       version: data?.version || 2,

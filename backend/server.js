@@ -643,6 +643,11 @@ app.post('/api/push/test', verifyToken, async (req, res) => {
     let result;
     if (deviceId) {
       result = await sendWebPushToDevice(req.uid, deviceId, payload);
+      // Fallback if specific deviceId is out of sync or failed
+      if (!result || result.sent === 0) {
+        console.log(`[Push Test] Specific device send returned 0 sent, falling back to sendWebPushToUser for ${req.uid}`);
+        result = await sendWebPushToUser(req.uid, payload);
+      }
     } else {
       // Fallback for old frontend that doesn't send deviceId
       result = await sendWebPushToUser(req.uid, payload);
