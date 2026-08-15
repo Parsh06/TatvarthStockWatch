@@ -1,54 +1,42 @@
 'use strict';
 
 /**
- * notificationEngine.js
+ * notificationEngine.js  [v2]
  *
  * ╔══════════════════════════════════════════════════════════════════════════════╗
- * ║  NOTIFICATION ENGINE — Central orchestrator for announcement notifications  ║
+ * ║  NOTIFICATION ENGINE — Central orchestrator                                 ║
  * ║                                                                              ║
- * ║  Pipeline:                                                                   ║
- * ║    newAnnouncements                                                          ║
- * ║        ↓                                                                     ║
- * ║    Partition users → ALL_ANNOUNCEMENTS | WATCHLIST_ONLY | NONE              ║
- * ║        ↓                                                                     ║
- * ║    For each user → resolve candidate pool                                   ║
- * ║        ↓                                                                     ║
- * ║    Category / Subcategory filtering (notificationFilter.js)                 ║
- * ║        ↓                                                                     ║
- * ║    Per-user deduplication (notificationDedup.js)                            ║
- * ║        ↓                                                                     ║
- * ║    Channel dispatch → Push + Telegram                                        ║
+ * ║  PERFORMANCE ARCHITECTURE:                                                   ║
+ * ║    1. Classify ALL announcements ONCE (before user loop).                   ║
+ * ║    2. Compile blocked filter ONCE PER USER (before announcement loop).      ║
+ * ║    3. Hot-path filter decision = O(1) Set.has() only.                      ║
+ * ║    4. Telegram rate-limited: ≤1 message per 350ms.                         ║
+ * ║                                                                              ║
+ * ║  FAIL-CLOSED RULES:                                                         ║
+ * ║    - prefs fetch error → skip user (no notification sent)                   ║
+ * ║    - classification error → UNKNOWN (allow, logged at startup)              ║
+ * ║    - taxonomy error → fail closed entirely                                  ║
  * ╚══════════════════════════════════════════════════════════════════════════════╝
- *
- * CRITICAL RULES:
- *   1. If prefs cannot be fetched → FAIL CLOSED (no notification sent)
- *   2. Category filters are always authoritative regardless of scope
- *   3. A user with both notifyWatchlist=true AND notifyAllAnnouncements=true
- *      receives ONE notification per announcement (not two)
- *   4. Telegram rate-limit: max 1 message per 350ms between sends
  */
 
 const { resolveNotificationScope, matchesNotificationScope, SCOPE } = require('./notificationScope');
-const { shouldNotify } = require('./notificationFilter');
-const { acquireDedupLock, getAlreadySentIds }   = require('./notificationDedup');
-const { getDb }   = require('./mongoClient');
+const { compileBlockedFilter, shouldNotify } = require('./notificationFilter');
+const { classifyAnnouncementBatch }          = require('./categoryClassifier');
+const { acquireDedupLock }                   = require('./notificationDedup');
+const { getDb }                              = require('./mongoClient');
 
-// ─── Telegram rate-limit helper ──────────────────────────────────────────────
-const TELEGRAM_DELAY_MS = 350; // ≤ ~3 msg/s per Telegram Bot API limits
-
-async function _delay(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
+// Telegram rate-limit: ≤ ~3 msg/s per Telegram Bot API limits
+const TELEGRAM_DELAY_MS = 350;
+function _delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 /**
  * processNewAnnouncements
  *
- * Main entry point called by /api/trigger and /api/cron/trigger.
+ * Main entry point: /api/trigger and /api/cron/trigger.
  *
- * @param {Object[]} newAnnouncements — Array of truly new, normalized announcement objects
- * @param {Object}   opts
- * @param {boolean}  [opts.verbose]   — Log extra detail (default: true)
- * @returns {Promise<Object>}          — Summary stats for the run
+ * @param {Object[]} newAnnouncements — Truly new, normalized announcement objects
+ * @param {{ verbose?: boolean }} opts
+ * @returns {Promise<Object>} — Summary stats
  */
 async function processNewAnnouncements(newAnnouncements, opts = {}) {
   const { verbose = true } = opts;
@@ -56,39 +44,51 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
 
   const stats = {
     runId,
-    newAnnouncements: newAnnouncements.length,
-    usersProcessed:   0,
-    allScopeUsers:    0,
-    watchlistUsers:   0,
-    noneUsers:        0,
-    candidatesTotal:  0,
-    categoryBlocked:  0,
-    alreadySent:      0,
-    queued:           0,
-    pushSent:         0,
-    telegramSent:     0,
-    failed:           0,
-    durationMs:       0,
+    newAnnouncements:      newAnnouncements.length,
+    usersProcessed:        0,
+    allScopeUsers:         0,
+    watchlistUsers:        0,
+    noneUsers:             0,
+    candidatesTotal:       0,
+    categoryBlocked:       0,
+    unknownClassifications: 0,
+    alreadySent:           0,
+    queued:                0,
+    pushSent:              0,
+    telegramSent:          0,
+    failed:                0,
+    durationMs:            0,
   };
 
   if (newAnnouncements.length === 0) {
-    if (verbose) console.log(`[NotifEngine:${runId}] No new announcements — skipping user loop`);
+    if (verbose) console.log(`[NotifEngine:${runId}] No new announcements — skipping`);
     return stats;
   }
 
   const startTime = Date.now();
 
   try {
-    const admin       = require('firebase-admin');
-    const prefsStore  = require('./prefsStore');
+    const admin          = require('firebase-admin');
+    const prefsStore     = require('./prefsStore');
     const watchlistStore = require('./watchlistStore');
     const { sendTelegramAlert, isConfigured: isTelegramOk } = require('./telegramNotifier');
     const { sendWebPushToUser } = require('./webPushNotifier');
     const db = await getDb();
 
-    if (verbose) console.log(`[NotifEngine:${runId}] Processing ${newAnnouncements.length} new announcements across all users`);
+    // ── STEP 1: Classify ALL announcements ONCE ─────────────────────────────
+    // This is the most important optimization. Every user shares these objects.
+    const classified = classifyAnnouncementBatch(newAnnouncements);
+    let unknownCount = 0;
+    for (const { classification } of classified) {
+      if (!classification || classification.source === 'UNKNOWN') unknownCount++;
+    }
+    stats.unknownClassifications = unknownCount;
 
-    // ── Iterate all Firebase users ──────────────────────────────────────────
+    if (verbose) {
+      console.log(`[NotifEngine:${runId}] Classified ${classified.length} announcements (${unknownCount} unknown)`);
+    }
+
+    // ── STEP 2: Iterate all Firebase users ──────────────────────────────────
     let pageToken;
     do {
       const result = await admin.auth().listUsers(100, pageToken);
@@ -97,17 +97,17 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
         const uid = user.uid;
         stats.usersProcessed++;
 
-        // ── 1. Fetch prefs — fail closed on error ─────────────────────────
+        // ── 2a. Fetch prefs — fail closed on error ──────────────────────────
         let prefs;
         try {
           prefs = await prefsStore.getPrefs(uid);
           if (!prefs) throw new Error('Empty prefs returned');
         } catch (err) {
-          console.error(`[NotifEngine:${runId}] Cannot fetch prefs for uid=${uid} — skipping (fail-closed):`, err.message);
+          console.error(`[NotifEngine:${runId}] Cannot fetch prefs uid=${uid} — skip (fail-closed):`, err.message);
           continue;
         }
 
-        // ── 2. Resolve notification scope ─────────────────────────────────
+        // ── 2b. Resolve notification scope ─────────────────────────────────
         const scope = resolveNotificationScope(prefs);
 
         if (scope === SCOPE.NONE) {
@@ -115,14 +115,13 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
           continue;
         }
 
-        // ── 3. Build user's watchlist sets for WATCHLIST_ONLY scope ───────
+        // ── 2c. Build watchlist sets for WATCHLIST_ONLY scope ───────────────
         let bseSet = new Set();
         let nseSet = new Set();
 
         if (scope === SCOPE.WATCHLIST_ONLY) {
           const uScripts = await watchlistStore.getWatchlist(uid);
           if (!uScripts || uScripts.length === 0) {
-            // No watchlist → no notifications in WATCHLIST_ONLY mode
             stats.watchlistUsers++;
             continue;
           }
@@ -137,24 +136,38 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
           stats.allScopeUsers++;
         }
 
-        // ── 4. Resolve candidate pool based on scope ──────────────────────
-        const candidates = newAnnouncements.filter(ann =>
+        // ── 2d. Compile user's blocked filter ONCE (before announcement loop)
+        // This is crucial: O(blockedCategories.length), not O(announcements)
+        const compiledFilter = compileBlockedFilter(prefs.blockedCategories);
+
+        // ── 2e. Resolve candidate pool based on scope ───────────────────────
+        const candidates = classified.filter(({ announcement: ann }) =>
           matchesNotificationScope({ announcement: ann, scope, bseSet, nseSet }).inScope
         );
 
         if (candidates.length === 0) continue;
         stats.candidatesTotal += candidates.length;
 
-        // ── 5. Category / subcategory filtering ───────────────────────────
-        const categoryPassed = candidates.filter(ann => {
-          const decision = shouldNotify({ prefs, announcement: ann, uid, notificationChannel: 'push+telegram' });
-          if (!decision.shouldNotify) stats.categoryBlocked++;
-          return decision.shouldNotify;
-        });
+        // ── 2f. Category filter — hot path O(1) per announcement ────────────
+        // classification already computed in Step 1 — reused here
+        const categoryPassed = [];
+        for (const { announcement: ann, classification } of candidates) {
+          const decision = shouldNotify({
+            compiledFilter,
+            classification,
+            announcement: ann,
+            notificationChannel: 'push+telegram',
+          });
+          if (decision.shouldNotify) {
+            categoryPassed.push(ann);
+          } else {
+            stats.categoryBlocked++;
+          }
+        }
 
         if (categoryPassed.length === 0) continue;
 
-        // ── 6. Per-user deduplication — atomic lock acquisition ───────────
+        // ── 2g. Per-user dedup — atomic lock acquisition ────────────────────
         const toSend = [];
         for (const ann of categoryPassed) {
           try {
@@ -165,48 +178,42 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
               stats.alreadySent++;
             }
           } catch (e) {
-            if (e.code !== 11000) console.error(`[NotifEngine:${runId}] Dedup error for uid=${uid} ann=${ann.id}:`, e.message);
-            // On unexpected dedup error, skip this announcement to avoid double-sends
+            if (e.code !== 11000) console.error(`[NotifEngine:${runId}] Dedup error uid=${uid} ann=${ann.id}:`, e.message);
           }
         }
 
         if (toSend.length === 0) continue;
         stats.queued += toSend.length;
 
-        // ── 7. Channel dispatch ───────────────────────────────────────────
-
-        // — Telegram —
+        // ── 2h. Telegram dispatch ───────────────────────────────────────────
         const telegramConfigured = isTelegramOk(prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID);
         if (telegramConfigured && prefs.telegramEnabled !== false) {
           const targetChat = prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID;
           try {
-            // Send one at a time with rate-limit delay to respect Telegram limits
             for (const ann of toSend) {
               const tgRes = await sendTelegramAlert([ann], targetChat);
               if (tgRes.sent) {
                 stats.telegramSent++;
-                // Save Telegram message ID back to MongoDB for potential edits
-                if (tgRes.messageIds && tgRes.messageIds.length > 0) {
+                if (tgRes.messageIds?.length > 0) {
                   try {
                     await db.collection('announcements').updateOne(
                       { _id: String(ann.id) },
                       { $push: { telegramMessages: { userId: uid, chatId: targetChat, messageId: tgRes.messageIds[0] } } }
                     );
-                  } catch { /* Non-critical — log but continue */ }
+                  } catch { /* Non-critical */ }
                 }
               } else {
                 stats.failed++;
               }
-              // Rate-limit buffer between Telegram messages
               await _delay(TELEGRAM_DELAY_MS);
             }
           } catch (err) {
-            console.error(`[NotifEngine:${runId}] Telegram dispatch error for uid=${uid}:`, err.message);
+            console.error(`[NotifEngine:${runId}] Telegram error uid=${uid}:`, err.message);
             stats.failed += toSend.length;
           }
         }
 
-        // — Web Push (multi-device) —
+        // ── 2i. Web Push dispatch ───────────────────────────────────────────
         for (const ann of toSend) {
           try {
             const pushResult = await sendWebPushToUser(uid, {
@@ -217,7 +224,7 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
             });
             stats.pushSent += (pushResult.sent || 0);
           } catch (err) {
-            console.error(`[NotifEngine:${runId}] Push error for uid=${uid}:`, err.message);
+            console.error(`[NotifEngine:${runId}] Push error uid=${uid}:`, err.message);
             stats.failed++;
           }
         }
@@ -235,19 +242,20 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
 
   if (verbose) {
     console.log(`[NotifEngine:${runId}] Complete`, JSON.stringify({
-      newAnnouncements: stats.newAnnouncements,
-      users:            stats.usersProcessed,
-      allScope:         stats.allScopeUsers,
-      watchlistScope:   stats.watchlistUsers,
-      none:             stats.noneUsers,
-      candidates:       stats.candidatesTotal,
-      categoryBlocked:  stats.categoryBlocked,
-      alreadySent:      stats.alreadySent,
-      queued:           stats.queued,
-      pushSent:         stats.pushSent,
-      telegramSent:     stats.telegramSent,
-      failed:           stats.failed,
-      durationMs:       stats.durationMs,
+      announcements:         stats.newAnnouncements,
+      unknownClassifications: stats.unknownClassifications,
+      users:                 stats.usersProcessed,
+      allScope:              stats.allScopeUsers,
+      watchlistScope:        stats.watchlistUsers,
+      none:                  stats.noneUsers,
+      candidates:            stats.candidatesTotal,
+      categoryBlocked:       stats.categoryBlocked,
+      alreadySent:           stats.alreadySent,
+      queued:                stats.queued,
+      pushSent:              stats.pushSent,
+      telegramSent:          stats.telegramSent,
+      failed:                stats.failed,
+      durationMs:            stats.durationMs,
     }));
   }
 

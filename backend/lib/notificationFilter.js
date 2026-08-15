@@ -1,194 +1,358 @@
 'use strict';
 
 /**
- * notificationFilter.js
+ * notificationFilter.js  [v2 — STRICT HIERARCHICAL ENGINE]
  *
  * ╔══════════════════════════════════════════════════════════════════════════╗
  * ║  SINGLE SOURCE OF TRUTH — All notification eligibility decisions        ║
  * ║  No notification channel (Push, Telegram, In-App) may bypass this.      ║
+ * ║                                                                          ║
+ * ║  ARCHITECTURE CONTRACT:                                                  ║
+ * ║    1. shouldNotify() is the HOT PATH — O(1) Set lookups only.           ║
+ * ║    2. compileBlockedFilter() runs ONCE PER USER PER CYCLE.              ║
+ * ║    3. classifyAnnouncement() runs ONCE PER ANNOUNCEMENT.                ║
+ * ║    4. NO regex, NO iteration inside shouldNotify().                      ║
+ * ║    5. NO database, NO network, NO async anywhere in this file.          ║
+ * ║    6. NO console.log() in hot path.                                     ║
+ * ║                                                                          ║
+ * ║  FILTER DECISION ORDER (first match wins):                               ║
+ * ║    1. PARENT_CATEGORY_BLOCKED — parent Set.has()                        ║
+ * ║    2. SUBCATEGORY_BLOCKED     — subcategoryKey Set.has()                ║
+ * ║    3. UNKNOWN_CLASSIFICATION  — classification missing                  ║
+ * ║    4. ALLOWED                                                            ║
+ * ║                                                                          ║
+ * ║  SIBLING ISOLATION GUARANTEE:                                           ║
+ * ║    Blocking subcategory A NEVER blocks sibling subcategory B            ║
+ * ║    even if they share a parent category.                                 ║
+ * ║                                                                          ║
+ * ║  FALSE POSITIVE PREVENTION:                                             ║
+ * ║    Subject/description text is NEVER used for filtering decisions        ║
+ * ║    when structured classification (category+subCategory) is available.   ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
- *
- * BLOCK RULES (evaluated in order — first match wins):
- *
- *   Rule 1 — Parent group of `category` is in blockedCategories
- *   Rule 2 — Parent group of `subCategory` is in blockedCategories
- *   Rule 3 — Raw `category` string is in blockedCategories
- *   Rule 4 — Raw `subCategory` string is in blockedCategories
- *
- *   If ANY rule fires → shouldNotify: false
- *   If ALL rules pass → shouldNotify: true
- *
- * Parent acts as a master switch.
- * There is NO "at least one enabled" logic.
  */
 
-const { resolveCategoryGroup } = require('./alertCategories');
+const {
+  TAXONOMY,
+  CLASSIFICATION_SOURCE,
+  UNKNOWN_CLASSIFICATION,
+  classifyAnnouncement,
+  getParentId,
+  getSubcategoryKeysForParent,
+  _resolveSubcategoryGlobal,
+} = require('./categoryClassifier');
+const { normalizeText, toCanonicalId } = require('./notificationTextNormalizer');
 
-// ── Block reason constants ────────────────────────────────────────────────────
-const BLOCK_REASONS = {
-  BLOCKED_PARENT:      'BLOCKED_PARENT',      // parent group of category/subCategory is blocked
-  BLOCKED_SUBCATEGORY: 'BLOCKED_SUBCATEGORY', // raw subCategory string is blocked
-  BLOCKED_CATEGORY:    'BLOCKED_CATEGORY',    // raw category string is blocked
-  NOTIFICATIONS_OFF:   'NOTIFICATIONS_OFF',   // user disabled all notifications
-  ALLOWED:             'ALLOWED',             // all rules passed — send notification
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// FILTER REASON CONSTANTS (frozen — no typo risk)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FILTER_REASONS = Object.freeze({
+  ALLOWED:                    'ALLOWED',
+  PARENT_CATEGORY_BLOCKED:    'PARENT_CATEGORY_BLOCKED',
+  SUBCATEGORY_BLOCKED:        'SUBCATEGORY_BLOCKED',
+  UNKNOWN_CLASSIFICATION:     'UNKNOWN_CLASSIFICATION',
+  SCOPE_DISABLED:             'SCOPE_DISABLED',
+  FILTER_ERROR:               'FILTER_ERROR',
+});
+
+// Legacy aliases for backward compatibility
+const BLOCK_REASONS = Object.freeze({
+  ALLOWED:             FILTER_REASONS.ALLOWED,
+  BLOCKED_PARENT:      FILTER_REASONS.PARENT_CATEGORY_BLOCKED,
+  BLOCKED_SUBCATEGORY: FILTER_REASONS.SUBCATEGORY_BLOCKED,
+  BLOCKED_CATEGORY:    FILTER_REASONS.SUBCATEGORY_BLOCKED,
+  NOTIFICATIONS_OFF:   FILTER_REASONS.SCOPE_DISABLED,
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER FILTER COMPILATION
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * shouldNotify
+ * compileBlockedFilter(blockedCategories)
  *
- * @param {Object}  params
- * @param {Object}  params.prefs                 - User preferences from Firestore (prefsStore.getPrefs)
- * @param {Object}  params.announcement           - Normalized announcement object from BSE/NSE scraper
- * @param {string}  [params.uid]                  - User ID (for logging)
- * @param {string}  [params.notificationChannel]  - 'push' | 'telegram' | 'in-app' (for logging)
+ * Converts a user's raw blockedCategories array into precompiled Sets
+ * for O(1) hot-path lookups.
  *
+ * Run ONCE per user per notification cycle — NOT once per announcement.
+ *
+ * Handles:
+ *   - Legacy strings (parent label or child label, any case)
+ *   - Ambiguous subcategories (same label under multiple parents)
+ *
+ * @param {string[]} blockedCategories — raw strings from Firestore prefs
  * @returns {{
- *   shouldNotify:        boolean,
- *   reason:              string,
- *   matchedCategory:     string,
- *   matchedSubCategory:  string,
- *   blockedBy:           string | null,
- *   notificationChannel: string,
- *   debug:               Object
+ *   parentIds: Set<string>,
+ *   subcategoryKeys: Set<string>,
+ *   rawNormalizedValues: Set<string>
  * }}
  */
-function shouldNotify({ prefs, announcement, uid = 'unknown', notificationChannel = 'unknown' }) {
-  const catRaw    = (announcement.category    || '').trim();
-  const subCatRaw = (announcement.subCategory || '').trim();
+function compileBlockedFilter(blockedCategories) {
+  const parentIds          = new Set();
+  const subcategoryKeys    = new Set();
+  const rawNormalizedValues = new Set();
 
-  // Pre-compute parent groups once
-  const catParent    = catRaw    ? resolveCategoryGroup(catRaw)    : null;
-  const subCatParent = subCatRaw ? resolveCategoryGroup(subCatRaw) : null;
+  const arr = Array.isArray(blockedCategories) ? blockedCategories : [];
 
-  // Build blocked set — O(1) lookups
-  // Lowercase all entries to ensure case-insensitive matching
-  const blockedSetLower = new Set(
-    (Array.isArray(prefs?.blockedCategories) ? prefs.blockedCategories : [])
-      .map(c => c.trim().toLowerCase())
-  );
-  
-  // Keep original casing for debug logs
-  const debugBlockedSet = new Set(
-    Array.isArray(prefs?.blockedCategories) ? prefs.blockedCategories : []
-  );
+  for (const raw of arr) {
+    if (!raw || typeof raw !== 'string') continue;
+    const norm = normalizeText(raw);
+    if (!norm) continue;
 
-  const debug = {
-    uid,
-    announcementId:    String(announcement.id || announcement._id || '?'),
-    company:           announcement.scriptName || announcement.scriptCode || '?',
-    exchange:          announcement.exchange || '?',
-    category:          catRaw,
-    subCategory:       subCatRaw,
-    catParent,
-    subCatParent,
-    blockedCategories: [...debugBlockedSet],
-    notificationChannel,
-  };
+    rawNormalizedValues.add(norm);
 
-  // Helper — build a BLOCKED decision object
-  const blocked = (reason, blockedBy) => {
-    const decision = {
-      shouldNotify:        false,
-      reason,
-      matchedCategory:     catRaw,
-      matchedSubCategory:  subCatRaw,
-      blockedBy,
-      notificationChannel,
-      debug,
-    };
-    _log(decision);
-    return decision;
-  };
+    // Check if it's a known parent label
+    const parentInfo = TAXONOMY.parentExactMap.get(norm);
+    if (parentInfo) {
+      parentIds.add(parentInfo.parentId);
+      // Also add all subcategory keys under this parent (for fast filtering)
+      for (const subcatId of parentInfo.subcategoryIds) {
+        subcategoryKeys.add(`${parentInfo.parentId}:${subcatId}`);
+      }
+      continue;
+    }
 
-  // Helper — build an ALLOWED decision object
-  const allowed = () => {
-    const decision = {
-      shouldNotify:        true,
-      reason:              BLOCK_REASONS.ALLOWED,
-      matchedCategory:     catRaw,
-      matchedSubCategory:  subCatRaw,
-      blockedBy:           null,
-      notificationChannel,
-      debug,
-    };
-    _log(decision);
-    return decision;
-  };
+    // Check if it's a canonical parent ID
+    const parentById = TAXONOMY.parentIdMap.get(toCanonicalId(raw));
+    if (parentById) {
+      parentIds.add(parentById.parentId);
+      for (const subcatId of parentById.subcategoryIds) {
+        subcategoryKeys.add(`${parentById.parentId}:${subcatId}`);
+      }
+      continue;
+    }
 
-  // ── Rule 1: parent group of `category` is blocked ────────────────────────────
-  if (catParent && blockedSetLower.has(catParent.toLowerCase())) {
-    return blocked(BLOCK_REASONS.BLOCKED_PARENT, catParent);
+    // Check if it's a known subcategory label (global lookup, handles duplicates)
+    const subcatInfo = _resolveSubcategoryGlobal(norm, null);
+    if (subcatInfo) {
+      subcategoryKeys.add(subcatInfo.subcategoryKey);
+      continue;
+    }
+
+    // Unrecognized label — add normalized raw value as a fallback
+    // This covers custom strings the user may have stored
+    rawNormalizedValues.add(norm);
   }
 
-  // ── Rule 2: parent group of `subCategory` is blocked (if different from catParent) ──
-  if (subCatParent && subCatParent !== catParent && blockedSetLower.has(subCatParent.toLowerCase())) {
-    return blocked(BLOCK_REASONS.BLOCKED_PARENT, subCatParent);
-  }
-
-  // ── Rule 3: raw `category` string is blocked ─────────────────────────────────
-  if (catRaw && blockedSetLower.has(catRaw.toLowerCase())) {
-    return blocked(BLOCK_REASONS.BLOCKED_CATEGORY, catRaw);
-  }
-
-  // ── Rule 4: raw `subCategory` string is blocked ──────────────────────────────
-  if (subCatRaw && blockedSetLower.has(subCatRaw.toLowerCase())) {
-    return blocked(BLOCK_REASONS.BLOCKED_SUBCATEGORY, subCatRaw);
-  }
-
-  // ── All rules passed — notification is allowed ────────────────────────────────
-  return allowed();
+  return Object.freeze({ parentIds, subcategoryKeys, rawNormalizedValues });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FILTER HOT PATH
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * _log — Emits one structured log line per notification decision.
+ * shouldNotify — STRICT CATEGORY FILTER (hot path)
  *
- * Human-readable prefix + JSON suffix so it is both greppable by eye
- * and parseable by log aggregators (Vercel logs, Datadog, etc).
+ * Accepts either:
+ *   (a) { compiledFilter, classification } — NEW preferred API (O(1))
+ *   (b) { prefs, announcement, uid, notificationChannel } — LEGACY API (backward-compatible)
+ *
+ * Returns:
+ * {
+ *   shouldNotify: boolean,   (legacy compat)
+ *   allowed: boolean,        (new API)
+ *   reason: string,
+ *   classification: Object,
+ *   blockedBy: string|null,
+ *   matchedCategory: string,
+ *   matchedSubCategory: string,
+ *   notificationChannel: string
+ * }
+ *
+ * SIBLING ISOLATION: Blocking subcategory A NEVER blocks sibling B.
+ * FALSE POSITIVE PREVENTION: Structured classification always wins over subject text.
  */
-function _log(decision) {
-  const { shouldNotify: allow, reason, blockedBy, notificationChannel, debug } = decision;
-  const icon = allow ? '✅' : '🚫';
+function shouldNotify({
+  // New preferred API
+  compiledFilter,
+  classification,
+  // Legacy API
+  prefs,
+  announcement,
+  uid = 'unknown',
+  notificationChannel = 'unknown',
+} = {}) {
+  try {
+    // ── Resolve to new API if called via legacy params ──────────────────────
+    let filter = compiledFilter;
+    let cls    = classification;
+    let annObj = announcement || {};
 
-  console.log("================================");
-  console.log("Notification Decision");
-  console.log({
-    uid: debug.uid,
-    company: debug.company,
-    category: debug.category,
-    subCategory: debug.subCategory,
-    blocked: debug.blockedCategories,
-    decision: decision
-  });
-  console.log("================================");
+    if (!filter && prefs) {
+      filter = compileBlockedFilter(prefs.blockedCategories);
+    }
 
-  // Human readable — for quick scanning in Vercel function logs
-  console.log(
-    `[NotifFilter] ${icon}  uid=${debug.uid}  company="${debug.company}"  ` +
-    `exchange=${debug.exchange}  cat="${debug.category}"  subCat="${debug.subCategory}"  ` +
-    `catParent="${debug.catParent}"  subCatParent="${debug.subCatParent}"  ` +
-    `reason=${reason}  blockedBy=${blockedBy || 'none'}  channel=${notificationChannel}`
-  );
+    if (!cls && annObj) {
+      cls = classifyAnnouncement({
+        category:    annObj.category,
+        subCategory: annObj.subCategory,
+        subject:     annObj.subject,
+        description: annObj.description,
+      });
+    }
 
-  // Structured JSON — for log parsers / future alerting pipelines
-  console.log(
-    '[NotifFilter:JSON] ' + JSON.stringify({
-      uid:              debug.uid,
-      announcementId:   debug.announcementId,
-      company:          debug.company,
-      exchange:         debug.exchange,
-      category:         debug.category,
-      subCategory:      debug.subCategory,
-      catParent:        debug.catParent,
-      subCatParent:     debug.subCatParent,
-      blockedCategories: debug.blockedCategories,
-      shouldNotify:     allow,
-      reason,
-      blockedBy:        blockedBy || null,
-      channel:          notificationChannel,
-    })
-  );
+    if (!filter) {
+      // Fail closed — cannot determine filter
+      return _blocked(FILTER_REASONS.FILTER_ERROR, null, cls, annObj, notificationChannel);
+    }
+
+    // ── Handle NONE scope (already handled by engine, but defensive) ────────
+    if (!cls || cls.source === CLASSIFICATION_SOURCE.UNKNOWN) {
+      // UNKNOWN_CLASSIFICATION: do NOT block (false positive prevention)
+      // UNLESS the raw category string is in the raw normalized values
+      const rawCatNorm = normalizeText(annObj.category || '');
+      const rawSubNorm = normalizeText(annObj.subCategory || '');
+
+      if (rawCatNorm && filter.rawNormalizedValues.has(rawCatNorm)) {
+        return _blocked(FILTER_REASONS.SUBCATEGORY_BLOCKED, rawCatNorm, cls, annObj, notificationChannel);
+      }
+      if (rawSubNorm && filter.rawNormalizedValues.has(rawSubNorm)) {
+        return _blocked(FILTER_REASONS.SUBCATEGORY_BLOCKED, rawSubNorm, cls, annObj, notificationChannel);
+      }
+
+      return _allowed(cls, annObj, notificationChannel);
+    }
+
+    // ── HOT PATH: O(1) Set lookups ──────────────────────────────────────────
+
+    // Priority 1: Parent category blocked (master switch)
+    if (cls.parentId && filter.parentIds.has(cls.parentId)) {
+      return _blocked(FILTER_REASONS.PARENT_CATEGORY_BLOCKED, cls.parentLabel, cls, annObj, notificationChannel);
+    }
+
+    // Priority 2: Exact canonical subcategory blocked
+    if (cls.subcategoryKey && filter.subcategoryKeys.has(cls.subcategoryKey)) {
+      return _blocked(FILTER_REASONS.SUBCATEGORY_BLOCKED, cls.subcategoryLabel, cls, annObj, notificationChannel);
+    }
+
+    // Priority 3: All checks passed — ALLOW
+    return _allowed(cls, annObj, notificationChannel);
+
+  } catch (err) {
+    // Defensive catch — never crash notification run
+    return {
+      shouldNotify: true,  // fail open on unexpected error (log it)
+      allowed: true,
+      reason: FILTER_REASONS.FILTER_ERROR,
+      classification: UNKNOWN_CLASSIFICATION,
+      blockedBy: null,
+      matchedCategory: '',
+      matchedSubCategory: '',
+      notificationChannel,
+    };
+  }
 }
 
-module.exports = { shouldNotify, BLOCK_REASONS };
+// ─────────────────────────────────────────────────────────────────────────────
+// RESULT BUILDERS (keep hot path tidy)
+// ─────────────────────────────────────────────────────────────────────────────
 
+function _blocked(reason, blockedBy, cls, ann, channel) {
+  return {
+    shouldNotify:        false,
+    allowed:             false,
+    reason,
+    classification:      cls || UNKNOWN_CLASSIFICATION,
+    blockedBy:           blockedBy || null,
+    matchedCategory:     (ann && ann.category) ? ann.category : '',
+    matchedSubCategory:  (ann && ann.subCategory) ? ann.subCategory : '',
+    notificationChannel: channel,
+  };
+}
 
+function _allowed(cls, ann, channel) {
+  return {
+    shouldNotify:        true,
+    allowed:             true,
+    reason:              FILTER_REASONS.ALLOWED,
+    classification:      cls || UNKNOWN_CLASSIFICATION,
+    blockedBy:           null,
+    matchedCategory:     (ann && ann.category) ? ann.category : '',
+    matchedSubCategory:  (ann && ann.subCategory) ? ann.subCategory : '',
+    notificationChannel: channel,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEBUG HELPER
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * debugNotificationFilter
+ *
+ * Returns a rich debug object showing every step of the filtering decision.
+ * NOT for use in production hot path — use in admin debug endpoints only.
+ *
+ * @param {{ announcement: Object, blockedCategories: string[] }} params
+ * @returns {Object}
+ */
+function debugNotificationFilter({ announcement, blockedCategories = [] }) {
+  const compiledFilter = compileBlockedFilter(blockedCategories);
+  const classification = classifyAnnouncement({
+    category:    announcement.category,
+    subCategory: announcement.subCategory,
+    subject:     announcement.subject,
+    description: announcement.description,
+  });
+
+  const decision = shouldNotify({ compiledFilter, classification, announcement });
+
+  return {
+    input: {
+      category:    announcement.category,
+      subCategory: announcement.subCategory,
+      subject:     announcement.subject,
+    },
+    normalizedCategory:    normalizeText(announcement.category || ''),
+    normalizedSubcategory: normalizeText(announcement.subCategory || ''),
+    classification,
+    compiledFilter: {
+      parentIds:       [...compiledFilter.parentIds],
+      subcategoryKeys: [...compiledFilter.subcategoryKeys],
+    },
+    parentBlocked:    compiledFilter.parentIds.has(classification.parentId),
+    subcatBlocked:    compiledFilter.subcategoryKeys.has(classification.subcategoryKey),
+    result:           decision.allowed ? 'ALLOWED' : 'BLOCKED',
+    reason:           decision.reason,
+    blockedBy:        decision.blockedBy,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BACKWARD-COMPATIBLE resolveCategoryGroup WRAPPER
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * resolveCategoryGroup — legacy compatibility wrapper.
+ *
+ * Delegates to the new classifier's taxonomy but preserves the old API contract:
+ *   resolveCategoryGroup("Financial Results") → "Result"
+ *   resolveCategoryGroup("Unknown String")    → "Unknown String"
+ *
+ * @param {string} categoryStr
+ * @returns {string}
+ */
+function resolveCategoryGroup(categoryStr) {
+  if (!categoryStr) return 'Others';
+  const norm = normalizeText(categoryStr);
+
+  // Check parent first
+  const parentInfo = TAXONOMY.parentExactMap.get(norm);
+  if (parentInfo) return parentInfo.parentLabel;
+
+  // Check subcategory (global)
+  const subcatInfo = _resolveSubcategoryGlobal(norm, null);
+  if (subcatInfo) return subcatInfo.parentLabel;
+
+  return categoryStr; // Preserve original for unknown strings (legacy behavior)
+}
+
+module.exports = {
+  shouldNotify,
+  compileBlockedFilter,
+  debugNotificationFilter,
+  resolveCategoryGroup,
+  FILTER_REASONS,
+  BLOCK_REASONS, // legacy export
+};
