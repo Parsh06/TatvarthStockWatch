@@ -12,6 +12,7 @@ const CATEGORIES = [
   { value: 'Bonus/Split',        color: 'pink'    },
   { value: 'Rights Issue',       color: 'orange'  },
   { value: 'Insider Trading',    color: 'red'     },
+  { value: 'Company Update',     color: 'indigo'  },
   { value: 'Other',              color: 'slate'   },
 ]
 
@@ -25,6 +26,7 @@ const CHIP = {
   pink:    { base: 'bg-pink-500/15    border-pink-500/40    text-pink-400',    active: 'bg-pink-500    border-pink-500    text-white'    },
   orange:  { base: 'bg-orange-500/15  border-orange-500/40  text-orange-400',  active: 'bg-orange-500  border-orange-500  text-white'    },
   red:     { base: 'bg-red-500/15     border-red-500/40     text-red-400',     active: 'bg-red-500     border-red-500     text-white'    },
+  indigo:  { base: 'bg-indigo-500/15  border-indigo-500/40  text-indigo-400',  active: 'bg-indigo-500  border-indigo-500  text-white'    },
   slate:   { base: 'bg-slate-500/15   border-slate-500/40   text-slate-400',   active: 'bg-slate-600   border-slate-600   text-white'    },
 }
 

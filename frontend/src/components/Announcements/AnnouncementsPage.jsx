@@ -25,10 +25,9 @@ function saveReadSet(s) {
 
 export default function AnnouncementsPage() {
   const [searchParams] = useSearchParams()
-  const { watchlist }  = useWatchlist()
-  const { announcements, loading, lastFetched, fetch } = useAnnouncements({ watchlist, autoFetch: true })
+  const { announcements, watchlistedAnnouncements, loading, fetch, readIds, unreadCount, markRead, markAllRead } = useGlobalAnnouncements()
+  
   const [page, setPage]       = useState(1)
-  const [readIds, setReadIds] = useState(loadReadSet)
   const [filters, setFilters] = useState({
     exchange: searchParams.get('exchange') || '',
     category: '',
@@ -88,21 +87,8 @@ export default function AnnouncementsPage() {
 
   function handleFilterChange(f) { setFilters(f); setPage(1) }
 
-  const unreadCount = useMemo(
-    () => filtered.filter(a => !readIds.has(a.id)).length,
-    [filtered, readIds]
-  )
-
-  const markRead = useCallback((id) => {
-    setReadIds(prev => {
-      const next = new Set(prev); next.add(id); saveReadSet(next); return next
-    })
-  }, [])
-
-  function markAllRead() {
-    const next = new Set(readIds)
-    filtered.forEach(a => next.add(a.id))
-    saveReadSet(next); setReadIds(next)
+  function handleMarkAllRead() {
+    markAllRead(filtered.map(a => a.id))
   }
 
   const getISTDate = (d = new Date()) => new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -131,7 +117,7 @@ export default function AnnouncementsPage() {
         </div>
         <div className="flex items-center gap-2">
           {unreadCount > 0 && (
-            <button onClick={markAllRead}
+            <button onClick={handleMarkAllRead}
               className="flex items-center gap-1.5 px-3 py-2 border border-white/5 rounded-xl text-xs text-textMuted hover:text-textPrimary hover:border-primary/40 transition bg-black/20 hover:bg-black/40 shadow-sm">
               <CheckCheck className="w-3.5 h-3.5" /> Mark all read
             </button>

@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, Star, Bell, Settings, TrendingUp, ChevronLeft, ChevronRight, LogOut, Crown, Layers, BarChart2, Globe, Newspaper, Briefcase, CalendarDays, Eye, Presentation, Zap, Users, Rocket, FileCheck2 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../contexts/AuthContext'
+import { useGlobalAnnouncements } from '../../contexts/AnnouncementsContext'
 import { apiClient } from '../../services/apiClient'
 import toast from 'react-hot-toast'
 
@@ -35,26 +36,8 @@ function markSeen()    { localStorage.setItem(LS_KEY, new Date().toISOString()) 
 
 export default function Sidebar({ collapsed, onToggle }) {
   const { currentUser, logout } = useAuth()
-  const [annCount, setAnnCount] = useState(0)
-
-  // Fetch count of announcements newer than last-seen timestamp
-  function refreshBadge() {
-    if (!currentUser) return
-    const since = getLastSeen()
-    const qs = since ? `?since=${encodeURIComponent(since)}` : ''
-    apiClient(`/api/announcements/my-count${qs}`)
-      .then((d) => setAnnCount(d?.total || 0))
-      .catch(() => {})
-  }
-
-  useEffect(() => { refreshBadge() }, [currentUser])
-
-  // Re-check badge whenever announcements are fetched from the Watchlist page
-  useEffect(() => {
-    const handler = () => refreshBadge()
-    window.addEventListener('announcements-fetched', handler)
-    return () => window.removeEventListener('announcements-fetched', handler)
-  }, [currentUser])
+  const { unreadCount, markAllRead } = useGlobalAnnouncements()
+  const annCount = unreadCount
 
   async function handleLogout() {
     try {
