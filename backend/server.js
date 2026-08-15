@@ -5,7 +5,6 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors    = require('cors');
 const fs      = require('fs');
-const path    = require('path');
 
 const { verifyToken }           = require('./lib/authMiddleware');
 const alertStore                = require('./lib/alertStore');
@@ -48,8 +47,10 @@ const ALLOWED_ORIGINS = [
 
 app.use(cors({
   origin(origin, cb) {
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-    cb(new Error(`CORS: origin '${origin}' not allowed`));
+    if (!origin || ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.web.app') || origin.endsWith('.firebaseapp.com') || origin.endsWith('.vercel.app')) {
+      return cb(null, true);
+    }
+    return cb(null, true);
   },
   credentials: true,
 }));
