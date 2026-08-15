@@ -25,7 +25,7 @@ function saveReadSet(s) {
 
 export default function AnnouncementsPage() {
   const [searchParams] = useSearchParams()
-  const { announcements, watchlistedAnnouncements, loading, fetch, readIds, unreadCount, markRead, markAllRead } = useGlobalAnnouncements()
+  const { announcements, watchlistedAnnouncements, loading, lastFetched, fetch, readIds, unreadCount, markRead, markAllRead } = useGlobalAnnouncements()
   
   const [page, setPage]       = useState(1)
   const [filters, setFilters] = useState({
