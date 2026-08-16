@@ -205,14 +205,14 @@ export default function IPOGmpPage() {
                     return 3;
                   };
                   return getWeight(a.tab_status) - getWeight(b.tab_status);
-                }).map((m) => {
+                }).map((m, idx) => {
                   const issuePrice = parseFloat(m.issue_price) || 0;
                   const gmp = parseFloat(m.gmp) || 0;
                   const estPrice = issuePrice + gmp;
                   const estGain = issuePrice > 0 ? (gmp / issuePrice) * 100 : 0;
                   
                   return (
-                    <tr key={m.id} className="hover:bg-white/5 transition-colors group">
+                    <tr key={`${m.id || 'ipo'}-${idx}`} className="hover:bg-white/5 transition-colors group">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           {m.company_logo ? (

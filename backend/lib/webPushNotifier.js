@@ -69,11 +69,11 @@ async function sendWebPush(subscription, payload, retries = 1) {
       }
 
       console.error(`[WebPush] Error sending notification (attempt ${attempt + 1}):`, err.message);
-      return { sent: false, expired: false };
+      return { sent: false, expired: false, error: err.message };
     }
   }
 
-  return { sent: false, expired: false };
+  return { sent: false, expired: false, error: 'Failed after retries' };
 }
 
 /**
@@ -164,7 +164,8 @@ async function sendWebPushToDevice(uid, deviceId, payload) {
     sent: result.sent ? 1 : 0, 
     failed: result.sent ? 0 : 1, 
     expired: 0, 
-    total: 1 
+    total: 1,
+    error: result.error
   };
 }
 

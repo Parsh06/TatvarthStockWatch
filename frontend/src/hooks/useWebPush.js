@@ -150,13 +150,16 @@ export function useWebPush() {
         return false;
       }
 
-      if (perm === 'default') {
-        perm = await withTimeout(
-          Notification.requestPermission(),
-          15000,
-          'Permission request timed out. Please check your browser notification settings.'
-        );
-        setPermission(perm);
+      if (perm === 'default' || perm === 'granted') {
+        if (perm === 'default') {
+          perm = await withTimeout(
+            Notification.requestPermission(),
+            15000,
+            'Permission request timed out. Please check your browser notification settings.'
+          );
+          setPermission(perm);
+        }
+        
         if (perm !== 'granted') {
           if (perm === 'denied') {
             toast.error('Notifications were blocked. You can re-enable them in your browser\'s site settings.', { duration: 6000 });
@@ -164,6 +167,11 @@ export function useWebPush() {
             toast.error('Notification permission was not granted.');
           }
           return false;
+        } else {
+          // Tell the user explicitly if it was already granted
+          if (Notification.permission === 'granted' && !isSubscribed) {
+            toast('Browser permission is already Allowed. Syncing subscription...', { icon: '🔄' });
+          }
         }
       }
 
@@ -263,7 +271,7 @@ export function useWebPush() {
       if (result.sent > 0) {
         toast.success(`Test notification sent to this device!`);
       } else {
-        toast.error('Could not send notification. Try re-enabling push.');
+        toast.error(`Could not send notification: ${result.error || 'Unknown error'}`);
       }
       return result;
     } catch (err) {

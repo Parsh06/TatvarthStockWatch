@@ -12,8 +12,8 @@
  */
 
 const CACHE_NAME = 'stockwatch-sw-v2';
-const APP_URL = 'https://tatvarthstockwatch.web.app';
-const APP_ORIGIN = new URL(APP_URL).origin;
+const APP_ORIGIN = self.location.origin;
+const APP_URL = self.location.origin;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Notification Configuration

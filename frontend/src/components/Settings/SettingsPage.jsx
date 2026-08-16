@@ -635,21 +635,19 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-2">
                     {isSubscribed ? (
                       <button
-                        type="button"
                         onClick={unsubscribe}
                         disabled={pushLoading}
-                        className="px-3 py-2 bg-danger/10 hover:bg-danger/20 text-danger text-xs font-semibold rounded-lg transition-colors disabled:opacity-50"
+                        className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold rounded-lg transition"
                       >
                         {pushLoading ? 'Disabling…' : 'Disable'}
                       </button>
                     ) : (
                       <button
-                        type="button"
                         onClick={subscribe}
                         disabled={pushLoading || permission === 'denied'}
-                        className="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold rounded-lg transition-colors disabled:opacity-50"
+                        className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold rounded-lg transition"
                       >
-                        {pushLoading ? 'Enabling…' : 'Enable'}
+                        {pushLoading ? 'Enabling…' : permission === 'granted' ? 'Sync Subscription' : 'Enable'}
                       </button>
                     )}
                   </div>
@@ -666,7 +664,13 @@ export default function SettingsPage() {
                   <div className="p-4 bg-danger/5 border border-danger/20 rounded-xl">
                     <p className="text-sm text-danger font-semibold mb-1">Notifications are blocked</p>
                     <p className="text-xs text-textMuted leading-relaxed">
-                      Open your browser site permissions, set Notifications to Allow, reload StockWatch, and enable push again.
+                      {permission === 'denied' ? (
+                        'Open your browser site permissions, set Notifications to Allow, reload StockWatch, and enable push again.'
+                      ) : permission === 'granted' && !isSubscribed ? (
+                        'Browser permission is currently Allowed. Click Sync Subscription to register this device.'
+                      ) : (
+                        'Receive instant market alerts directly in your browser or desktop.'
+                      )}
                     </p>
                   </div>
                 )}
