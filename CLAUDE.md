@@ -95,15 +95,16 @@ This is the heart of the application, running continuously via a cron trigger (`
 
 The frontend is a modular React SPA with the following key views:
 
-- **Dashboard (`DashboardPage.jsx`)**: The homepage. Shows a consolidated feed of announcements specifically for the user's watchlist.
+- **Dashboard (`DashboardPage.jsx`)**: The homepage. Shows a consolidated feed of announcements, market overview metrics, and quick links.
 - **Watchlist (`WatchlistPage.jsx`)**: Where users add/remove specific BSE/NSE scrip codes to monitor.
-- **IPO Verification (`IpoVerificationPage.jsx`)**: Complete Bulk & Single IPO Allotment verification engine.
-- **All Announcements (`AllAnnouncementsPage.jsx`)**: A raw, unfiltered firehose of every announcement happening in the market today.
+- **IPO Verification (`IpoVerificationPage.jsx`)**: Complete Bulk & Single IPO Allotment verification engine with GMP tracking.
+- **All Announcements (`AllAnnouncementsPage.jsx`)**: A raw, unfiltered firehose of every announcement happening in the market today with on-demand AI analysis.
 - **Board Meetings (`BoardMeetingsPage.jsx`)**: Tracks upcoming board meetings and their outcomes. Defaults to alphabetical sort by Company Name.
 - **AGM Updates (`AGMUpdatesPage.jsx`)**: Tracks scheduled Annual General Meetings.
-- **Gainers / Losers (`GainersLosersPage.jsx`)**: Tracks the top movers of the day across exchanges.
-- **Volume Spurt (`VolumeSpurtSection.jsx`)**: Tracks abnormal volume spikes in specific stocks, pulling directly from BSE APIs.
-- **Bulk & Block Deals (`BulkBlockPage.jsx`)**: Displays massive institutional trades, sorted alphabetically by default. Includes statistical breakdown (Buy vs Sell Cr value).
+- **Gainers / Losers (`GainersLosersPage.jsx`)**: Tracks the top movers of the day across exchanges, with data download support.
+- **Volume Spurt (`VolumeSpurtSection.jsx`)**: Tracks abnormal volume spikes in specific stocks, pulling directly from BSE and NSE APIs.
+- **Bulk & Block Deals (`BulkBlockPage.jsx`)**: Displays massive institutional trades across BSE and NSE, sorted alphabetically by default. Includes statistical breakdown (Buy vs Sell Cr value).
+- **Insider Trading (`InsiderTradingPage.jsx`)**: Tracks insider activities and disclosures with CSV download capabilities.
 - **Settings (`SettingsPage.jsx`)**: Notification preferences, Telegram linking, and category blocking logic.
 
 ---
@@ -112,16 +113,20 @@ The frontend is a modular React SPA with the following key views:
 
 | Method          | Path                      | Auth   | Description                                          |
 | --------------- | ------------------------- | ------ | ---------------------------------------------------- |
-| **GET**         | `/api/rates`              | Open   | Live BSE rates (cached)                              |
+| **GET**         | `/api/health`             | Open   | Live service health status                           |
+| **GET**         | `/api/dashboard/overview` | 🔒     | Market overview metrics                              |
 | **GET**         | `/api/cron/trigger`       | Secret | Global cron trigger                                  |
 | **GET**         | `/api/announcements`      | 🔒     | Fetch today's announcements from Mongo               |
+| **POST**        | `/api/announcements/:id/analyze`| 🔒| Triggers on-demand AI analysis using Gemini          |
 | **GET**         | `/api/prefs`              | 🔒     | Get user preferences from Firestore                  |
 | **GET/POST/DEL**| `/api/watchlist`          | 🔒     | Manage user's watchlist scripts                      |
 | **GET/POST/DEL**| `/api/ipo/applicants`     | 🔒     | Manage encrypted family portfolio                    |
-| **GET**         | `/api/ipo/symbols`        | 🔒     | Fetch active IPOs from KFintech payload              |
+| **GET**         | `/api/ipo/symbols`        | 🔒     | Fetch active IPO symbols from KFintech payload       |
 | **POST**        | `/api/ipo/verify[-bulk]`  | 🔒     | Validates PAN against KFintech Gateway               |
 | **POST**        | `/api/push/subscribe`     | 🔒     | Register a new web push device                       |
-| **GET**         | `/api/bse/*`              | 🔒     | Proxies BSE specific APIs (Deals, Spurt, AGM, etc)   |
+| **GET**         | `/api/bse/*`              | 🔒     | Proxies BSE specific APIs (Deals, Spurt, AGM, Insider, etc)|
+| **GET**         | `/api/nse/*`              | 🔒     | Proxies NSE specific APIs (Gainers, Losers, Deals, etc)|
+| **GET**         | `/api/market/*`           | 🔒     | Proxies Market APIs (Volume Spurt, IPO GMP, etc)     |
 
 ---
 

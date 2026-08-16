@@ -1,26 +1,23 @@
 # StockWatch
 
-A high-performance full-stack web application designed for comprehensive tracking of the Indian Stock Market (BSE & NSE). Easily track corporate announcements, volume spurts, block deals, and track IPO allotment status across your entire family portfolio. Receive multi-channel alerts enhanced with AI-generated summaries.
+A high-performance full-stack web application designed for comprehensive tracking of the Indian Stock Market (BSE & NSE). Easily track corporate announcements, volume spurts, block deals, insider trading, and track IPO allotment status across your entire family portfolio. Receive multi-channel alerts enhanced with AI-generated summaries and on-demand AI analysis.
 
 ---
 
 ## 🌟 Key Features
 
-- **IPO Allotment Tracker** — Bulk verify IPO allotment status for up to 10 family members simultaneously using PAN or Application Number. Integrates directly with KFintech AWS gateways. Applicant data is securely AES-256 encrypted before being stored.
-- **BSE/NSE Announcements** — Browse, filter, and export corporate announcements from both exchanges in real-time.
+- **IPO Allotment Tracker & GMP** — Bulk verify IPO allotment status for up to 10 family members simultaneously using PAN or Application Number. Track Grey Market Premium (GMP) and active IPO symbols. Integrates directly with KFintech AWS gateways. Applicant data is securely AES-256 encrypted before being stored.
+- **BSE/NSE Announcements & AI Analysis** — Browse, filter, and export corporate announcements from both exchanges in real-time. Includes an on-demand AI analysis endpoint (`/api/announcements/:id/analyze`) for deep insights using Google Gemini AI.
+- **Insider Trading Tracker** — Monitor and download insider trading activities and regulatory filings to stay ahead of market movements.
+- **Top Gainers & Losers** — Daily tracking and downloading capabilities for top gainers and losers across BSE and NSE.
+- **Volume Spurts & Block Deals** — Track abnormal trading spikes and massive institutional trades (Bulk & Block deals) across both exchanges.
 - **Personal Watchlist** — Add, remove, search, and filter specific scripts to monitor.
 - **Bulk Import** — Upload CSV or Excel files with intelligent cross-file and intra-file duplicate detection to populate your watchlist.
-- **AI-Powered Summaries** — Automatically summarizes lengthy, complex corporate announcements into human-readable insights using Google Gemini AI.
-- **Multi-Channel Alerts** — Receive instantaneous alerts for your watchlisted stocks via:
-  - Web Push Notifications
-  - Telegram Integration
-  - Email (Gmail SMTP)
-  - In-App Notifications
+- **Multi-Channel Alerts** — Receive instantaneous alerts for your watchlisted stocks via Web Push Notifications, Telegram, Email, and In-App Notifications.
 - **Advanced Market Tracking**:
   - Upcoming Board Meetings & AGM Updates
-  - Daily Top Gainers & Losers
-  - Volume Spurts (Abnormal trading spikes)
-  - Bulk & Block Deals Institutional Trading
+  - Intraday charts, historical data tables, and company quotes
+  - Market indices and economic calendars
 - **Premium Glassmorphism UI** — Responsive, sleek, and animated interfaces built with Tailwind CSS and Framer Motion. Supports Dark and Light themes.
 
 ---
@@ -77,7 +74,8 @@ npm run dev
 
 ## 🏗️ Architecture & APIs
 
-- **BSE / NSE Proxies**: The backend serves as a proxy to public BSE (`api.bseindia.com`) and NSE (`www.nseindia.com`) APIs to bypass browser CORS restrictions and implement rate-limiting and in-memory caching.
+- **BSE / NSE Proxies**: The backend serves as a proxy to public BSE and NSE APIs to bypass browser CORS restrictions and implement rate-limiting and in-memory caching.
+- **Rich Endpoint Ecosystem**: Specialized routes for `bse`, `nse`, `ipo`, `market`, and `dashboard` analytics providing everything from intraday charts to insider trading data.
 - **KFintech Integration**: Live IPO allotment verification is routed through AWS API gateways.
 - **Cron Jobs**: Vercel cron triggers periodically to scrape the latest announcements, pass them through user-defined blocked-category filters, generate AI summaries for passing announcements, and dispatch notifications via Web Push and Telegram. Duplicate alerts are prevented using ephemeral locking mechanisms.
 

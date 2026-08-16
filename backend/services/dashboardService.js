@@ -165,13 +165,25 @@ async function fetchIpo() {
     
     const all = ipoData?.data || [];
     const openIpos = all.filter(i => (i.tab_status || '').toLowerCase() === 'open');
-    openSymbols = openIpos.map(i => i.company_name).filter(Boolean);
+    openSymbols = openIpos.map(i => {
+      const gmp = parseFloat(i.gmp) || 0;
+      const issuePriceMatch = (i.issue_price || '').match(/\d+(\.\d+)?/g);
+      let issuePrice = 0;
+      if (issuePriceMatch) {
+        issuePrice = parseFloat(issuePriceMatch[issuePriceMatch.length - 1]);
+      }
+      const estGain = issuePrice > 0 ? (gmp / issuePrice) * 100 : 0;
+      
+      return {
+        name: i.company_name,
+        gmp: (i.gmp !== 'NA' && i.gmp != null && i.gmp !== '') ? parseFloat(i.gmp) : null,
+        estGain: estGain
+      };
+    }).filter(s => Boolean(s.name));
   } catch (e) {
     console.warn('[DashboardService] Open IPO fetch failed:', e.message);
   }
 
-  // No dummy fallback data! If it's empty, it returns 0.
-  
   const result = { activeCount: openSymbols.length, symbols: openSymbols.slice(0, 6) };
   toCache(CACHE_KEY, result, 5 * 60_000);
   return result;

@@ -57,6 +57,7 @@
 ## Data Flow
 
 ### User Views Announcements
+
 ```
 User clicks "Fetch Latest"
   → Frontend: GET /api/announcements?exchange=ALL
@@ -68,6 +69,7 @@ User clicks "Fetch Latest"
 ```
 
 ### User Adds Script to Watchlist
+
 ```
 User submits AddScriptModal
   → Frontend: checkDuplicates() against existing watchlist
@@ -77,6 +79,7 @@ User submits AddScriptModal
 ```
 
 ### Bulk Upload
+
 ```
 User uploads CSV/XLSX
   → papaparse / SheetJS parse to rows
@@ -88,6 +91,7 @@ User uploads CSV/XLSX
 ```
 
 ### Auto Notification (Cron)
+
 ```
 Vercel Cron fires every 6 hours
   → GET /api/cron/check-announcements
@@ -106,6 +110,7 @@ Vercel Cron fires every 6 hours
 ## Firestore Data Model
 
 ### `users/{uid}/watchlist/{docId}`
+
 ```
 {
   scriptName:         string,    // "Reliance Industries Ltd"
@@ -119,6 +124,7 @@ Vercel Cron fires every 6 hours
 ```
 
 ### `users/{uid}/notifications/{docId}`
+
 ```
 {
   announcementId: string,    // unique hash from BSE/NSE
@@ -136,6 +142,7 @@ Vercel Cron fires every 6 hours
 ```
 
 ### `users/{uid}/emailLogs/{docId}`
+
 ```
 {
   sentAt:            Timestamp,
@@ -150,71 +157,51 @@ Vercel Cron fires every 6 hours
 
 ## API Endpoints
 
-### GET `/api/health`
-Returns service health status.
+The backend exposes a wide array of endpoints structured by domain.
 
-**Response:**
-```json
-{ "status": "ok", "timestamp": "2026-06-15T10:00:00.000Z", "service": "stockwatch-backend" }
-```
+### General & Analytics
 
----
+- **GET** `/api/health` — Returns service health status.
+- **GET** `/api/dashboard/overview` — Consolidates market overview metrics.
+- **GET** `/api/market/volume-spurt` — Real-time volume spurt tracking.
+- **GET** `/api/market/ipo-gmp` — Live Grey Market Premium (GMP) data for IPOs.
 
-### GET `/api/announcements`
-Fetches combined BSE + NSE announcements.
+### Announcements & AI Analysis
 
-**Query Params:**
-| Param | Values | Default |
-|---|---|---|
-| `exchange` | `BSE`, `NSE`, `ALL` | `ALL` |
-| `scripCode` | BSE code e.g. `500325` | (all) |
-| `fromDate` | `YYYYMMDD` | 7 days ago |
-| `toDate` | `YYYYMMDD` | today |
+- **GET** `/api/announcements` — Fetches combined BSE + NSE announcements.
+  - Query Params: `exchange` (BSE/NSE/ALL), `scripCode`, `fromDate`, `toDate`.
+- **GET** `/api/announcements/bse` — BSE-only announcements.
+- **GET** `/api/announcements/nse` — NSE-only announcements.
+- **POST** `/api/announcements/:id/analyze` — Triggers on-demand AI analysis (Gemini) of an announcement's content or PDF.
 
-**Response:** Array of unified announcement objects.
+### Notification API
 
----
+- **POST** `/api/notify/email` — Triggers email notifications manually.
 
-### GET `/api/announcements/bse`
-BSE-only announcements. Same params as above.
+### BSE Specific Routes (`/api/bse/*`)
 
----
+- `/search`, `/quote`, `/company` — Script metadata and details.
+- `/intradaychart`, `/history`, `/historical-table` — Charting and historical data.
+- `/indices`, `/market`, `/calendar` — Market indices and economic calendar.
+- `/deals` — Bulk & Block deals.
+- `/companynews`, `/agm-updates`, `/board-meetings` — Specific corporate actions.
+- `/gainers-losers` — Top gainers and losers on BSE.
+- `/insider`, `/insider/download` — Tracking insider trading activities.
 
-### GET `/api/announcements/nse`
-NSE-only announcements. Query param: `symbol` (NSE symbol e.g. `RELIANCE`).
+### NSE Specific Routes (`/api/nse/*`)
 
----
+- `/gainers-losers`, `/top-gainers-losers-download` — Top NSE gainers/losers and CSV downloads.
+- `/deals` — NSE specific Block & Bulk deals.
 
-### POST `/api/notify/email`
-Triggers email notification.
+### IPO Verification System (`/api/ipo/*`)
 
-**Body:**
-```json
-{
-  "userEmail": "user@example.com",
-  "userName": "John",
-  "announcements": [
-    {
-      "scriptName": "Reliance Industries",
-      "scriptCode": "500325",
-      "exchange": "BSE",
-      "category": "Board Meeting",
-      "subject": "Board meeting on 20 June 2026",
-      "announcementDate": "2026-06-15",
-      "pdfUrl": "https://...",
-      "sourceUrl": "https://..."
-    }
-  ]
-}
-```
+- `/symbols` — Retrieves active IPO symbols from KFintech.
+- `/verify`, `/verify-bulk` — Verifies allotment via KFintech proxy.
+- `/applicants` (GET, POST, DELETE) — Manages encrypted family portfolio for bulk verification.
 
-**Response:** `{ "success": true, "messageId": "..." }`
+### Internal Cron
 
----
-
-### GET `/api/cron/check-announcements`
-Internal cron endpoint. Called by Vercel cron scheduler.
-Optionally protected by `Authorization: Bearer <CRON_SECRET>` header.
+- **GET** `/api/cron/check-announcements` — Called by Vercel cron scheduler. Optionally protected by `CRON_SECRET`.
 
 ---
 
@@ -287,24 +274,29 @@ Output:
 ## Security Model
 
 ### Firebase Auth
+
 - All authenticated routes require valid Firebase ID token
 - Firebase SDK handles token refresh automatically
 
 ### Firestore Rules
+
 ```
 match /users/{userId}/{document=**} {
   allow read, write: if request.auth != null && request.auth.uid == userId;
 }
 ```
+
 Users can only read/write their own data. No cross-user access.
 
 ### Backend (Vercel)
+
 - BSE/NSE API calls are server-side only (avoids browser CORS)
 - Rate limiting: 60 requests/minute per IP (in-memory)
 - Email endpoint validates recipient email with regex before sending
 - Cron endpoint optionally protected by `CRON_SECRET` env var
 
 ### Environment Variables
+
 - No credentials in source code — all via `.env` (gitignored)
 - GitHub Actions injects secrets at build/deploy time
 - Frontend secrets are Vite build-time injected (public Firebase config is safe by design — Firestore rules enforce authorization)

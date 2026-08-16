@@ -24,7 +24,7 @@ export default function IpoActivityWidget({ data, loading, error }) {
           <Rocket className="w-4 h-4 text-primary" />
           <h2 className="text-sm font-semibold text-textPrimary">IPO Activity</h2>
         </div>
-        <Link to="/ipo-check" className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition">
+        <Link to="/ipo-gmp" className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition">
           IPO Center <ArrowRight className="w-3 h-3" />
         </Link>
       </div>
@@ -45,20 +45,33 @@ export default function IpoActivityWidget({ data, loading, error }) {
           {/* Symbol list */}
           {data.symbols.length > 0 ? (
             <div className="space-y-2 flex-1">
-              {data.symbols.map(symbol => (
-                <Link
-                  key={symbol}
-                  to="/ipo-check"
-                  className="flex items-center justify-between px-3 py-2.5 bg-primary/5 border border-primary/15 rounded-xl hover:bg-primary/10 transition group"
-                >
-                  <span className="text-sm font-semibold text-textPrimary group-hover:text-primary transition">
-                    {symbol}
-                  </span>
-                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                    OPEN
-                  </span>
-                </Link>
-              ))}
+              {data.symbols.map(symbol => {
+                const name = typeof symbol === 'string' ? symbol : symbol.name;
+                const gmp = typeof symbol === 'string' ? null : symbol.gmp;
+                const estGain = typeof symbol === 'string' ? 0 : symbol.estGain;
+
+                return (
+                  <Link
+                    key={name}
+                    to="/ipo-gmp"
+                    className="flex items-center justify-between px-3 py-2.5 bg-primary/5 border border-primary/15 rounded-xl hover:bg-primary/10 transition group"
+                  >
+                    <span className="text-sm font-semibold text-textPrimary group-hover:text-primary transition truncate mr-2">
+                      {name}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {gmp !== null && (
+                        <span className={`text-[11px] font-semibold ${estGain > 0 ? 'text-emerald-400' : estGain < 0 ? 'text-red-400' : 'text-textMuted'}`}>
+                          {estGain > 0 ? '+' : ''}{estGain.toFixed(1)}%
+                        </span>
+                      )}
+                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                        OPEN
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           ) : (
             <p className="text-sm text-textMuted text-center py-4">No active IPO symbols available</p>
