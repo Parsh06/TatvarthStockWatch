@@ -1,153 +1,147 @@
-import { useState, useEffect } from 'react'
-import { TrendingUp, TrendingDown, RefreshCw, AlertCircle, ArrowUpRight, ArrowDownRight, Download } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { TrendingUp, TrendingDown, RefreshCw, AlertCircle, ArrowUpRight, ArrowDownRight, Download, Filter } from 'lucide-react'
 import clsx from 'clsx'
 import toast from 'react-hot-toast'
 import { apiClient } from '../../services/apiClient'
 import { auth } from '../../services/firebase'
 import PageTransition from '../Common/PageTransition'
 import { Spinner } from '../Common/Loader'
+import { normalizeBseData, normalizeNseData } from '../../utils/normalizeGainersLosers'
+
+const TABLE_COLUMNS = {
+  BSE: [
+    'Security Code',
+    'Security Name',
+    'Group',
+    'LTP',
+    'Chg',
+    '% Chg',
+  ],
+  NSE: [
+    'Symbol',
+    'Open',
+    'High',
+    'Low',
+    'Prev. Close',
+    'LTP',
+    '%chng',
+    'Volume (Shares)',
+    'Value',
+    'CA',
+  ],
+}
+
+const NSE_CATEGORIES = [
+  { key: 'allSec', label: 'All Securities' },
+  { key: 'NIFTY', label: 'NIFTY 50' },
+  { key: 'BANKNIFTY', label: 'BANK NIFTY' },
+  { key: 'NIFTYNEXT50', label: 'NIFTY NEXT 50' },
+  { key: 'SecGtr20', label: 'Securities > Rs 20' },
+  { key: 'SecLwr20', label: 'Securities < Rs 20' },
+  { key: 'FOSec', label: 'F&O Securities' },
+]
 
 export default function GainersLosersPage() {
+  // Core single source of truth state
+  const [exchange, setExchange] = useState('BSE') // 'BSE' or 'NSE'
   const [type, setType] = useState('gainer') // 'gainer' or 'loser'
-  const [exchange, setExchange] = useState('BSE')
-  
-  // BSE specific state
-  const [bseData, setBseData] = useState([])
-  
-  // NSE specific state
-  const [nseData, setNseData] = useState([])
-
+  const [nseCategory, setNseCategory] = useState('allSec')
+  const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState(null)
   const [lastRefreshed, setLastRefreshed] = useState(new Date())
 
-  const handleDownloadNseCsv = async () => {
-    setDownloading(true)
-    let downloadedSuccess = false
-    const filename = `Tatvarth_NSE_TOP${type === 'gainer' ? 'gainers' : 'loosers'}.csv`
-
-    try {
-      // 1. Try backend server download route first (fetches official NSE CSV)
-      try {
-        const token = await auth?.currentUser?.getIdToken(false).catch(() => null)
-        const headers = {}
-        if (token) headers['Authorization'] = `Bearer ${token}`
-
-        const backendUrl = import.meta.env.VITE_BACKEND_URL || ''
-        const nseIndex = type === 'gainer' ? 'GAINERS' : 'LOSERS'
-        const res = await fetch(`${backendUrl}/api/nse/top-gainers-losers-download?index=${nseIndex}`, { headers })
-
-        if (res.ok) {
-          const blob = await res.blob()
-          if (blob && blob.size > 50) {
-            const downloadUrl = window.URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = downloadUrl
-            a.download = filename
-            document.body.appendChild(a)
-            a.click()
-            a.remove()
-            window.URL.revokeObjectURL(downloadUrl)
-            downloadedSuccess = true
-            toast.success(`Downloaded ${filename} successfully!`)
-          }
-        }
-      } catch (backendErr) {
-        console.warn('[Backend CSV download route notice]:', backendErr.message)
-      }
-
-      // 2. Fallback: If backend returned 404 or failed, generate CSV directly from live NSE dataset
-      if (!downloadedSuccess) {
-        const dataToExport = nseData && nseData.length > 0 ? nseData : []
-        if (dataToExport.length === 0) {
-          toast.error('No NSE market data available to download.')
-          return
-        }
-
-        const headers = ['Symbol', 'Series', 'Open Price (₹)', 'High Price (₹)', 'Low Price (₹)', 'LTP (₹)', 'Prev Close (₹)', 'Price Change (₹)', '% Change', 'Volume']
-        const rows = dataToExport.map(item => [
-          `"${(item.symbol || '').replace(/"/g, '""')}"`,
-          `"${(item.series || 'EQ').replace(/"/g, '""')}"`,
-          item.openPrice || item.open_price || 0,
-          item.highPrice || item.high_price || 0,
-          item.lowPrice || item.low_price || 0,
-          item.ltp || 0,
-          item.previousPrice || item.prev_price || 0,
-          item.net_price || item.netPrice || 0,
-          item.perChange || 0,
-          item.trade_quantity || item.tradeQuantity || 0,
-        ].join(','))
-
-        const csvContent = [headers.join(','), ...rows].join('\n')
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-        const downloadUrl = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = downloadUrl
-        a.download = filename
-        document.body.appendChild(a)
-        a.click()
-        a.remove()
-        window.URL.revokeObjectURL(downloadUrl)
-        toast.success(`Downloaded ${filename} successfully!`)
-      }
-    } catch (err) {
-      console.error('[NSE CSV Download Error]', err)
-      toast.error('Failed to download CSV from NSE. Please try again.')
-    } finally {
-      setDownloading(false)
-    }
-  }
+  // Ref to track active AbortController for race condition prevention
+  const abortControllerRef = useRef(null)
 
   const fetchData = async () => {
+    // Abort previous in-flight request if user rapidly toggled options
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     setLoading(true)
     setError(null)
-    
+    setData([]) // Immediately clear old dataset to avoid showing stale data under new headers
+
     try {
-      const bseUrl = `/api/bse/gainers-losers?GLtype=${type}&IndxGrp=AllMkt&IndxGrpval=AllMkt&orderby=all`
-      
-      const nseType = type === 'gainer' ? 'gainers' : 'loosers'
-      const nseUrl = `/api/nse/gainers-losers?index=${nseType}`
-      
-      const [bseRes, nseRes] = await Promise.allSettled([
-        apiClient(bseUrl),
-        apiClient(nseUrl)
-      ])
-      
-      if (bseRes.status === 'fulfilled') {
-        let items = bseRes.value?.Table || []
-        items.sort((a, b) => Math.abs(b.change_percent) - Math.abs(a.change_percent))
-        setBseData(items)
-      } else {
-        console.error('[BSE fetch error]', bseRes.reason)
-      }
-      
-      if (nseRes.status === 'fulfilled') {
-        const res = nseRes.value
-        let items = []
-        if (res?.allSec?.data) items = res.allSec.data
-        else if (res?.NIFTY?.data) items = res.NIFTY.data
+      if (exchange === 'BSE') {
+        const bseUrl = `/api/bse/gainers-losers?GLtype=${type}&IndxGrp=AllMkt&IndxGrpval=AllMkt&orderby=all`
+        const res = await apiClient(bseUrl, { signal: controller.signal })
         
-        items.sort((a, b) => Math.abs(b.perChange || 0) - Math.abs(a.perChange || 0))
-        setNseData(items)
+        if (controller.signal.aborted) return
+
+        const rawList = res?.Table || []
+        const normalized = rawList
+          .map(normalizeBseData)
+          .filter(Boolean)
+
+        // Sorting: Gainers descending, Losers ascending by percentChange
+        if (type === 'gainer') {
+          normalized.sort((a, b) => b.percentChange - a.percentChange)
+        } else {
+          normalized.sort((a, b) => a.percentChange - b.percentChange)
+        }
+
+        setData(normalized)
       } else {
-        console.error('[NSE fetch error]', nseRes.reason)
+        // NSE request passing both index=gainers/loosers and category params for remote/local compatibility
+        const nseIndexParam = type === 'gainer' ? 'gainers' : 'loosers'
+        const nseUrl = `/api/nse/gainers-losers?index=${nseIndexParam}&type=${type}&category=${nseCategory}`
+        const res = await apiClient(nseUrl, { signal: controller.signal })
+
+        if (controller.signal.aborted) return
+
+        let normalized = []
+        if (Array.isArray(res?.data)) {
+          normalized = res.data
+        } else {
+          let rawList = []
+          if (res?.[nseCategory]?.data) {
+            rawList = res[nseCategory].data
+          } else if (res?.allSec?.data) {
+            rawList = res.allSec.data
+          } else if (res?.NIFTY?.data) {
+            rawList = res.NIFTY.data
+          }
+          normalized = rawList.map(normalizeNseData).filter(Boolean)
+        }
+
+        // Sorting: Gainers descending, Losers ascending by percentChange
+        if (type === 'gainer') {
+          normalized.sort((a, b) => b.percentChange - a.percentChange)
+        } else {
+          normalized.sort((a, b) => a.percentChange - b.percentChange)
+        }
+
+        setData(normalized)
       }
 
       setLastRefreshed(new Date())
     } catch (err) {
-      console.error(err)
+      if (err.name === 'AbortError') return
+      console.error('[GainersLosers Fetch Error]', err)
       setError('Failed to fetch data. Please try again.')
     } finally {
-      setLoading(false)
+      if (!controller.signal.aborted) {
+        setLoading(false)
+      }
     }
   }
 
-  // Refetch when filters change
+  // Refetch when exchange, type, or nseCategory changes
   useEffect(() => {
     fetchData()
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type])
+  }, [exchange, type, nseCategory])
 
   // Polling every 60 seconds
   useEffect(() => {
@@ -155,116 +149,71 @@ export default function GainersLosersPage() {
       fetchData()
     }, 60000)
     return () => clearInterval(interval)
-  }, [type]) // Re-bind on state change
+  }, [exchange, type, nseCategory])
 
-  const renderBseTable = () => (
-    <div className="glass-panel rounded-2xl overflow-hidden flex flex-col h-[500px]">
-      <div className="bg-white/5 border-b border-white/5 px-6 py-4 font-semibold flex items-center justify-between sticky top-0 z-20">
-        <span className="text-textPrimary tracking-tight">BSE {type === 'gainer' ? 'Gainers' : 'Losers'}</span>
-      </div>
-      <div className="overflow-y-auto overflow-x-auto flex-1 relative scrollbar-hide">
-        <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
-            <tr>
-              <th className="px-4 py-3 font-medium">BSE Code</th>
-              <th className="px-4 py-3 font-medium">Company Name</th>
-              <th className="px-4 py-3 font-medium text-right">LTP (₹)</th>
-              <th className="px-4 py-3 font-medium text-right">Change</th>
-              <th className="px-4 py-3 font-medium text-right">% Change</th>
-              <th className="px-4 py-3 font-medium text-right">Volume</th>
-              <th className="w-full"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/5">
-            {bseData.map((item, idx) => (
-              <tr key={`${item.scrip_cd}-${idx}`} className="hover:bg-white/5 transition-colors group">
-                <td className="px-4 py-3 font-medium">{item.scrip_cd}</td>
-                <td className="px-4 py-3">
-                  <a href={item.URL} target="_blank" rel="noreferrer" className="hover:text-primary transition-colors" title={item.LONG_NAME || item.scripname}>
-                    {(item.LONG_NAME || item.scripname)?.length > 30 
-                      ? (item.LONG_NAME || item.scripname).substring(0, 30) + '...' 
-                      : (item.LONG_NAME || item.scripname)}
-                  </a>
-                </td>
-                <td className="px-4 py-3 text-right font-medium">{item.ltradert?.toFixed(2)}</td>
-                <td className={clsx("px-4 py-3 text-right font-medium", item.change_val >= 0 ? "text-green-500" : "text-red-500")}>
-                  {item.change_val > 0 ? '+' : ''}{item.change_val?.toFixed(2)}
-                </td>
-                <td className={clsx("px-4 py-3 text-right font-medium", item.change_percent >= 0 ? "text-green-500" : "text-red-500")}>
-                  {item.change_percent > 0 ? '+' : ''}{item.change_percent?.toFixed(2)}%
-                </td>
-                <td className="px-4 py-3 text-right text-textMuted">
-                  {item.trd_vol?.toLocaleString('en-IN')}
-                </td>
-                <td className="w-full"></td>
-              </tr>
-            ))}
-            {bseData.length === 0 && !loading && (
-              <tr>
-                <td colSpan="7" className="px-4 py-12 text-center text-textMuted">No records found.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
+  const handleDownloadCsv = async () => {
+    setDownloading(true)
+    const filename = exchange === 'NSE' 
+      ? `Tatvarth_NSE_TOP${type === 'gainer' ? 'gainers' : 'loosers'}_${nseCategory}.csv`
+      : `Tatvarth_BSE_TOP${type === 'gainer' ? 'gainers' : 'loosers'}.csv`
 
-  const renderNseTable = () => (
-    <div className="glass-panel rounded-2xl overflow-hidden flex flex-col h-[500px]">
-      <div className="bg-white/5 border-b border-white/5 px-6 py-4 font-semibold flex items-center justify-between sticky top-0 z-20">
-        <span className="text-textPrimary tracking-tight">NSE {type === 'gainer' ? 'Gainers' : 'Losers'} (All Securities)</span>
-        <button
-          onClick={handleDownloadNseCsv}
-          disabled={downloading}
-          title="Download NSE Top Gainers & Losers CSV (All Securities)"
-          className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 rounded-xl text-xs font-semibold transition-all disabled:opacity-50 shadow-sm"
-        >
-          <Download className={clsx("w-3.5 h-3.5", downloading && "animate-bounce")} />
-          <span>{downloading ? 'Downloading...' : 'Download CSV'}</span>
-        </button>
-      </div>
-      <div className="overflow-y-auto overflow-x-auto flex-1 relative scrollbar-hide">
-        <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
-            <tr>
-              <th className="px-4 py-3 font-medium">Symbol</th>
-              <th className="px-4 py-3 font-medium">Series</th>
-              <th className="px-4 py-3 font-medium text-right">LTP (₹)</th>
-              <th className="px-4 py-3 font-medium text-right">Change</th>
-              <th className="px-4 py-3 font-medium text-right">% Change</th>
-              <th className="px-4 py-3 font-medium text-right">Volume</th>
-              <th className="w-full"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/5">
-            {nseData.map((item, idx) => (
-              <tr key={`${item.symbol}-${idx}`} className="hover:bg-white/5 transition-colors group">
-                <td className="px-4 py-3 font-medium">{item.symbol}</td>
-                <td className="px-4 py-3 text-textMuted">{item.series}</td>
-                <td className="px-4 py-3 text-right font-medium">{item.ltp?.toFixed(2)}</td>
-                <td className={clsx("px-4 py-3 text-right font-medium", item.net_price >= 0 ? "text-green-500" : "text-red-500")}>
-                  {item.net_price > 0 ? '+' : ''}{item.net_price?.toFixed(2)}
-                </td>
-                <td className={clsx("px-4 py-3 text-right font-medium", item.perChange >= 0 ? "text-green-500" : "text-red-500")}>
-                  {item.perChange > 0 ? '+' : ''}{item.perChange?.toFixed(2)}%
-                </td>
-                <td className="px-4 py-3 text-right text-textMuted">
-                  {item.trade_quantity?.toLocaleString('en-IN')}
-                </td>
-                <td className="w-full"></td>
-              </tr>
-            ))}
-            {nseData.length === 0 && !loading && (
-              <tr>
-                <td colSpan="7" className="px-4 py-12 text-center text-textMuted">No records found.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
+    try {
+      if (!data || data.length === 0) {
+        toast.error(`No ${exchange} data available to download.`)
+        return
+      }
+
+      const headers = TABLE_COLUMNS[exchange]
+      let rows = []
+
+      if (exchange === 'BSE') {
+        rows = data.map(item => [
+          `"${(item.securityCode || '').replace(/"/g, '""')}"`,
+          `"${(item.securityName || '').replace(/"/g, '""')}"`,
+          `"${(item.group || 'A').replace(/"/g, '""')}"`,
+          item.ltp || 0,
+          item.change || 0,
+          item.percentChange || 0,
+        ].join(','))
+      } else {
+        rows = data.map(item => [
+          `"${(item.symbol || '').replace(/"/g, '""')}"`,
+          item.open || 0,
+          item.high || 0,
+          item.low || 0,
+          item.previousClose || 0,
+          item.ltp || 0,
+          item.percentChange || 0,
+          item.volume || 0,
+          item.value || 0,
+          `"${(item.ca || '-').replace(/"/g, '""')}"`,
+        ].join(','))
+      }
+
+      const csvContent = [headers.join(','), ...rows].join('\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = downloadUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(downloadUrl)
+      toast.success(`Downloaded ${filename} successfully!`)
+    } catch (err) {
+      console.error('[CSV Download Error]', err)
+      toast.error('Failed to download CSV. Please try again.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const activeCategoryLabel = exchange === 'NSE' 
+    ? (NSE_CATEGORIES.find(c => c.key === nseCategory)?.label || 'All Securities') 
+    : 'All Securities'
+
+  const columns = TABLE_COLUMNS[exchange]
 
   return (
     <PageTransition className="space-y-6">
@@ -293,7 +242,7 @@ export default function GainersLosersPage() {
         </div>
       </div>
 
-      {/* Type Toggle & Exchange Filters */}
+      {/* Type Toggle & Exchange Filters & Category Selector */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 glass-panel rounded-2xl p-4">
         
         {/* Gainers / Losers Switch */}
@@ -318,8 +267,28 @@ export default function GainersLosersPage() {
           </button>
         </div>
 
-        {/* Exchange Switch & CSV Download */}
-        <div className="flex items-center gap-3">
+        {/* Exchange Switch & Category Dropdown */}
+        <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+          
+          {/* NSE Index Category Selector */}
+          {exchange === 'NSE' && (
+            <div className="flex items-center gap-2 bg-black/20 border border-white/5 rounded-xl px-3 py-1.5 shadow-inner">
+              <Filter className="w-3.5 h-3.5 text-primary" />
+              <select
+                value={nseCategory}
+                onChange={(e) => setNseCategory(e.target.value)}
+                className="bg-transparent text-textPrimary text-xs font-semibold outline-none cursor-pointer pr-1"
+              >
+                {NSE_CATEGORIES.map(cat => (
+                  <option key={cat.key} value={cat.key} className="bg-surface text-textPrimary">
+                    {cat.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* BSE / NSE Switch */}
           <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 shadow-inner">
             <button
               onClick={() => setExchange('BSE')}
@@ -340,6 +309,7 @@ export default function GainersLosersPage() {
               NSE
             </button>
           </div>
+
         </div>
       </div>
 
@@ -350,16 +320,111 @@ export default function GainersLosersPage() {
         </div>
       )}
 
-      {/* Main Content Area - Full Width Table */}
+      {/* Main Content Area - Dynamic Table Card */}
       <div className="relative mt-6">
         {loading && (
           <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-30 flex items-center justify-center rounded-xl">
             <Spinner size="lg" />
           </div>
         )}
-        
-        <div className="w-full">
-          {exchange === 'BSE' ? renderBseTable() : renderNseTable()}
+
+        <div key={`table-${exchange}-${type}-${nseCategory}`} className="glass-panel rounded-2xl overflow-hidden flex flex-col h-[500px]">
+          
+          {/* Card Header with Dynamic Title & Single Download Button */}
+          <div className="bg-white/5 border-b border-white/5 px-6 py-4 font-semibold flex items-center justify-between sticky top-0 z-20">
+            <span className="text-textPrimary tracking-tight font-semibold">
+              {exchange} {type === 'gainer' ? 'Gainers' : 'Losers'} {exchange === 'NSE' ? `(${activeCategoryLabel})` : ''}
+            </span>
+            <button
+              onClick={handleDownloadCsv}
+              disabled={downloading || data.length === 0}
+              title={`Download ${exchange} Top ${type === 'gainer' ? 'Gainers' : 'Losers'} CSV`}
+              className="flex items-center gap-2 px-3.5 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 rounded-xl text-xs font-semibold transition-all disabled:opacity-50 shadow-sm"
+            >
+              <Download className={clsx("w-3.5 h-3.5", downloading && "animate-bounce")} />
+              <span>{downloading ? 'Downloading...' : 'Download CSV'}</span>
+            </button>
+          </div>
+
+          {/* Dynamic Table Body matching Canonical Column Headers */}
+          <div className="overflow-y-auto overflow-x-auto flex-1 relative scrollbar-hide">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
+                <tr>
+                  {columns.map((colHeader, idx) => (
+                    <th 
+                      key={colHeader} 
+                      className={clsx(
+                        "px-4 py-3 font-medium",
+                        idx >= 2 && idx < columns.length - 1 ? "text-right" : ""
+                      )}
+                    >
+                      {colHeader}
+                    </th>
+                  ))}
+                  <th className="w-full"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {exchange === 'BSE' ? (
+                  data.map((item, idx) => (
+                    <tr key={`${item.securityCode}-${idx}`} className="hover:bg-white/5 transition-colors group">
+                      <td className="px-4 py-3 font-medium">{item.securityCode}</td>
+                      <td className="px-4 py-3 font-medium">
+                        {item.rawUrl ? (
+                          <a href={item.rawUrl} target="_blank" rel="noreferrer" className="hover:text-primary transition-colors" title={item.securityName}>
+                            {item.securityName.length > 35 ? item.securityName.substring(0, 35) + '...' : item.securityName}
+                          </a>
+                        ) : (
+                          item.securityName
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-textMuted">{item.group}</td>
+                      <td className="px-4 py-3 text-right font-medium">{item.ltp?.toFixed(2)}</td>
+                      <td className={clsx("px-4 py-3 text-right font-medium", item.change >= 0 ? "text-green-500" : "text-red-500")}>
+                        {item.change > 0 ? '+' : ''}{item.change?.toFixed(2)}
+                      </td>
+                      <td className={clsx("px-4 py-3 text-right font-medium", item.percentChange >= 0 ? "text-green-500" : "text-red-500")}>
+                        {item.percentChange > 0 ? '+' : ''}{item.percentChange?.toFixed(2)}%
+                      </td>
+                      <td className="w-full"></td>
+                    </tr>
+                  ))
+                ) : (
+                  data.map((item, idx) => (
+                    <tr key={`${item.symbol}-${idx}`} className="hover:bg-white/5 transition-colors group">
+                      <td className="px-4 py-3 font-medium text-textPrimary">{item.symbol}</td>
+                      <td className="px-4 py-3 text-textMuted">{item.open?.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-textMuted text-right">{item.high?.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-textMuted text-right">{item.low?.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-textMuted text-right">{item.previousClose?.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right font-medium text-textPrimary">{item.ltp?.toFixed(2)}</td>
+                      <td className={clsx("px-4 py-3 text-right font-medium", item.percentChange >= 0 ? "text-green-500" : "text-red-500")}>
+                        {item.percentChange > 0 ? '+' : ''}{item.percentChange?.toFixed(2)}%
+                      </td>
+                      <td className="px-4 py-3 text-right text-textMuted">
+                        {item.volume?.toLocaleString('en-IN')}
+                      </td>
+                      <td className="px-4 py-3 text-right text-textMuted">
+                        {item.value?.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-textMuted max-w-[150px] truncate" title={item.ca}>
+                        {item.ca}
+                      </td>
+                      <td className="w-full"></td>
+                    </tr>
+                  ))
+                )}
+                {data.length === 0 && !loading && (
+                  <tr>
+                    <td colSpan={columns.length + 1} className="px-4 py-12 text-center text-textMuted">
+                      No {type === 'gainer' ? 'gainers' : 'losers'} found for {exchange} {exchange === 'NSE' ? `(${activeCategoryLabel})` : ''}.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
