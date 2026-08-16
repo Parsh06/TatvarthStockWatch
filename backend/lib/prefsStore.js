@@ -87,6 +87,22 @@ async function savePrefs(uid, prefs) {
 
   const { db } = require('./firebaseAdmin');
   await db.collection('users').doc(uid).set({ prefs: merged }, { merge: true });
+
+  // Sync to Redis hot preference cache and scope:ALL set immediately
+  try {
+    const redisNotifStore = require('./redis/redisNotificationStore');
+    const { SCOPE } = require('./notificationScope');
+    await redisNotifStore.setPrefs(uid, merged);
+
+    if (merged.notificationScope === SCOPE.ALL || merged.notificationScope === 'ALL_ANNOUNCEMENTS') {
+      await redisNotifStore.addScopeAllUser(uid);
+    } else {
+      await redisNotifStore.removeScopeAllUser(uid);
+    }
+  } catch (e) {
+    // Non-critical background Redis sync error
+  }
+
   return merged;
 }
 

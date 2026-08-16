@@ -567,6 +567,29 @@ app.patch('/api/watchlist/:id/alert', verifyToken, userMutationRateLimiter, asyn
 
 
 
+// ── Notification Health Diagnostic Endpoint ───────────────────────────────────
+app.get('/api/health/notification', async (req, res) => {
+  try {
+    const { UPSTASH_ENABLED } = require('./lib/redis/redisClient');
+    const redisNotifStore = require('./lib/redis/redisNotificationStore');
+    const allScopeUsers = await redisNotifStore.getScopeAllUsers();
+
+    res.json({
+      redis: {
+        status: UPSTASH_ENABLED ? 'healthy' : 'disabled',
+      },
+      routing: {
+        allScopeUsersCount: allScopeUsers.length,
+      },
+      notificationEngine: {
+        mode: process.env.NOTIFICATION_ENGINE_MODE || 'inverted',
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Web Push Notifications (Multi-Device) ─────────────────────────────────────
 app.get('/api/push/public-key', (req, res) => {
   res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' });

@@ -25,6 +25,11 @@ const { classifyAnnouncementBatch }          = require('./categoryClassifier');
 const { acquireDedupLock }                   = require('./notificationDedup');
 const { getDb }                              = require('./mongoClient');
 
+const { resolveRecipientsForBatch }          = require('./notification/notificationRouter');
+const { evaluateNotificationFilter }         = require('./notification/notificationFilter');
+const { dispatchPushBatch }                  = require('./notification/notificationDispatcher');
+const redisNotifStore                        = require('./redis/redisNotificationStore');
+
 // Telegram rate-limit: ≤ ~3 msg/s per Telegram Bot API limits
 const TELEGRAM_DELAY_MS = 350;
 function _delay(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -88,7 +93,13 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
       console.log(`[NotifEngine:${runId}] Classified ${classified.length} announcements (${unknownCount} unknown)`);
     }
 
-    // ── STEP 2: Iterate all Firebase users ──────────────────────────────────
+    const mode = process.env.NOTIFICATION_ENGINE_MODE || 'inverted';
+
+    if (mode === 'inverted' || mode === 'shadow') {
+      return await processInvertedAnnouncements({ newAnnouncements, classified, stats, runId, verbose, isShadow: mode === 'shadow' });
+    }
+
+    // ── STEP 2 (LEGACY): Iterate all Firebase users ──────────────────────────
     let pageToken;
     do {
       const result = await admin.auth().listUsers(100, pageToken);
@@ -248,26 +259,80 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
     console.error(`[NotifEngine:${runId}] Fatal error:`, err.message);
     stats.failed++;
   }
+}
+
+/**
+ * Inverted Notification Engine Flow (O(M) Announcements -> Target Users)
+ */
+async function processInvertedAnnouncements({ newAnnouncements, classified, stats, runId, verbose, isShadow = false }) {
+  const startTime = Date.now();
+  const prefsStore = require('./prefsStore');
+
+  // 1. Resolve target UIDs for the entire announcement batch
+  const targetUids = await resolveRecipientsForBatch(newAnnouncements);
+  stats.usersProcessed = targetUids.size;
+
+  if (verbose) {
+    console.log(`[NotifEngine:${runId}] Inverted Router resolved ${targetUids.size} unique target users`);
+  }
+
+  const toDispatch = [];
+
+  // 2. Evaluate category blocking & dedup for target users only
+  for (const uid of targetUids) {
+    let prefs = await redisNotifStore.getPrefs(uid);
+    if (!prefs) {
+      try {
+        prefs = await prefsStore.getPrefs(uid);
+        if (prefs) redisNotifStore.setPrefs(uid, prefs).catch(() => {});
+      } catch (err) {
+        console.error(`[NotifEngine:${runId}] Prefs fetch error for ${uid} — skip (fail-closed)`);
+        continue;
+      }
+    }
+
+    if (!prefs) continue;
+
+    for (const { announcement: ann, classification } of classified) {
+      const decision = evaluateNotificationFilter({
+        announcement: ann,
+        classification,
+        preferences: prefs,
+        channel: 'push',
+      });
+
+      if (decision.shouldNotify) {
+        // Atomic deduplication via Redis SET NX EX
+        const acquired = await redisNotifStore.acquireDedupLock(ann.id, uid, 'PUSH', 86400);
+        if (acquired) {
+          toDispatch.push({ uid, announcement: ann });
+        } else {
+          stats.alreadySent++;
+        }
+      } else {
+        stats.categoryBlocked++;
+      }
+    }
+  }
+
+  stats.queued = toDispatch.length;
+
+  if (isShadow) {
+    console.log(`[NotifEngine:${runId}] [SHADOW MODE] Would dispatch ${toDispatch.length} web push alerts.`);
+    return stats;
+  }
+
+  // 3. Dispatch Web Push with bounded concurrency
+  if (toDispatch.length > 0) {
+    const dispatchRes = await dispatchPushBatch(toDispatch);
+    stats.pushSent = dispatchRes.sent;
+    stats.failed += dispatchRes.failed;
+  }
 
   stats.durationMs = Date.now() - startTime;
 
   if (verbose) {
-    console.log(`[NotifEngine:${runId}] Complete`, JSON.stringify({
-      announcements:         stats.newAnnouncements,
-      unknownClassifications: stats.unknownClassifications,
-      users:                 stats.usersProcessed,
-      allScope:              stats.allScopeUsers,
-      watchlistScope:        stats.watchlistUsers,
-      none:                  stats.noneUsers,
-      candidates:            stats.candidatesTotal,
-      categoryBlocked:       stats.categoryBlocked,
-      alreadySent:           stats.alreadySent,
-      queued:                stats.queued,
-      pushSent:              stats.pushSent,
-      telegramSent:          stats.telegramSent,
-      failed:                stats.failed,
-      durationMs:            stats.durationMs,
-    }));
+    console.log(`[NotifEngine:${runId}] Inverted Complete`, JSON.stringify(stats));
   }
 
   return stats;
@@ -384,4 +449,15 @@ async function processNewIpos(newIpos) {
   return stats;
 }
 
-module.exports = { processNewAnnouncements, processNewIpos };
+async function processAnnouncement(announcement, runId = Date.now(), verbose = false) {
+  return await processNewAnnouncements([announcement], runId, verbose);
+}
+
+const processAnnouncementBatch = processNewAnnouncements;
+
+module.exports = { 
+  processNewAnnouncements, 
+  processAnnouncement,
+  processAnnouncementBatch,
+  processNewIpos 
+};

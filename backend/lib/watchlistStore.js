@@ -2,10 +2,35 @@
 
 const { getDb } = require('./mongoClient');
 const { ObjectId } = require('mongodb');
+const redisNotifStore = require('./redis/redisNotificationStore');
 
 let globalWatchlistCache = null;
 let lastCacheTime = 0;
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+let indexesCreated = false;
+
+function buildInstrumentKey(scriptData) {
+  const bse = (scriptData.bseCode || scriptData.ltdCode || scriptData.scripCode || '').toString().trim();
+  const nse = (scriptData.nseSymbol || scriptData.symbol || '').toString().trim().toUpperCase();
+
+  const keys = [];
+  if (bse) keys.push(`BSE:${bse}`);
+  if (nse) keys.push(`NSE:${nse}`);
+  return keys;
+}
+
+async function ensureIndexes() {
+  if (indexesCreated) return;
+  try {
+    const db = await getDb();
+    const col = db.collection('watchlists');
+    await col.createIndex({ instrumentKey: 1, userId: 1 }, { name: 'idx_watchlists_instrument_user', background: true });
+    await col.createIndex({ userId: 1, instrumentKey: 1 }, { name: 'idx_watchlists_user_instrument', background: true });
+    indexesCreated = true;
+  } catch (e) {
+    // Non-critical background index failure
+  }
+}
 
 /**
  * Get the watchlist for a specific user.
@@ -57,9 +82,19 @@ async function saveWatchlist(uid, scripts) {
  * Add a single script to the watchlist.
  */
 async function addScript(uid, scriptData) {
+  await ensureIndexes();
   const db = await getDb();
   const collection = db.collection('watchlists');
-  const doc = { ...scriptData, userId: uid, addedAt: new Date() };
+  
+  const instrumentKeys = buildInstrumentKey(scriptData);
+  const primaryKey = instrumentKeys[0] || null;
+  const doc = { 
+    ...scriptData, 
+    instrumentKey: primaryKey,
+    instrumentKeys,
+    userId: uid, 
+    addedAt: new Date() 
+  };
   
   // Prevent exact duplicates by ltdCode
   if (doc.ltdCode) {
@@ -69,6 +104,12 @@ async function addScript(uid, scriptData) {
 
   const result = await collection.insertOne(doc);
   invalidateWatchlistCache();
+
+  // Sync to Redis hot routing sets asynchronously
+  for (const k of instrumentKeys) {
+    redisNotifStore.addWatcher(k, uid).catch(() => {});
+  }
+
   return { id: String(result.insertedId), ...doc };
 }
 
@@ -174,6 +215,34 @@ function invalidateWatchlistCache() {
   lastCacheTime = 0;
 }
 
+/**
+ * Query MongoDB for all userIds watching any of the provided instrumentKeys.
+ * @param {string[]} instrumentKeys - e.g. ['BSE:513023', 'NSE:NAVA']
+ * @returns {Promise<string[]>} List of unique userIds
+ */
+async function getWatchersForInstruments(instrumentKeys) {
+  if (!instrumentKeys || instrumentKeys.length === 0) return [];
+  await ensureIndexes();
+  const db = await getDb();
+  try {
+    const docs = await db.collection('watchlists')
+      .find({
+        $or: [
+          { instrumentKey: { $in: instrumentKeys } },
+          { instrumentKeys: { $in: instrumentKeys } }
+        ]
+      }, { projection: { userId: 1 } })
+      .toArray();
+
+    const uids = new Set();
+    docs.forEach(d => { if (d.userId) uids.add(d.userId); });
+    return Array.from(uids);
+  } catch (e) {
+    console.error('[WatchlistStore] getWatchersForInstruments error:', e);
+    return [];
+  }
+}
+
 module.exports = {
   getWatchlist,
   saveWatchlist,
@@ -181,5 +250,7 @@ module.exports = {
   removeScript,
   updateScript,
   getAllTrackedScripts,
+  getWatchersForInstruments,
+  buildInstrumentKey,
   invalidateWatchlistCache
 };
