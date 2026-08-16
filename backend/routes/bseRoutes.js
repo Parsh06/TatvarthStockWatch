@@ -1033,23 +1033,120 @@ router.get('/calendar', async (req, res) => {
   }
 });
 
-// ── OPEN: BSE Insider Trading ────────────────────────────────────────────────
-router.get('/insider', async (req, res) => {
+// ── OPEN: BSE Insider Trading CSV Download ─────────────────────────────────
+router.get('/insider/download', async (req, res) => {
   const code = sanitizeCode(req.query.code || '');
-  const from = req.query.from || ''; // YYYYMMDD
-  const to   = req.query.to   || ''; // YYYYMMDD
-  
+  const from = req.query.from || ''; // YYYYMMDD or empty
+  const to   = req.query.to   || ''; // YYYYMMDD or empty
+
   try {
-    const raw = await bseGet('/getCorp_Regulation_ng/w', {
+    const cookies = await getBseCookies();
+    const sessionHdr = cookies ? { Cookie: cookies } : {};
+    const isDefaultParam = (from || to || code) ? 2 : 1;
+
+    let csvData = await bseGet('/Corp_Regulation_DownloadCSV_ng/w', {
       scripCode: code,
       Regulation: '',
       fromDT: from,
       ToDate: to,
-      Isdefault: 2,
-    }, 15000);
+      Isdefault: isDefaultParam,
+    }, 20000, sessionHdr);
+
+    // Fallback: If filtered request returns empty or header-only CSV, try default latest
+    if (isDefaultParam === 2 && (!csvData || typeof csvData !== 'string' || csvData.trim().split('\n').length <= 1)) {
+      const fallbackCsv = await bseGet('/Corp_Regulation_DownloadCSV_ng/w', {
+        scripCode: '',
+        Regulation: '',
+        fromDT: '',
+        ToDate: '',
+        Isdefault: 1,
+      }, 20000, sessionHdr);
+      if (fallbackCsv && typeof fallbackCsv === 'string' && fallbackCsv.trim().split('\n').length > 1) {
+        csvData = fallbackCsv;
+      }
+    }
+
+    const dateSuffix = (from && to) ? `${from}_to_${to}` : 'Latest';
+    const outFilename = `Tatvarth_Insider_Trading_${code ? code + '_' : ''}${dateSuffix}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
+    return res.send(csvData);
+  } catch (e) {
+    console.error('[BSE Insider CSV Download Error]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── OPEN: BSE Insider Trading ────────────────────────────────────────────────
+router.get('/insider', async (req, res) => {
+  const code = sanitizeCode(req.query.code || '');
+  const from = req.query.from || ''; // YYYYMMDD or empty
+  const to   = req.query.to   || ''; // YYYYMMDD or empty
+  
+  res.setHeader('Cache-Control', 'no-store');
+
+  try {
+    const cookies = await getBseCookies();
+    const sessionHdr = cookies ? { Cookie: cookies } : {};
+    const isDefaultParam = (from || to || code) ? 2 : 1;
+    let fallbackApplied = false;
+
+    let raw = await bseGet('/getCorp_Regulation_ng/w', {
+      scripCode: code,
+      Regulation: '',
+      fromDT: from,
+      ToDate: to,
+      Isdefault: isDefaultParam,
+    }, 15000, sessionHdr);
     
-    const rows = raw?.Table || (Array.isArray(raw) ? raw : []);
+    if (typeof raw === 'string') {
+      try { raw = JSON.parse(raw); } catch {}
+    }
+
+    const looksLikeUpstreamFailure =
+      typeof raw === 'string' && (raw.includes('<html') || raw.trim() === '');
+
+    if (looksLikeUpstreamFailure) {
+      console.error('[BSE Insider] Upstream returned non-JSON — likely blocked/captcha:', raw.slice(0, 200));
+      return res.status(502).json({
+        error: 'BSE did not return valid data (possibly blocked or rate-limited)',
+        total: 0,
+        insiderTrades: [],
+        upstreamFailure: true,
+      });
+    }
+
+    let rows = (raw && Array.isArray(raw.Table)) ? raw.Table
+      : (raw && Array.isArray(raw.data)) ? raw.data
+      : (raw && Array.isArray(raw.Table1)) ? raw.Table1
+      : (Array.isArray(raw) ? raw : []);
     
+    // Fallback: If filtered request returned 0 items, fetch default latest items with flag
+    if (rows.length === 0 && isDefaultParam === 2) {
+      let fallbackRaw = await bseGet('/getCorp_Regulation_ng/w', {
+        scripCode: '',
+        Regulation: '',
+        fromDT: '',
+        ToDate: '',
+        Isdefault: 1,
+      }, 15000, sessionHdr);
+      
+      if (typeof fallbackRaw === 'string') {
+        try { fallbackRaw = JSON.parse(fallbackRaw); } catch {}
+      }
+      
+      const fallbackRows = (fallbackRaw && Array.isArray(fallbackRaw.Table)) ? fallbackRaw.Table
+        : (fallbackRaw && Array.isArray(fallbackRaw.data)) ? fallbackRaw.data
+        : (fallbackRaw && Array.isArray(fallbackRaw.Table1)) ? fallbackRaw.Table1
+        : (Array.isArray(fallbackRaw) ? fallbackRaw : []);
+      
+      if (fallbackRows.length > 0) {
+        rows = fallbackRows;
+        fallbackApplied = true;
+      }
+    }
+
     const normalized = rows.map(r => ({
       bseCode: String(r.Fld_ScripCode || ''),
       companyName: (r.Companyname || '').trim(),
@@ -1068,7 +1165,7 @@ router.get('/insider', async (req, res) => {
       xbrlUrl: r.xbrlurl ? `https://www.bseindia.com${r.xbrlurl}` : null,
     }));
     
-    res.json({ from, to, code, total: normalized.length, insiderTrades: normalized });
+    res.json({ from, to, code, total: normalized.length, insiderTrades: normalized, fallbackApplied });
   } catch (e) {
     console.error('[BSE Insider]', e.message);
     res.status(500).json({ error: e.message });

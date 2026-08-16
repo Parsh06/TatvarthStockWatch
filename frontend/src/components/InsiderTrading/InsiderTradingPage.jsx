@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Eye, RefreshCw, AlertCircle, Search, X, ChevronUp, ChevronDown as ChevDown, ArrowUpDown, FileText } from 'lucide-react'
+import { Eye, RefreshCw, AlertCircle, Search, X, ChevronUp, ChevronDown as ChevDown, ArrowUpDown, FileText, Download } from 'lucide-react'
 import clsx from 'clsx'
+import toast from 'react-hot-toast'
 import { apiClient } from '../../services/apiClient'
+import { auth } from '../../services/firebase'
 import ScriptSearchInput from '../Common/ScriptSearchInput'
 import Loader from '../Common/Loader'
 
@@ -10,10 +12,11 @@ const toYYYYMMDD   = (d) => d.replace(/-/g, '')
 const dateNDaysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10) }
 
 const QUICK_RANGES = [
-  { label: 'Today',   from: today,                 to: today },
-  { label: '3 Days',  from: () => dateNDaysAgo(2),  to: today },
-  { label: '1 Week',  from: () => dateNDaysAgo(6),  to: today },
-  { label: '1 Month', from: () => dateNDaysAgo(29), to: today },
+  { label: 'Default / Latest', from: () => '',           to: () => '' },
+  { label: 'Today',            from: today,              to: today },
+  { label: '3 Days',           from: () => dateNDaysAgo(2), to: today },
+  { label: '1 Week',           from: () => dateNDaysAgo(6), to: today },
+  { label: '1 Month',          from: () => dateNDaysAgo(29), to: today },
 ]
 
 const COLS = [
@@ -30,37 +33,171 @@ const COLS = [
 ]
 
 export default function InsiderTradingPage() {
-  const [fromDate,   setFromDate]   = useState(today())
-  const [toDate,     setToDate]     = useState(today())
-  const [codeFilter, setCodeFilter] = useState('')
-  const [loading,    setLoading]    = useState(false)
-  const [error,      setError]      = useState(null)
-  const [result,     setResult]     = useState(null)
-  const [search,     setSearch]     = useState('')
-  const [sortKey,    setSortKey]    = useState('dateIntimation')
-  const [sortDir,    setSortDir]    = useState('desc')
+  const [fromDate,    setFromDate]    = useState('')
+  const [toDate,      setToDate]      = useState('')
+  const [codeFilter,  setCodeFilter]  = useState('')
+  const [loading,     setLoading]     = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [error,       setError]       = useState(null)
+  const [result,      setResult]      = useState(null)
+  const [search,      setSearch]      = useState('')
+  const [sortKey,     setSortKey]     = useState('')
+  const [sortDir,     setSortDir]     = useState('desc')
 
   function applyQuickRange(r) {
-    setFromDate(r.from()); setToDate(r.to()); setResult(null); setError(null)
+    setFromDate(r.from()); setToDate(r.to()); setError(null)
   }
 
   async function fetchTrades() {
-    if (!fromDate || !toDate) { setError('Select valid From and To dates.'); return }
-    if (fromDate > toDate)    { setError('From date must not be after To date.'); return }
+    if (fromDate && toDate && fromDate > toDate) { setError('From date must not be after To date.'); return }
     setLoading(true); setError(null); setSearch('')
     try {
-      const params = new URLSearchParams({ from: toYYYYMMDD(fromDate), to: toYYYYMMDD(toDate), code: codeFilter })
+      const fromStr = fromDate ? toYYYYMMDD(fromDate) : ''
+      const toStr = toDate ? toYYYYMMDD(toDate) : ''
+      const params = new URLSearchParams({ from: fromStr, to: toStr, code: codeFilter })
       const data = await apiClient(`/api/bse/insider?${params}`)
+      if (data?.upstreamFailure) {
+        setError('BSE is currently blocking or rate-limiting requests. Try again shortly.')
+        setResult(null)
+        return
+      }
       setResult(data)
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
   }
 
-  // Fetch automatically on mount
+  async function handleDownloadCsv() {
+    if (fromDate && toDate && fromDate > toDate) { setError('From date must not be after To date.'); return }
+    
+    setDownloading(true)
+    let downloadedSuccess = false
+    const fromStr = fromDate ? toYYYYMMDD(fromDate) : ''
+    const toStr = toDate ? toYYYYMMDD(toDate) : ''
+    const dateSuffix = (fromDate && toDate) ? `${fromDate}_to_${toDate}` : 'Latest'
+    const filename = `Tatvarth_Insider_Trading_${codeFilter ? codeFilter + '_' : ''}${dateSuffix}.csv`
+
+    try {
+      // 1. Try backend download route first
+      try {
+        const token = await auth?.currentUser?.getIdToken(false).catch(() => null)
+        const headers = {}
+        if (token) headers['Authorization'] = `Bearer ${token}`
+
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || ''
+        const res = await fetch(`${backendUrl}/api/bse/insider/download?from=${fromStr}&to=${toStr}&code=${codeFilter}`, { headers })
+
+        if (res.ok) {
+          const blob = await res.blob()
+          if (blob && blob.size > 50) {
+            const downloadUrl = window.URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = downloadUrl
+            a.download = filename
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+            window.URL.revokeObjectURL(downloadUrl)
+            downloadedSuccess = true
+            toast.success(`Downloaded ${filename} successfully!`)
+          }
+        }
+      } catch (backendErr) {
+        console.warn('[Backend Insider CSV route notice]:', backendErr.message)
+      }
+
+      // 2. Client-side fallback: serialize loaded trades if backend proxy unreachable
+      if (!downloadedSuccess) {
+        const tradesToExport = result?.insiderTrades || []
+        if (tradesToExport.length === 0) {
+          toast.error('No insider trades data available to download for selected range.')
+          return
+        }
+
+        const headers = [
+          'Security Code',
+          'Security Name',
+          'Name of Person',
+          'Category of person',
+          'Type of Securities held Prior to acquisition/Disposed)',
+          'Number of Securities held Prior to acquisition/Disposed',
+          '%   of  Securities held Prior to acquisition/Disposed',
+          'Type of Securities Acquired/Disposed/Pledge etc.',
+          'Number of Securities Acquired/Disposed/Pledge etc.',
+          'Value  of Securities Acquired/Disposed/Pledge etc',
+          'Transaction Type ( Buy/Sale/Pledge/Revoke/Invoke)',
+          'Type of Securities held Post  acquisition/Disposed/Pledge  etc',
+          'Number of Securities held Post  acquisition/Disposed/Pledge  etc',
+          '% of Securities held Post  acquisition/Disposed/Pledge  etc',
+          'Date of allotment / acquisition from',
+          'Date of allotment / acquisition to',
+          'Date of Intimation to company',
+          'Mode of Acquisition',
+          'Trading in Derivatives (Specify contract / Options / Futures etc)',
+          'Derivative Contract Type',
+          'Derivatives Specification',
+          'Derivatives Number of units (contracts * lot size) Notional Value',
+          'Derivatives Number of units (contracts * lot size)',
+          'Derivatives Number of units (contracts * lot size) Notional Value 1',
+          'Derivatives Number of units (contracts * lot size) 1',
+          'Exchange on which the trade was executed',
+          'Reported to Exchange'
+        ]
+
+        const rows = tradesToExport.map(t => [
+          `"${(t.bseCode || '').replace(/"/g, '""')}"`,
+          `"${(t.companyName || '').replace(/"/g, '""')}"`,
+          `"${(t.promoterName || '').replace(/"/g, '""')}"`,
+          `"${(t.category || '').replace(/"/g, '""')}"`,
+          `"${(t.securityType || 'Equity').replace(/"/g, '""')}"`,
+          t.securityNo || 0,
+          t.preShareholding || 0,
+          `"${(t.securityType || 'Equity').replace(/"/g, '""')}"`,
+          t.securityNo || 0,
+          t.securityValue || 0,
+          `"${(t.transactionType || '').replace(/"/g, '""')}"`,
+          `"${(t.securityType || 'Equity').replace(/"/g, '""')}"`,
+          t.securityNo || 0,
+          t.postShareholding || 0,
+          `"${(t.fromDate || '').replace(/"/g, '""')}"`,
+          `"${(t.toDate || '').replace(/"/g, '""')}"`,
+          `"${(t.dateIntimation || '').replace(/"/g, '""')}"`,
+          `"${(t.mode || '').replace(/"/g, '""')}"`,
+          '""',
+          '""',
+          '""',
+          '""',
+          '""',
+          '""',
+          '""',
+          '"BSE"',
+          `"${(t.dateIntimation || '').replace(/"/g, '""')}"`
+        ].join(','))
+
+        const csvContent = [headers.join(','), ...rows].join('\n')
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+        const downloadUrl = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = downloadUrl
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        window.URL.revokeObjectURL(downloadUrl)
+        toast.success(`Downloaded ${filename} successfully!`)
+      }
+    } catch (e) {
+      console.error('[Insider CSV Download Error]', e.message)
+      toast.error('Failed to download Insider Trading CSV.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  // Fetch automatically on mount and whenever parameters change
   useEffect(() => {
     fetchTrades()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [fromDate, toDate, codeFilter])
 
   const trades = result?.insiderTrades ?? []
 
@@ -74,6 +211,7 @@ export default function InsiderTradingPage() {
         d.bseCode?.includes(q)
       )
     }
+    if (!sortKey) return list
     return [...list].sort((a, b) => {
       let av = a[sortKey], bv = b[sortKey]
       if (av == null) av = sortDir === 'asc' ? Infinity : -Infinity
@@ -146,17 +284,40 @@ export default function InsiderTradingPage() {
           </div>
         </div>
 
-        <button onClick={fetchTrades} disabled={loading}
-          className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-lg text-sm font-semibold transition">
-          <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
-          {loading ? 'Fetching…' : 'Fetch Data'}
-        </button>
+        <div className="flex items-center gap-3 pt-1">
+          <button onClick={fetchTrades} disabled={loading}
+            className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-lg text-sm font-semibold transition">
+            <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
+            {loading ? 'Fetching…' : 'Fetch Data'}
+          </button>
+
+          <button onClick={handleDownloadCsv} disabled={downloading || loading}
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 rounded-lg text-sm font-semibold transition disabled:opacity-60 shadow-sm"
+            title="Download Official BSE Insider Trading CSV">
+            <Download className={clsx('w-4 h-4', downloading && 'animate-bounce')} />
+            {downloading ? 'Downloading...' : 'Download CSV'}
+          </button>
+        </div>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-danger/10 border border-danger/30 rounded-xl text-sm text-danger">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
+        <div className="flex items-center justify-between gap-3 px-4 py-3 bg-danger/10 border border-danger/30 rounded-xl text-sm text-danger">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>Couldn't load data — check your connection and retry. ({error})</span>
+          </div>
+          <button onClick={fetchTrades} className="px-3 py-1 bg-danger/20 hover:bg-danger/30 rounded-lg text-xs font-semibold transition">
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Fallback Banner */}
+      {result?.fallbackApplied && !loading && (
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-xl text-xs font-medium">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span>No disclosures found for the selected filter — showing latest disclosures instead.</span>
         </div>
       )}
 
@@ -182,7 +343,15 @@ export default function InsiderTradingPage() {
           </div>
 
           {filtered.length === 0 ? (
-            <div className="text-center py-12 text-textMuted text-sm">No insider trades match your filters.</div>
+            <div className="text-center py-12 text-textMuted text-sm">
+              {search ? (
+                <>No results for "<strong>{search}</strong>" in the currently loaded data.</>
+              ) : fromDate || toDate || codeFilter ? (
+                <>No disclosures filed for the selected date or script filter.</>
+              ) : (
+                <>No insider trades match your filters.</>
+              )}
+            </div>
           ) : (
             <div className="bg-surface border border-border rounded-xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">

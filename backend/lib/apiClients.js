@@ -8,10 +8,13 @@ const YAHOO_QUERY2 = process.env.YAHOO_QUERY2 || 'https://query2.finance.yahoo.c
 const YAHOO_FC     = process.env.YAHOO_FC     || 'https://fc.yahoo.com';
 
 // ── Shared BSE native HTTPS helper ───────────────────────────────────────────
+const zlib = require('zlib');
+
 const _bseHeaders = {
   'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
   'Accept':          'application/json, text/plain, */*',
   'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'identity',
   'Referer':         `${BSE_BASE_URL}/`,
   'Origin':          BSE_BASE_URL,
   'Sec-Fetch-Dest':  'empty',
@@ -75,8 +78,22 @@ function bseGet(url, params = {}, timeoutMs = 12000, extraHeaders = {}) {
       const chunks = [];
       resp.on('data', (c) => chunks.push(c));
       resp.on('end',  () => finish(() => {
-        const body = Buffer.concat(chunks).toString('utf8');
-        try { resolve(JSON.parse(body)); } catch { resolve(body); }
+        const rawBuf = Buffer.concat(chunks);
+        const encoding = resp.headers['content-encoding'];
+
+        const parseAndResolve = (buf) => {
+          const body = buf.toString('utf8');
+          try { resolve(JSON.parse(body)); } catch { resolve(body); }
+        };
+
+        if (encoding === 'gzip' || encoding === 'deflate') {
+          zlib.unzip(rawBuf, (err, decompressed) => {
+            if (!err && decompressed) parseAndResolve(decompressed);
+            else parseAndResolve(rawBuf);
+          });
+        } else {
+          parseAndResolve(rawBuf);
+        }
       }));
     });
     const timer = setTimeout(() => finish(() => {
