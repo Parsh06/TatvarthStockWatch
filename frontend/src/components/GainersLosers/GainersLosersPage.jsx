@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
-import { TrendingUp, TrendingDown, RefreshCw, AlertCircle, ArrowUpRight, ArrowDownRight } from 'lucide-react'
+import { TrendingUp, TrendingDown, RefreshCw, AlertCircle, ArrowUpRight, ArrowDownRight, Download } from 'lucide-react'
 import clsx from 'clsx'
+import toast from 'react-hot-toast'
 import { apiClient } from '../../services/apiClient'
+import { auth } from '../../services/firebase'
 import PageTransition from '../Common/PageTransition'
 import { Spinner } from '../Common/Loader'
-
-
 
 export default function GainersLosersPage() {
   const [type, setType] = useState('gainer') // 'gainer' or 'loser'
@@ -18,8 +18,86 @@ export default function GainersLosersPage() {
   const [nseData, setNseData] = useState([])
 
   const [loading, setLoading] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState(null)
   const [lastRefreshed, setLastRefreshed] = useState(new Date())
+
+  const handleDownloadNseCsv = async () => {
+    setDownloading(true)
+    let downloadedSuccess = false
+    const filename = `Tatvarth_NSE_TOP${type === 'gainer' ? 'gainers' : 'loosers'}.csv`
+
+    try {
+      // 1. Try backend server download route first (fetches official NSE CSV)
+      try {
+        const token = await auth?.currentUser?.getIdToken(false).catch(() => null)
+        const headers = {}
+        if (token) headers['Authorization'] = `Bearer ${token}`
+
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || ''
+        const nseIndex = type === 'gainer' ? 'GAINERS' : 'LOSERS'
+        const res = await fetch(`${backendUrl}/api/nse/top-gainers-losers-download?index=${nseIndex}`, { headers })
+
+        if (res.ok) {
+          const blob = await res.blob()
+          if (blob && blob.size > 50) {
+            const downloadUrl = window.URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = downloadUrl
+            a.download = filename
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+            window.URL.revokeObjectURL(downloadUrl)
+            downloadedSuccess = true
+            toast.success(`Downloaded ${filename} successfully!`)
+          }
+        }
+      } catch (backendErr) {
+        console.warn('[Backend CSV download route notice]:', backendErr.message)
+      }
+
+      // 2. Fallback: If backend returned 404 or failed, generate CSV directly from live NSE dataset
+      if (!downloadedSuccess) {
+        const dataToExport = nseData && nseData.length > 0 ? nseData : []
+        if (dataToExport.length === 0) {
+          toast.error('No NSE market data available to download.')
+          return
+        }
+
+        const headers = ['Symbol', 'Series', 'Open Price (₹)', 'High Price (₹)', 'Low Price (₹)', 'LTP (₹)', 'Prev Close (₹)', 'Price Change (₹)', '% Change', 'Volume']
+        const rows = dataToExport.map(item => [
+          `"${(item.symbol || '').replace(/"/g, '""')}"`,
+          `"${(item.series || 'EQ').replace(/"/g, '""')}"`,
+          item.openPrice || item.open_price || 0,
+          item.highPrice || item.high_price || 0,
+          item.lowPrice || item.low_price || 0,
+          item.ltp || 0,
+          item.previousPrice || item.prev_price || 0,
+          item.net_price || item.netPrice || 0,
+          item.perChange || 0,
+          item.trade_quantity || item.tradeQuantity || 0,
+        ].join(','))
+
+        const csvContent = [headers.join(','), ...rows].join('\n')
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+        const downloadUrl = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = downloadUrl
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        window.URL.revokeObjectURL(downloadUrl)
+        toast.success(`Downloaded ${filename} successfully!`)
+      }
+    } catch (err) {
+      console.error('[NSE CSV Download Error]', err)
+      toast.error('Failed to download CSV from NSE. Please try again.')
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   const fetchData = async () => {
     setLoading(true)
@@ -136,6 +214,15 @@ export default function GainersLosersPage() {
     <div className="glass-panel rounded-2xl overflow-hidden flex flex-col h-[500px]">
       <div className="bg-white/5 border-b border-white/5 px-6 py-4 font-semibold flex items-center justify-between sticky top-0 z-20">
         <span className="text-textPrimary tracking-tight">NSE {type === 'gainer' ? 'Gainers' : 'Losers'} (All Securities)</span>
+        <button
+          onClick={handleDownloadNseCsv}
+          disabled={downloading}
+          title="Download NSE Top Gainers & Losers CSV (All Securities)"
+          className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 rounded-xl text-xs font-semibold transition-all disabled:opacity-50 shadow-sm"
+        >
+          <Download className={clsx("w-3.5 h-3.5", downloading && "animate-bounce")} />
+          <span>{downloading ? 'Downloading...' : 'Download CSV'}</span>
+        </button>
       </div>
       <div className="overflow-y-auto overflow-x-auto flex-1 relative scrollbar-hide">
         <table className="w-full text-left text-sm whitespace-nowrap">
@@ -231,26 +318,28 @@ export default function GainersLosersPage() {
           </button>
         </div>
 
-        {/* Exchange Switch */}
-        <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 shadow-inner">
-          <button
-            onClick={() => setExchange('BSE')}
-            className={clsx(
-              "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-all",
-              exchange === 'BSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
-            )}
-          >
-            BSE
-          </button>
-          <button
-            onClick={() => setExchange('NSE')}
-            className={clsx(
-              "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-all",
-              exchange === 'NSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
-            )}
-          >
-            NSE
-          </button>
+        {/* Exchange Switch & CSV Download */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 shadow-inner">
+            <button
+              onClick={() => setExchange('BSE')}
+              className={clsx(
+                "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-all",
+                exchange === 'BSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+              )}
+            >
+              BSE
+            </button>
+            <button
+              onClick={() => setExchange('NSE')}
+              className={clsx(
+                "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-all",
+                exchange === 'NSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+              )}
+            >
+              NSE
+            </button>
+          </div>
         </div>
       </div>
 

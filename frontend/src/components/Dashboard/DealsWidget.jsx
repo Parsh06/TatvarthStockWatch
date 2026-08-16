@@ -71,7 +71,9 @@ export default function DealsWidget({ data, loading, error }) {
         </div>
       ) : (
         <div className="flex-1 space-y-0">
-          {items.map((item, i) => <DealRow key={item.bseCode || i} item={item} />)}
+          {items.map((item, i) => (
+            <DealRow key={`${item.bseCode || item.symbol || 'deal'}-${i}`} item={item} />
+          ))}
         </div>
       )}
     </div>
