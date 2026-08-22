@@ -164,7 +164,10 @@ async function fetchIpo() {
     const ipoData = await fetchIpoGmpData(1, '');
     
     const all = ipoData?.data || [];
-    const openIpos = all.filter(i => (i.tab_status || '').toLowerCase() === 'open');
+    const openIpos = all.filter(i => {
+      const s = (i.tab_status || '').toLowerCase();
+      return s === 'open' || s === 'ct';
+    });
     openSymbols = openIpos.map(i => {
       const gmp = parseFloat(i.gmp) || 0;
       const issuePriceMatch = (i.issue_price || '').match(/\d+(\.\d+)?/g);
@@ -177,7 +180,8 @@ async function fetchIpo() {
       return {
         name: i.company_name,
         gmp: (i.gmp !== 'NA' && i.gmp != null && i.gmp !== '') ? parseFloat(i.gmp) : null,
-        estGain: estGain
+        estGain: estGain,
+        status: (i.tab_status || '').toUpperCase()
       };
     }).filter(s => Boolean(s.name));
   } catch (e) {

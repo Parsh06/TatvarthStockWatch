@@ -171,6 +171,14 @@ async function fetchIpoGmpData(page = 1, search = '') {
     }
   }
 
+  const todayStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  finalData.data = finalData.data.map(ipo => {
+    if (ipo.tab_status === 'open' && ipo.close_date === todayStr) {
+      return { ...ipo, tab_status: 'CT' };
+    }
+    return ipo;
+  });
+
   return finalData;
 }
 

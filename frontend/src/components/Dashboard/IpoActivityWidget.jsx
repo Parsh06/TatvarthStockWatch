@@ -49,6 +49,8 @@ export default function IpoActivityWidget({ data, loading, error }) {
                 const name = typeof symbol === 'string' ? symbol : symbol.name;
                 const gmp = typeof symbol === 'string' ? null : symbol.gmp;
                 const estGain = typeof symbol === 'string' ? 0 : symbol.estGain;
+                const status = typeof symbol === 'string' ? 'OPEN' : (symbol.status || 'OPEN');
+                const isCT = status === 'CT';
 
                 return (
                   <Link
@@ -65,8 +67,8 @@ export default function IpoActivityWidget({ data, loading, error }) {
                           {estGain > 0 ? '+' : ''}{estGain.toFixed(1)}%
                         </span>
                       )}
-                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                        OPEN
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isCT ? 'text-red-400 bg-red-500/10 border-red-500/20' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
+                        {status}
                       </span>
                     </div>
                   </Link>

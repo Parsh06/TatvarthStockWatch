@@ -99,7 +99,7 @@ export default function IPOGmpPage() {
     exportToXLSX(exportData, `IPO_GMP_${new Date().toISOString().slice(0, 10)}`);
   };
 
-  const openIposCount = ipos.filter(i => i.tab_status === 'open').length;
+  const openIposCount = ipos.filter(i => i.tab_status === 'open' || i.tab_status === 'CT').length;
   const upcomingIposCount = ipos.filter(i => i.tab_status === 'upcoming').length;
 
   return (
@@ -200,7 +200,7 @@ export default function IPOGmpPage() {
                   const getWeight = (status) => {
                     if (!status) return 3;
                     const s = status.toLowerCase();
-                    if (s === 'open') return 1;
+                    if (s === 'open' || s === 'ct') return 1;
                     if (s === 'upcoming' || s === 'soon') return 2;
                     return 3;
                   };
@@ -228,6 +228,7 @@ export default function IPOGmpPage() {
                               <span className={clsx(
                                 "text-[10px] px-1.5 py-0.5 rounded-sm uppercase tracking-wider font-semibold border",
                                 m.tab_status === 'open' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
+                                m.tab_status === 'CT' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 
                                 m.tab_status === 'upcoming' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 
                                 'bg-white/5 text-textMuted border-white/10'
                               )}>
