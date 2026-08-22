@@ -4,6 +4,7 @@
  */
 export function normalizeBseData(row) {
   if (!row) return null
+  const vol = row.trd_vol ?? row.volume ?? row.trade_volume ?? row.trd_volume ?? 0
   return {
     securityCode: row.scrip_cd || row.securityCode || '—',
     securityName: row.LONG_NAME || row.scripname || row.securityName || '—',
@@ -11,6 +12,7 @@ export function normalizeBseData(row) {
     ltp: typeof row.ltradert === 'number' ? row.ltradert : (parseFloat(row.ltradert) || 0),
     change: typeof row.change_val === 'number' ? row.change_val : (parseFloat(row.change_val) || 0),
     percentChange: typeof row.change_percent === 'number' ? row.change_percent : (parseFloat(row.change_percent) || 0),
+    volume: typeof vol === 'number' ? vol : (parseInt(vol, 10) || 0),
     rawUrl: row.URL || '',
   }
 }

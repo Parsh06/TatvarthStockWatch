@@ -16,6 +16,7 @@ const TABLE_COLUMNS = {
     'LTP',
     'Chg',
     '% Chg',
+    'Volume',
   ],
   NSE: [
     'Symbol',
@@ -174,6 +175,7 @@ export default function GainersLosersPage() {
           item.ltp || 0,
           item.change || 0,
           item.percentChange || 0,
+          item.volume || 0,
         ].join(','))
       } else {
         rows = data.map(item => [
@@ -386,6 +388,9 @@ export default function GainersLosersPage() {
                       </td>
                       <td className={clsx("px-4 py-3 text-right font-medium", item.percentChange >= 0 ? "text-green-500" : "text-red-500")}>
                         {item.percentChange > 0 ? '+' : ''}{item.percentChange?.toFixed(2)}%
+                      </td>
+                      <td className="px-4 py-3 text-right text-textMuted font-medium">
+                        {item.volume?.toLocaleString('en-IN') || 0}
                       </td>
                       <td className="w-full"></td>
                     </tr>
