@@ -5,6 +5,8 @@
  * In-memory rate limiting per IP and per authenticated User UID.
  */
 
+const { redis, UPSTASH_ENABLED } = require('../lib/redis/redisClient');
+
 const _rlStore = new Map();
 const WINDOW_MS = 60_000; // 1 minute
 
@@ -15,9 +17,38 @@ function getClientIdentifier(req) {
 }
 
 function createLimiter({ maxRequests = 120, windowMs = WINDOW_MS, errorMessage = 'Too many requests — please slow down.' }) {
-  return (req, res, next) => {
-    const key = `${getClientIdentifier(req)}:${req.baseUrl || ''}${req.path || ''}`;
+  return async (req, res, next) => {
+    const key = `ratelimit:${getClientIdentifier(req)}:${req.baseUrl || ''}${req.path || ''}`;
     const now = Date.now();
+
+    // 1. Try Redis (distributed state for serverless scale)
+    if (UPSTASH_ENABLED && redis) {
+      try {
+        const pipeline = redis.pipeline();
+        pipeline.incr(key);
+        // We set expiration only if it's the first request (count === 1) but pipeline makes it tricky.
+        // Safer way in Upstash without lua scripts: just blindly set EX on every req but only if we want to reset window.
+        // Actually, best simple way: INCR and then if count===1, PEXPIRE. Since pipeline returns results:
+        pipeline.pexpire(key, windowMs, 'NX'); 
+        
+        const results = await pipeline.exec();
+        const count = results[0]; // Result of INCR
+
+        if (count > maxRequests) {
+          return res.status(429).json({
+            success: false,
+            error: errorMessage,
+            code: 'RATE_LIMIT_EXCEEDED'
+          });
+        }
+        return next();
+      } catch (err) {
+        console.warn('[RateLimiter] Redis failed, falling back to in-memory:', err.message);
+        // Fall through to in-memory
+      }
+    }
+
+    // 2. Fallback to In-Memory (single instance)
     let entry = _rlStore.get(key);
 
     if (!entry || now > entry.resetAt) {
