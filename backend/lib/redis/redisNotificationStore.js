@@ -115,6 +115,95 @@ async function acquireDedupLock(announcementId, uid, channel = 'PUSH', ttlSecond
   }
 }
 
+// ── IPO Closing Notification Operations ─────────────────────────────────────
+
+/**
+ * Add a user to the IPO closing opted-in SET.
+ * Called when the user enables notifyIpoClosing in their preferences.
+ */
+async function addIpoClosingUser(uid) {
+  if (!UPSTASH_ENABLED || !redis || !uid) return false;
+  try {
+    await redis.sadd(redisKeys.ipoClosingUsers(), uid);
+    return true;
+  } catch (err) {
+    console.error('[RedisNotifStore] addIpoClosingUser error:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Remove a user from the IPO closing opted-in SET.
+ * Called when the user disables notifyIpoClosing.
+ */
+async function removeIpoClosingUser(uid) {
+  if (!UPSTASH_ENABLED || !redis || !uid) return false;
+  try {
+    await redis.srem(redisKeys.ipoClosingUsers(), uid);
+    return true;
+  } catch (err) {
+    console.error('[RedisNotifStore] removeIpoClosingUser error:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Get all UIDs who have opted-in to IPO closing reminders.
+ * Returns an empty array if Redis is not enabled (graceful degradation).
+ */
+async function getIpoClosingUsers() {
+  if (!UPSTASH_ENABLED || !redis) return null; // null = Redis unavailable → caller falls back to Firebase scan
+  try {
+    const members = await redis.smembers(redisKeys.ipoClosingUsers());
+    return Array.isArray(members) ? members : [];
+  } catch (err) {
+    console.error('[RedisNotifStore] getIpoClosingUsers error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Acquire a daily execution lock for the IPO closing cron.
+ * Returns true if acquired (first run for this IST date), false if already executed.
+ * TTL = 2 hours — protects against duplicate scheduler invocations.
+ *
+ * @param {string} dateIST  — e.g. '2026-08-22'
+ * @param {string} runId    — unique ID for this invocation
+ */
+async function acquireIpoClosingRunLock(dateIST, runId) {
+  if (!UPSTASH_ENABLED || !redis) return true; // fail open if Redis is down
+  const key = redisKeys.ipoClosingRunLock(dateIST);
+  try {
+    const result = await redis.set(key, runId || '1', { nx: true, ex: 7200 });
+    return result === 'OK' || result === 1 || result === true;
+  } catch (err) {
+    console.error('[RedisNotifStore] acquireIpoClosingRunLock error:', err.message);
+    return true; // fail open to avoid silently skipping the day
+  }
+}
+
+/**
+ * Acquire a per-user daily IPO closing dedup lock.
+ * Guarantees at most ONE IPO closing push notification per user per day.
+ * TTL = 48 hours (avoids edge cases at day boundary).
+ *
+ * @param {string} dateIST  — e.g. '2026-08-22'
+ * @param {string} uid
+ * @returns {Promise<boolean>} true if lock acquired (send the notification), false if already sent
+ */
+async function acquireIpoClosingDedupLock(dateIST, uid) {
+  if (!UPSTASH_ENABLED || !redis) return true; // fail open
+  if (!dateIST || !uid) return false;
+  const key = redisKeys.ipoClosingDedup(dateIST, uid);
+  try {
+    const result = await redis.set(key, '1', { nx: true, ex: 172800 }); // 48h
+    return result === 'OK' || result === 1 || result === true;
+  } catch (err) {
+    console.error('[RedisNotifStore] acquireIpoClosingDedupLock error:', err.message);
+    return true; // fail open — better to send once extra than miss entirely
+  }
+}
+
 module.exports = {
   addScopeAllUser,
   removeScopeAllUser,
@@ -125,4 +214,10 @@ module.exports = {
   setPrefs,
   getPrefs,
   acquireDedupLock,
+  // IPO closing
+  addIpoClosingUser,
+  removeIpoClosingUser,
+  getIpoClosingUsers,
+  acquireIpoClosingRunLock,
+  acquireIpoClosingDedupLock,
 };

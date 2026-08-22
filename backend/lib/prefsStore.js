@@ -31,6 +31,9 @@ const DEFAULT_PREFS = {
   // IPO allotment notification preference
   notifyIpoAllotment:     true,
 
+  // IPO closing day reminder (Web Push at 11:00 AM IST)
+  notifyIpoClosing:       true,
+
   // Derived canonical scope (stored for debugging/fast reads)
   notificationScope:      'WATCHLIST_ONLY',
 
@@ -73,6 +76,7 @@ async function savePrefs(uid, prefs) {
   const notifyWatchlist        = prefs.notifyWatchlist        === true  ? true  : prefs.notifyWatchlist        === false ? false : DEFAULT_PREFS.notifyWatchlist;
   const notifyAllAnnouncements = prefs.notifyAllAnnouncements === true  ? true  : prefs.notifyAllAnnouncements === false ? false : DEFAULT_PREFS.notifyAllAnnouncements;
   const notifyIpoAllotment     = prefs.notifyIpoAllotment     === true  ? true  : prefs.notifyIpoAllotment     === false ? false : DEFAULT_PREFS.notifyIpoAllotment;
+  const notifyIpoClosing       = prefs.notifyIpoClosing       === false ? false : true; // default ON for existing users
 
   const merged = {
     ...DEFAULT_PREFS,
@@ -80,6 +84,7 @@ async function savePrefs(uid, prefs) {
     notifyWatchlist,
     notifyAllAnnouncements,
     notifyIpoAllotment,
+    notifyIpoClosing,
   };
 
   // Always persist the computed canonical scope
@@ -98,6 +103,13 @@ async function savePrefs(uid, prefs) {
       await redisNotifStore.addScopeAllUser(uid);
     } else {
       await redisNotifStore.removeScopeAllUser(uid);
+    }
+
+    // Sync IPO closing reminder preference to the opted-in user SET
+    if (merged.notifyIpoClosing !== false) {
+      await redisNotifStore.addIpoClosingUser(uid);
+    } else {
+      await redisNotifStore.removeIpoClosingUser(uid);
     }
   } catch (e) {
     // Non-critical background Redis sync error

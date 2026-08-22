@@ -216,6 +216,7 @@ export default function SettingsPage() {
     notifyWatchlist: true,
     notifyAllAnnouncements: false,
     notifyIpoAllotment: true,
+    notifyIpoClosing: true,
   })
   const [savingPrefs, setSavingPrefs] = useState(false)
 
@@ -604,6 +605,30 @@ export default function SettingsPage() {
                 description="Notify when a newly detected IPO becomes available for verification."
                 right={<Toggle checked={!!notifPrefs.notifyIpoAllotment} onChange={() => setNotifPrefs((p) => ({ ...p, notifyIpoAllotment: !p.notifyIpoAllotment }))} label="Toggle IPO allotment alerts" />}
               />
+            </div>
+
+            {/* IPO Notifications Section */}
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 sm:p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center flex-shrink-0">
+                  <Calendar className="w-4 h-4 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-textPrimary">IPO Notifications</p>
+                  <p className="text-xs text-textMuted mt-0.5">Reminders specific to IPO application deadlines.</p>
+                </div>
+              </div>
+              <SettingRow
+                icon={Calendar}
+                title="IPO Closing Reminders"
+                description="Get a Web Push notification at 11:00 AM when an IPO closes today, including the latest Grey Market Premium (GMP)."
+                right={<Toggle checked={notifPrefs.notifyIpoClosing !== false} onChange={() => setNotifPrefs((p) => ({ ...p, notifyIpoClosing: p.notifyIpoClosing === false ? true : false }))} label="Toggle IPO closing reminders" />}
+              />
+              {notifPrefs.notifyIpoClosing !== false && (
+                <p className="text-xs text-amber-400/80 mt-3 pl-1">
+                  ⏰ Notifications are sent daily at <strong>11:00 AM IST</strong> on the last day of IPO application windows.
+                </p>
+              )}
             </div>
 
             <div className="rounded-2xl border border-border bg-background/40 p-4 sm:p-5">

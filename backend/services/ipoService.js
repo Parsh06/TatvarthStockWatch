@@ -182,6 +182,41 @@ async function fetchIpoGmpData(page = 1, search = '') {
   return finalData;
 }
 
+/**
+ * getIposClosingToday
+ *
+ * Clean contract for the IPO closing notification service.
+ * Returns a normalized array of IPOs that have tab_status === 'CT'
+ * (i.e., today is the last day to apply).
+ *
+ * @returns {Promise<Array<{id, name, slug, gmp, gmpPercentage, issuePrice, closeDate, exchange}>>}
+ */
+async function getIposClosingToday() {
+  const result = await fetchIpoGmpData(1, '');
+  const ipos = result?.data || [];
+
+  return ipos
+    .filter(ipo => String(ipo.tab_status || '').trim().toUpperCase() === 'CT')
+    .map(ipo => {
+      const issuePrice = parseFloat(ipo.issue_price) || 0;
+      const gmp        = parseFloat(ipo.gmp)         || 0;
+      const gmpPct     = issuePrice > 0 ? Math.round((gmp / issuePrice) * 1000) / 10 : 0;
+      const slug       = ipo.slug || (ipo.company_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+      return {
+        id:            String(ipo.id || slug),
+        name:          ipo.company_name || 'Unknown IPO',
+        slug,
+        gmp,
+        gmpPercentage: gmpPct,
+        issuePrice,
+        closeDate:     ipo.close_date || '',
+        exchange:      ipo.listing_exch || '',
+      };
+    });
+}
+
 module.exports = {
-  fetchIpoGmpData
+  fetchIpoGmpData,
+  getIposClosingToday,
 };

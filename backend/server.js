@@ -935,6 +935,80 @@ if (require.main === module) {
 // Export for Vercel serverless
 module.exports = app;
 
+// ── IPO CLOSING DAY CRON ──────────────────────────────────────────────────────
+// Schedule: 05:30 UTC daily = 11:00 AM IST
+// cron-job.org / Vercel Cron schedule: "30 5 * * *"
+// Sends Web Push to all opted-in users when one or more IPOs close today.
+app.all('/api/cron/ipo-closing', async (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const secret     = req.query.secret || authHeader.replace('Bearer ', '');
+  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const t0 = Date.now();
+  try {
+    const { getIposClosingToday }           = require('./services/ipoService');
+    const { processIpoClosingReminder, getISTDateString } = require('./lib/ipoClosingNotificationService');
+
+    const dateIST    = getISTDateString();
+    const closingIpos = await getIposClosingToday();
+
+    if (closingIpos.length === 0) {
+      console.log(`[CronIpoClosing] ${dateIST}: No IPOs closing today.`);
+      return res.json({
+        success:           true,
+        message:           'No IPOs closing today',
+        dateIST,
+        notificationsSent: 0,
+        durationMs:        Date.now() - t0,
+      });
+    }
+
+    console.log(`[CronIpoClosing] ${dateIST}: ${closingIpos.length} IPO(s) closing — [${closingIpos.map(i => i.name).join(', ')}]`);
+
+    const stats = await processIpoClosingReminder(closingIpos);
+
+    if (stats.alreadyProcessed) {
+      return res.json({
+        success:    true,
+        skipped:    true,
+        reason:     stats.reason,
+        dateIST:    stats.dateIST,
+        durationMs: Date.now() - t0,
+      });
+    }
+
+    return res.json({
+      success: true,
+      dateIST: stats.dateIST,
+      execution: {
+        alreadyProcessed: false,
+      },
+      closingIpos: {
+        count: stats.closingIpoCount,
+        names: stats.closingIpoNames,
+      },
+      recipients: {
+        optedIn:         stats.optedInUsers,
+        pushDisabled:    stats.pushDisabled,
+      },
+      notifications: {
+        attempted:       stats.optedInUsers - stats.pushDisabled - stats.dedupSkipped,
+        sent:            stats.sent,
+        failed:          stats.failed,
+        expired:         stats.expired,
+        duplicatesSkipped: stats.dedupSkipped,
+      },
+      durationMs: Date.now() - t0,
+    });
+
+  } catch (err) {
+    console.error('[CronIpoClosing] Error:', err);
+    return res.status(500).json({ error: err.message, durationMs: Date.now() - t0 });
+  }
+});
+
 // ── GLOBAL CRONJOB ────────────────────────────────────────────────────────────
 // Supports GET for external cron services (e.g. cron-job.org)
 app.all('/api/cron/trigger', async (req, res) => {
