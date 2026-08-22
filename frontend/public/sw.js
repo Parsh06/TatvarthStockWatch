@@ -131,12 +131,12 @@ function sanitizeUrl(rawUrl) {
   try {
     const url = new URL(rawUrl, APP_URL);
 
-    // Only allow URLs belonging to StockWatch.
-    if (url.origin !== APP_ORIGIN) {
-      return APP_URL;
+    // Allow all valid HTTP and HTTPS document/page URLs (including external PDF links e.g. BSE/NSE)
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return url.href;
     }
 
-    return url.href;
+    return APP_URL;
   } catch (error) {
     return APP_URL;
   }
@@ -247,12 +247,12 @@ function getNotificationActions(type) {
     case 'deal':
       return [
         {
-          action: 'view',
-          title: 'View',
+          action: 'view-pdf',
+          title: 'Open Document',
         },
         {
-          action: 'open-company',
-          title: 'Company',
+          action: 'view',
+          title: 'View',
         },
       ];
 
@@ -271,7 +271,10 @@ function buildNotification(data) {
   const priority = normalizePriority(data?.priority);
   const priorityConfig = PRIORITY_CONFIG[priority];
 
+  const pdfUrl = data?.pdfUrl || data?.announcement?.pdfUrl || data?.announcement?.pdf_url || null;
+
   const url = sanitizeUrl(
+    pdfUrl ||
     data?.url ||
     data?.announcement?.url ||
     '/'
@@ -359,6 +362,8 @@ function buildNotification(data) {
         data?.subCategory ||
         null,
 
+      pdfUrl: pdfUrl ? sanitizeUrl(pdfUrl) : null,
+
       url,
 
       companyUrl,
@@ -439,15 +444,18 @@ self.addEventListener('notificationclick', function(event) {
   const notificationData =
     event.notification?.data || {};
 
-  let targetUrl = APP_URL;
+  if (event.action === 'dismiss') {
+    return;
+  }
+
+  // Priority 1: pdfUrl if present, otherwise url
+  let targetUrl = notificationData.pdfUrl || notificationData.url || APP_URL;
 
   switch (event.action) {
-    case 'dismiss':
-      return;
-
     case 'open-company':
       targetUrl =
         notificationData.companyUrl ||
+        notificationData.pdfUrl ||
         notificationData.url ||
         APP_URL;
       break;
@@ -460,9 +468,11 @@ self.addEventListener('notificationclick', function(event) {
         '/ipo-verification';
       break;
 
+    case 'view-pdf':
     case 'view':
     default:
       targetUrl =
+        notificationData.pdfUrl ||
         notificationData.url ||
         APP_URL;
       break;
@@ -473,45 +483,13 @@ self.addEventListener('notificationclick', function(event) {
   event.waitUntil(
     (async function() {
       try {
-        const windowClients = await clients.matchAll({
-          type: 'window',
-          includeUncontrolled: true,
-        });
-
-        const target = new URL(targetUrl);
-
-        // Prefer an existing StockWatch tab.
-        for (const client of windowClients) {
-          try {
-            const clientUrl = new URL(client.url);
-
-            if (
-              clientUrl.origin === APP_ORIGIN &&
-              'focus' in client
-            ) {
-              if ('navigate' in client) {
-                await client.navigate(target.href);
-              }
-
-              await client.focus();
-
-              return;
-            }
-          } catch (error) {
-            console.warn(
-              '[SW] Unable to process existing client:',
-              error
-            );
-          }
-        }
-
-        // No existing application window.
+        // Open the document / target URL directly in a new tab
         if (clients.openWindow) {
-          await clients.openWindow(target.href);
+          await clients.openWindow(targetUrl);
         }
       } catch (error) {
         console.error(
-          '[SW] Failed to handle notification click:',
+          '[SW] Failed to open notification PDF/URL in new tab:',
           error
         );
 

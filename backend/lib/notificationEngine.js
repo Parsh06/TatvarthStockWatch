@@ -238,11 +238,18 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
         // ── 2i. Web Push dispatch ───────────────────────────────────────────
         for (const ann of toSend) {
           try {
+            const pdfUrl = ann.pdfUrl || ann.attachment || ann.attachmentUrl || null;
             const pushResult = await sendWebPushToUser(uid, {
               title: `${ann.scriptName || ann.scriptCode} (${ann.exchange || 'BSE'})`,
               body:  `[${ann.category || 'Announcement'}] ${ann.subject || 'New update'}`,
-              url:   ann.pdfUrl || 'https://tatvarthstockwatch.web.app/',
+              pdfUrl: pdfUrl,
+              url:   pdfUrl || 'https://tatvarthstockwatch.web.app/',
               tag:   `ann-${String(ann.id).slice(0, 20)}`,
+              announcementId: String(ann.id),
+              companyCode: ann.scriptCode || ann.bseCode,
+              companyName: ann.scriptName || ann.companyName,
+              exchange: ann.exchange || 'BSE',
+              category: ann.category || 'Announcement',
             });
             stats.pushSent += (pushResult.sent || 0);
           } catch (err) {

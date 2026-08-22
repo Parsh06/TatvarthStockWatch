@@ -26,11 +26,18 @@ async function dispatchPushBatch(items) {
     const results = await Promise.all(
       chunk.map(async ({ uid, announcement }) => {
         try {
+          const pdfUrl = announcement.pdfUrl || announcement.attachment || announcement.attachmentUrl || null;
           const pushRes = await sendWebPushToUser(uid, {
             title: `${announcement.scriptName || announcement.scriptCode} (${announcement.exchange || 'BSE'})`,
             body:  `[${announcement.category || 'Announcement'}] ${announcement.subject || 'New update'}`,
-            url:   announcement.pdfUrl || 'https://tatvarthstockwatch.web.app/',
+            pdfUrl: pdfUrl,
+            url:   pdfUrl || 'https://tatvarthstockwatch.web.app/',
             tag:   `ann-${String(announcement.id).slice(0, 20)}`,
+            announcementId: String(announcement.id),
+            companyCode: announcement.scriptCode || announcement.bseCode,
+            companyName: announcement.scriptName || announcement.companyName,
+            exchange: announcement.exchange || 'BSE',
+            category: announcement.category || 'Announcement',
           });
 
           const isSent = (pushRes.sent || 0) > 0;

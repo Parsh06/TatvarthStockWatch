@@ -656,11 +656,13 @@ app.post('/api/push/test', verifyToken, async (req, res) => {
     const { sendWebPushToUser, sendWebPushToDevice } = require('./lib/webPushNotifier');
     const { deviceId } = req.body || {};
     
+    const pdfUrl = req.body?.pdfUrl || req.body?.url || null;
     const payload = {
-      title: 'Tatvarth Stock Watch — Test',
-      body: '✅ Push notifications are working! You will receive alerts on this device.',
-      url: 'https://tatvarthstockwatch.web.app/settings',
-      tag: 'test-notification',
+      title: req.body?.title || 'Tatvarth Stock Watch — Test',
+      body: req.body?.body || '✅ Push notifications are working! Click to view sample document.',
+      pdfUrl: pdfUrl,
+      url: pdfUrl || req.body?.url || 'https://tatvarthstockwatch.web.app/settings',
+      tag: 'test-notification-' + Date.now(),
     };
 
     let result;
