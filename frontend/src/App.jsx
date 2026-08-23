@@ -4,7 +4,6 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { WatchlistProvider } from './contexts/WatchlistContext'
 import { AnnouncementsProvider } from './contexts/AnnouncementsContext'
 import LoginPage from './components/Auth/LoginPage'
-import RegisterPage from './components/Auth/RegisterPage'
 import DashboardPage from './components/Dashboard/DashboardPage'
 import WatchlistPage from './components/Watchlist/WatchlistPage'
 import AnnouncementsPage from './components/Announcements/AnnouncementsPage'
@@ -52,7 +51,7 @@ function AppRoutes() {
       <CommandPalette />
       <Routes>
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-      <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+      <Route path="/register" element={<Navigate to="/login" replace />} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route
         path="/dashboard"
