@@ -3,6 +3,7 @@
 const path    = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
+const helmet  = require('helmet');
 const cors    = require('cors');
 const fs      = require('fs');
 
@@ -24,13 +25,7 @@ const app                = express();
 const PORT               = process.env.PORT || 3000;
 
 // ── Security Headers ──────────────────────────────────────────────────────────
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  next();
-});
+app.use(helmet());
 
 // ── Request ID & Parameter Strip Middleware ────────────────────────────────────
 app.use(requestIdMiddleware);

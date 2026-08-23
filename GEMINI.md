@@ -46,6 +46,7 @@
 |---|---|---|
 | Node.js | — | Runtime |
 | Express | 4.18.2 | HTTP framework |
+| Helmet | 8.0.0 | HTTP Security Headers |
 | Firebase Admin | 12.0.0 | Server-side auth + Firestore |
 | MongoDB driver | 6.21.0 | MongoDB Atlas connection |
 | @google/genai | 2.10.0 | Gemini AI (announcement summarization) |
@@ -595,6 +596,7 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 |---|---|---|
 | 2026-08-23 | Initial GEMINI.md created | `GEMINI.md` (new), `.agents/AGENTS.md` (new) |
 | 2026-08-23 | Premium redesign of Login + Register pages; new MarketPulse component | `Auth/LoginPage.jsx`, `Auth/RegisterPage.jsx`, `Common/MarketPulse.jsx` (new) |
+| 2026-08-23 | Backend security upgrade: implemented Helmet.js | `backend/server.js`, `backend/package.json` |
 
 ---
 
