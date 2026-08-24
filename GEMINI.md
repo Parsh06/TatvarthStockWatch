@@ -600,6 +600,7 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 | 2026-08-24 | Fixed IPO closing cron route registration bug and added Vercel crons config | `backend/server.js`, `backend/vercel.json` |
 | 2026-08-24 | Enhanced IPO closing push notification format with IPO name, GMP, and Gain % | `backend/lib/ipoClosingNotificationService.js` |
 | 2026-08-24 | Per-IPO queue-based notifications: rewrote ipoClosingNotificationService.js, added Redis queue functions to redisNotificationStore.js and redisKeys.js, embedded tick in /api/cron/trigger, removed dedicated Vercel cron entry | `backend/lib/ipoClosingNotificationService.js`, `backend/lib/redis/redisKeys.js`, `backend/lib/redis/redisNotificationStore.js`, `backend/server.js`, `backend/vercel.json` |
+| 2026-08-24 | Increased global cron frequency to every 1 minute | `backend/vercel.json` |
 
 ---
 
