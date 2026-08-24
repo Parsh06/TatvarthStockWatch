@@ -927,10 +927,11 @@ if (require.main === module) {
   });
 }
 
-// ── IPO CLOSING DAY CRON ──────────────────────────────────────────────────────
-// Schedule: 05:30 UTC daily = 11:00 AM IST
-// Vercel Cron schedule: "30 5 * * *"
-// Sends Web Push to all opted-in users when one or more IPOs close today.
+// ── IPO CLOSING DAY MANUAL TRIGGER ────────────────────────────────────────
+// This endpoint is NOT auto-scheduled by Vercel crons.
+// IPO closing dispatch is now embedded in /api/cron/trigger (every 5 min).
+// This endpoint is for MANUAL TESTING only - dispatches the next queued IPO.
+// force=true bypasses the 11 AM-12:59 PM IST time window check.
 app.all('/api/cron/ipo-closing', async (req, res) => {
   const authHeader = req.headers.authorization || '';
   const secret     = req.query.secret || authHeader.replace('Bearer ', '');
@@ -940,67 +941,14 @@ app.all('/api/cron/ipo-closing', async (req, res) => {
 
   const t0 = Date.now();
   try {
-    const { getIposClosingToday }           = require('./services/ipoService');
-    const { processIpoClosingReminder, getISTDateString } = require('./lib/ipoClosingNotificationService');
-
-    const dateIST    = getISTDateString();
-    const closingIpos = await getIposClosingToday();
-
-    if (closingIpos.length === 0) {
-      console.log(`[CronIpoClosing] ${dateIST}: No IPOs closing today.`);
-      return res.json({
-        success:           true,
-        message:           'No IPOs closing today',
-        dateIST,
-        notificationsSent: 0,
-        durationMs:        Date.now() - t0,
-      });
-    }
-
-    console.log(`[CronIpoClosing] ${dateIST}: ${closingIpos.length} IPO(s) closing — [${closingIpos.map(i => i.name).join(', ')}]`);
-
-    const stats = await processIpoClosingReminder(closingIpos);
-
-    if (stats.alreadyProcessed) {
-      return res.json({
-        success:    true,
-        skipped:    true,
-        reason:     stats.reason,
-        dateIST:    stats.dateIST,
-        durationMs: Date.now() - t0,
-      });
-    }
-
-    return res.json({
-      success: true,
-      dateIST: stats.dateIST,
-      execution: {
-        alreadyProcessed: false,
-      },
-      closingIpos: {
-        count: stats.closingIpoCount,
-        names: stats.closingIpoNames,
-      },
-      recipients: {
-        optedIn:         stats.optedInUsers,
-        pushDisabled:    stats.pushDisabled,
-      },
-      notifications: {
-        attempted:         stats.optedInUsers - stats.pushDisabled - stats.dedupSkipped,
-        sent:              stats.sent,
-        failed:            stats.failed,
-        expired:           stats.expired,
-        duplicatesSkipped: stats.dedupSkipped,
-      },
-      durationMs: Date.now() - t0,
-    });
-
+    const { processIpoClosingQueueTick } = require('./lib/ipoClosingNotificationService');
+    const stats = await processIpoClosingQueueTick({ force: true });
+    return res.json({ success: true, durationMs: Date.now() - t0, tick: stats });
   } catch (err) {
-    console.error('[CronIpoClosing] Error:', err);
+    console.error('[ManualIpoClosing] Error:', err);
     return res.status(500).json({ error: err.message, durationMs: Date.now() - t0 });
   }
 });
-
 // ── GLOBAL CRONJOB ────────────────────────────────────────────────────────────
 // Supports GET for external cron services (e.g. cron-job.org)
 app.all('/api/cron/trigger', async (req, res) => {
@@ -1067,7 +1015,24 @@ app.all('/api/cron/trigger', async (req, res) => {
     } catch (ipoErr) {
       console.error('[Global Cron] IPO Discovery Error:', ipoErr.message);
     }
-    
+
+    // ── IPO Closing Day Dispatch (11:00 AM – 12:59 PM IST, one IPO per tick) ────────
+    // Queue-based: first tick populates the Redis LIST, each subsequent tick pops
+    // and dispatches one IPO to all opted-in users (50 concurrent, per-IPO dedup).
+    let ipoClosingTickStats = { skipped: true, reason: 'NOT_RUN' };
+    try {
+      const { processIpoClosingQueueTick } = require('./lib/ipoClosingNotificationService');
+      ipoClosingTickStats = await processIpoClosingQueueTick();
+      if (ipoClosingTickStats.dispatched) {
+        console.log(
+          `[Global Cron] IPO closing dispatched: "${ipoClosingTickStats.ipoName}" → ` +
+          `sent=${ipoClosingTickStats.sent}`
+        );
+      }
+    } catch (ipoCloseErr) {
+      console.error('[Global Cron] IPO closing tick error:', ipoCloseErr.message);
+    }
+
     // Write meta status to Firestore for real-time frontend updates
     try {
       const admin = require('firebase-admin');
@@ -1093,6 +1058,7 @@ app.all('/api/cron/trigger', async (req, res) => {
       totalFetched:     allFetched.length,
       newAnnouncements: newAnnouncements.length,
       engine:           engineStats,
+      ipoClosingTick:   ipoClosingTickStats,
     });
   } catch (err) {
     console.error('[Global Cron] Error:', err);

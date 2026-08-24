@@ -43,6 +43,28 @@ const redisKeys = {
    */
   ipoClosingDedup: (dateIST, uid) =>
     `notification:dedup:ipo-closing:${dateIST}:${uid}:webpush`,
+
+  /**
+   * Redis LIST — ordered queue of IPOs to dispatch today (JSON strings, RPUSH/LPOP).
+   * Populated once at 11:00 AM IST, TTL 26h.
+   */
+  ipoClosingQueue: (dateIST) =>
+    `ipo:closing:queue:${dateIST}`,
+
+  /**
+   * Flag indicating today's queue has been populated.
+   * Existence check prevents re-fetching on every tick.
+   * TTL 26h.
+   */
+  ipoClosingQueuePopulated: (dateIST) =>
+    `ipo:closing:queue-populated:${dateIST}`,
+
+  /**
+   * Per-user per-IPO dedup lock — at most 1 push per user per IPO per day.
+   * TTL 48h.
+   */
+  ipoClosingIpoDedup: (dateIST, ipoId, uid) =>
+    `notification:dedup:ipo-closing:${dateIST}:ipo:${ipoId}:${uid}:webpush`,
 };
 
 module.exports = redisKeys;

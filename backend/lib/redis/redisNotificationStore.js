@@ -204,6 +204,87 @@ async function acquireIpoClosingDedupLock(dateIST, uid) {
   }
 }
 
+/**
+ * Check if today's IPO closing queue has already been populated.
+ * Returns false if Redis is down (caller will re-populate safely).
+ */
+async function isIpoClosingQueuePopulated(dateIST) {
+  if (!UPSTASH_ENABLED || !redis || !dateIST) return false;
+  try {
+    const val = await redis.get(redisKeys.ipoClosingQueuePopulated(dateIST));
+    return val !== null;
+  } catch (err) {
+    console.error('[RedisNotifStore] isIpoClosingQueuePopulated error:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Populate the IPO closing queue with today's sorted IPO list.
+ * Uses RPUSH so LPOP processes them in sorted order (highest GMP first).
+ * Sets a 26-hour TTL on both the LIST and the populated flag.
+ *
+ * Pass empty array to set the "populated" flag with no items (no IPOs today).
+ */
+async function populateIpoClosingQueue(dateIST, sortedIpos) {
+  if (!UPSTASH_ENABLED || !redis || !dateIST) return false;
+  const queueKey = redisKeys.ipoClosingQueue(dateIST);
+  const flagKey  = redisKeys.ipoClosingQueuePopulated(dateIST);
+  const TTL      = 93600; // 26 hours in seconds
+  try {
+    const pipeline = redis.pipeline();
+    // Push all IPOs as serialized JSON
+    for (const ipo of sortedIpos) {
+      pipeline.rpush(queueKey, JSON.stringify(ipo));
+    }
+    if (sortedIpos.length > 0) {
+      pipeline.expire(queueKey, TTL);
+    }
+    pipeline.set(flagKey, String(sortedIpos.length), { ex: TTL });
+    await pipeline.exec();
+    return true;
+  } catch (err) {
+    console.error('[RedisNotifStore] populateIpoClosingQueue error:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Atomically pop the next pending IPO from today's queue.
+ * Returns parsed IPO object or null if queue is empty / Redis down.
+ */
+async function popNextIpoFromQueue(dateIST) {
+  if (!UPSTASH_ENABLED || !redis || !dateIST) return null;
+  const queueKey = redisKeys.ipoClosingQueue(dateIST);
+  try {
+    const raw = await redis.lpop(queueKey);
+    if (!raw) return null;
+    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch (err) {
+    console.error('[RedisNotifStore] popNextIpoFromQueue error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Acquire a per-user per-IPO dedup lock.
+ * Returns true  → lock acquired, notification should be sent.
+ * Returns false → already sent today for this user + IPO.
+ * TTL = 48 hours.
+ */
+async function acquireIpoClosingIpoDedupLock(dateIST, ipoId, uid) {
+  if (!UPSTASH_ENABLED || !redis) return true; // fail open
+  if (!dateIST || !ipoId || !uid) return false;
+  const key = redisKeys.ipoClosingIpoDedup(dateIST, ipoId, uid);
+  try {
+    const result = await redis.set(key, '1', { nx: true, ex: 172800 }); // 48h
+    return result === 'OK' || result === 1 || result === true;
+  } catch (err) {
+    console.error('[RedisNotifStore] acquireIpoClosingIpoDedupLock error:', err.message);
+    return true; // fail open — better to send once extra than miss entirely
+  }
+}
+
 module.exports = {
   addScopeAllUser,
   removeScopeAllUser,
@@ -214,10 +295,15 @@ module.exports = {
   setPrefs,
   getPrefs,
   acquireDedupLock,
-  // IPO closing
+  // IPO closing (legacy single-notification)
   addIpoClosingUser,
   removeIpoClosingUser,
   getIpoClosingUsers,
   acquireIpoClosingRunLock,
   acquireIpoClosingDedupLock,
+  // IPO closing (queue-based per-IPO dispatch)
+  isIpoClosingQueuePopulated,
+  populateIpoClosingQueue,
+  popNextIpoFromQueue,
+  acquireIpoClosingIpoDedupLock,
 };
