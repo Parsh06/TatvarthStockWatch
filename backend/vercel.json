@@ -11,5 +11,15 @@
       "src": "/(.*)",
       "dest": "server.js"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/trigger?secret=GxZLB/dDXXpG8REuzKny/5IzTYrKesyPwDiHEFTj0YQ=",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/ipo-closing?secret=GxZLB/dDXXpG8REuzKny/5IzTYrKesyPwDiHEFTj0YQ=",
+      "schedule": "30 5 * * *"
+    }
   ]
 }

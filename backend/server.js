@@ -927,12 +927,9 @@ if (require.main === module) {
   });
 }
 
-// Export for Vercel serverless
-module.exports = app;
-
 // ── IPO CLOSING DAY CRON ──────────────────────────────────────────────────────
 // Schedule: 05:30 UTC daily = 11:00 AM IST
-// cron-job.org / Vercel Cron schedule: "30 5 * * *"
+// Vercel Cron schedule: "30 5 * * *"
 // Sends Web Push to all opted-in users when one or more IPOs close today.
 app.all('/api/cron/ipo-closing', async (req, res) => {
   const authHeader = req.headers.authorization || '';
@@ -989,10 +986,10 @@ app.all('/api/cron/ipo-closing', async (req, res) => {
         pushDisabled:    stats.pushDisabled,
       },
       notifications: {
-        attempted:       stats.optedInUsers - stats.pushDisabled - stats.dedupSkipped,
-        sent:            stats.sent,
-        failed:          stats.failed,
-        expired:         stats.expired,
+        attempted:         stats.optedInUsers - stats.pushDisabled - stats.dedupSkipped,
+        sent:              stats.sent,
+        failed:            stats.failed,
+        expired:           stats.expired,
         duplicatesSkipped: stats.dedupSkipped,
       },
       durationMs: Date.now() - t0,
@@ -1108,3 +1105,5 @@ app.all('/api/cron/trigger', async (req, res) => {
 // AI analysis is now on-demand via POST /api/announcements/:id/analyze
 // See backend/routes/analyzeRoute.js
 
+// Export for Vercel serverless — MUST be last, after all routes are registered
+module.exports = app;
