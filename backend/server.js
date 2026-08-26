@@ -45,7 +45,7 @@ app.use(cors({
     if (!origin || ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.web.app') || origin.endsWith('.firebaseapp.com') || origin.endsWith('.vercel.app')) {
       return cb(null, true);
     }
-    return cb(null, true);
+    return cb(new Error('Not allowed by CORS'));
   },
   credentials: true,
 }));
@@ -828,9 +828,12 @@ app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 app.get("/api/search/scripts", (req, res) => res.redirect(`/api/bse/search?q=${encodeURIComponent(req.query.q || "")}`));
 
 
-// Start the Volume Spurt in-memory poller (no MongoDB writes)
+// Start in-memory pollers (no MongoDB writes)
 const { startSpurtPoller } = require('./lib/spurtStore');
+const { startOfsPoller } = require('./lib/ofsScraper');
 startSpurtPoller().catch(e => console.error('[Spurt Poller] init error:', e.message));
+Promise.resolve(startOfsPoller()).catch(e => console.error('[OFS Poller] init error:', e.message));
+
 
 
 // ── PROTECTED: Portfolio storage (User Scoped) ──────────────────────────────

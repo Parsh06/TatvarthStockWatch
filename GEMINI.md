@@ -262,6 +262,7 @@ stockwatch/
 | `/board-meetings` | `BoardMeetingsPage` | 🔒 | Board meeting tracker |
 | `/agm-updates` | `AGMUpdatesPage` | 🔒 | AGM tracking |
 | `/ipo-gmp` | `IPOGmpPage` | 🔒 | IPO Grey Market Premium |
+| `/ofs` | `OFSPage` | 🔒 | OFS Live Tracker & Bid Book |
 | `/ipo-check` | `IpoVerificationPage` | 🔒 | IPO allotment verification |
 | `/news` | `NewsPage` | 🔒 | Market news feed |
 | `/gainers-losers` | `GainersLosersPage` | 🔒 | Top movers |
@@ -601,6 +602,11 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 | 2026-08-24 | Enhanced IPO closing push notification format with IPO name, GMP, and Gain % | `backend/lib/ipoClosingNotificationService.js` |
 | 2026-08-24 | Per-IPO queue-based notifications: rewrote ipoClosingNotificationService.js, added Redis queue functions to redisNotificationStore.js and redisKeys.js, embedded tick in /api/cron/trigger, removed dedicated Vercel cron entry | `backend/lib/ipoClosingNotificationService.js`, `backend/lib/redis/redisKeys.js`, `backend/lib/redis/redisNotificationStore.js`, `backend/server.js`, `backend/vercel.json` |
 | 2026-08-24 | Increased global cron frequency to every 1 minute | `backend/vercel.json` |
+| 2026-08-26 | Implemented live OFS (Offer for Sale) Tracker page and real-time bid book scraper | `backend/lib/ofsScraper.js` (new), `backend/routes/marketRoutes.js`, `frontend/src/components/OFS/OFSPage.jsx` (new), `frontend/src/App.jsx`, `frontend/src/components/Layout/Sidebar.jsx` |
+| 2026-08-26 | OFS Tracker UI Redesign & 60-second background poller integration for pre-fetching list & bid books | `backend/lib/ofsScraper.js`, `backend/server.js`, `frontend/src/components/OFS/OFSPage.jsx` |
+| 2026-08-26 | Added Volume Matching & Demand Equilibrium box and dynamic Cut-off row highlighting to OFS Order Book modal | `frontend/src/components/OFS/OFSPage.jsx` |
+| 2026-08-26 | Enhanced Cut-off Price row to display actual numeric rate (e.g. ₹540.55 Cut-off) alongside allotment status | `frontend/src/components/OFS/OFSPage.jsx` |
+
 
 ---
 
