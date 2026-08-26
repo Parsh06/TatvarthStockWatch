@@ -606,6 +606,8 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 | 2026-08-26 | OFS Tracker UI Redesign & 60-second background poller integration for pre-fetching list & bid books | `backend/lib/ofsScraper.js`, `backend/server.js`, `frontend/src/components/OFS/OFSPage.jsx` |
 | 2026-08-26 | Added Volume Matching & Demand Equilibrium box and dynamic Cut-off row highlighting to OFS Order Book modal | `frontend/src/components/OFS/OFSPage.jsx` |
 | 2026-08-26 | Enhanced Cut-off Price row to display actual numeric rate (e.g. ₹540.55 Cut-off) alongside allotment status | `frontend/src/components/OFS/OFSPage.jsx` |
+| 2026-08-26 | Fixed & Hardened notification recipient-isolation architecture: implemented stable ID guards, canonical instrument key normalization, account onboarding safeguards, dual-channel dispatch (Push+Telegram), and comprehensive test suite | `backend/lib/notification/notificationRouter.js`, `backend/lib/notificationEngine.js`, `backend/tests/test_recipient_isolation.js` |
+| 2026-08-26 | Implemented Enterprise Production Hardening for IPO Closing Notification Pipeline: atomic Redis Lua state machine (PENDING -> PROCESSING -> COMPLETED / FAILED), owner-token validation, 30s lease heartbeats, stale recovery, classified delivery retries, transport & schema source-health policy, fail-closed locks, dynamic capacity catch-up, post-1 PM grace window, and queue status diagnostics | `backend/lib/time/istTime.js` (new), `backend/services/ipoService.js`, `backend/lib/redis/redisKeys.js`, `backend/lib/redis/redisNotificationStore.js`, `backend/lib/ipoClosingNotificationService.js`, `backend/tests/test_ipo_closing_hardened.js` (new) |
 
 
 ---

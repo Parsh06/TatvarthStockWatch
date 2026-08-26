@@ -29,6 +29,17 @@ const redisKeys = {
   ipoClosingUsers: () =>
     'notification:ipo-closing:users',
 
+  /** Flag indicating the Redis opt-in index has been populated/initialized */
+  ipoClosingUsersIndexReady: () =>
+    'notification:ipo-closing:users:index-ready',
+
+  /**
+   * Tokenized 1-minute tick lock — prevents overlapping 1-minute cron executions.
+   * @param {string} dateIST  e.g. '2026-08-22'
+   */
+  ipoClosingTickLock: (dateIST) =>
+    `notification:ipo-closing:tick-lock:${dateIST}`,
+
   /**
    * Daily execution lock — prevents cron from processing twice on the same day.
    * @param {string} dateIST  e.g. '2026-08-22'
@@ -48,8 +59,25 @@ const redisKeys = {
    * Redis LIST — ordered queue of IPOs to dispatch today (JSON strings, RPUSH/LPOP).
    * Populated once at 11:00 AM IST, TTL 26h.
    */
+  /** Redis LIST — ordered queue of IPOs to dispatch today (JSON strings, RPUSH/LPOP). */
   ipoClosingQueue: (dateIST) =>
     `ipo:closing:queue:${dateIST}`,
+
+  /** HASH of currently processing IPOs */
+  ipoClosingProcessing: (dateIST) =>
+    `ipo:closing:processing:${dateIST}`,
+
+  /** SET of completed IPO IDs for today */
+  ipoClosingCompleted: (dateIST) =>
+    `ipo:closing:completed:${dateIST}`,
+
+  /** HASH of failed IPOs for today (max attempts exceeded) */
+  ipoClosingFailed: (dateIST) =>
+    `ipo:closing:failed:${dateIST}`,
+
+  /** HASH of queue execution metadata */
+  ipoClosingQueueMeta: (dateIST) =>
+    `ipo:closing:meta:${dateIST}`,
 
   /**
    * Flag indicating today's queue has been populated.

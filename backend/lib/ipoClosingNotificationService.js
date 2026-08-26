@@ -4,67 +4,37 @@
  * ipoClosingNotificationService.js
  *
  * Sends ONE Web Push notification per IPO that closes today.
- * Integrated as a "tick" inside /api/cron/trigger (runs every 5 min).
+ * Integrated as a "tick" inside /api/cron/trigger (runs EVERY 1 MINUTE).
  *
- * Architecture (Queue-based, Serverless-safe):
- *   • Dispatch window: 11:00 AM – 12:59 PM IST
- *   • On the FIRST tick in the window for today:
- *       → Fetch all IPOs closing today from live API
- *       → Sort by GMP% descending (best opportunity first)
- *       → Push each IPO as JSON into Redis LIST (queue)
- *       → Set "populated" flag so subsequent ticks skip the fetch
- *   • On every subsequent tick in the window:
- *       → LPOP one IPO from the Redis LIST
- *       → Dispatch one clean push per opted-in user (50 concurrent)
- *       → Per-user per-IPO Redis dedup (SET NX EX 48h) prevents any duplicates
- *       → Return. Next IPO is dispatched on the next 5-min cron tick.
+ * Architecture (Atomic Queue State Machine, Serverless-safe):
+ *   • Dispatch window: 11:00 AM – 12:59 PM IST (Grace period up to 13:15 PM IST)
+ *   • 1-Minute Cron Cadence:
+ *       → Each tick acquires a fail-closed tokenized tick lock.
+ *       → First tick populates the state-machine PENDING queue.
+ *       → Subsequent ticks atomically claim items into PROCESSING HASH.
+ *       → Stale processing recovery automatically returns crashed worker items to PENDING.
+ *       → Active workers issue lease heartbeats every 30 seconds.
+ *       → Upon successful batch dispatch, item transitions atomically to COMPLETED SET.
+ *       → Failed items exceeding max attempts (3) transition to FAILED HASH.
  *
  * Guarantees:
- *   • Each user receives exactly 1 push per IPO (even if cron misfires twice)
- *   • No Vercel serverless timeout — each invocation does at most 1 IPO
- *   • Natural 5-minute spacing between IPO notifications
- *   • Scale-safe: 10,000 users × 10 IPOs handled over ~50 minutes
- *
- * Dispatch time: 11:00 AM IST (05:30 UTC) → first IPO pushed immediately.
- *               11:05 AM IST → second IPO, and so on every 5 minutes.
- *
- * Manual testing: POST /api/cron/ipo-closing (bypasses time window check).
+ *   • At-least-once IPO processing with zero item loss across serverless container crashes.
+ *   • Deduplication prevents duplicate notifications per user per IPO.
+ *   • Classified retry: release dedup lock on transient push errors, retain lock on expired token cleanups.
  */
 
 const { sendWebPushToUser } = require('./webPushNotifier');
 const redisNotifStore       = require('./redis/redisNotificationStore');
 const prefsStore            = require('./prefsStore');
+const { getISTDateTime, getISTDateString, isWithinIpoDispatchWindow } = require('./time/istTime');
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const BATCH_SIZE          = 50;  // concurrent web push calls per batch
-const DISPATCH_HOUR_START = 11;  // 11:00 AM IST
-const DISPATCH_HOUR_END   = 13;  // up to 12:59 PM IST (safety margin)
+const BATCH_SIZE = 50;  // concurrent web push calls per batch
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Returns the current date in IST as YYYY-MM-DD.
- */
-function getISTDateString() {
-  const now   = new Date();
-  const istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
-  return new Date(istMs).toISOString().slice(0, 10);
-}
-
-/**
- * Returns the current hour (0–23) in IST.
- */
-function getISTHour() {
-  const now   = new Date();
-  const istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
-  return new Date(istMs).getHours();
-}
-
-/**
  * Build one clean, concise push notification payload for a single IPO.
- *
- * Each IPO gets a unique `tag` so every notification appears separately
- * in the user's notification tray instead of replacing the previous one.
  */
 function buildSingleIpoPayload(ipo, dateIST) {
   const gainText = ipo.gmpPercentage > 0 ? ` (+${ipo.gmpPercentage}% Gain)` : '';
@@ -76,16 +46,13 @@ function buildSingleIpoPayload(ipo, dateIST) {
     title: `\u23f0 IPO Closing Today: ${ipo.name}`,
     body:  `${gmpText} \u2022 Last day to apply! Tap to view.`,
     url:   '/ipo-gmp',
-    tag:   `ipo-closing-${dateIST}-${ipo.id}`, // unique per IPO → separate notification
+    tag:   `ipo-closing-${dateIST}-${ipo.id}`,
     type:  'IPO_CLOSING',
   };
 }
 
 /**
  * Resolve UIDs who have opted-in to IPO closing reminders.
- *
- * Primary path:  Redis SET  (sub-millisecond, no Firebase round-trips)
- * Fallback path: Firebase Auth listUsers scan (only when Redis is down)
  */
 async function resolveOptedInUsers() {
   const redisUsers = await redisNotifStore.getIpoClosingUsers();
@@ -95,8 +62,7 @@ async function resolveOptedInUsers() {
     return redisUsers;
   }
 
-  // Redis unavailable — fall back to Firebase Auth full scan
-  console.warn('[IpoClosingNotif] Redis unavailable — falling back to Firebase Auth scan.');
+  console.warn('[IpoClosingNotif] Redis index uninitialized — falling back to DB/Firebase Auth scan.');
   const admin = require('firebase-admin');
   const uids  = [];
   let pageToken;
@@ -106,56 +72,66 @@ async function resolveOptedInUsers() {
     for (const user of result.users) {
       try {
         const prefs = await prefsStore.getPrefs(user.uid);
-        if (prefs.notifyIpoClosing !== false) uids.push(user.uid);
+        if (prefs && prefs.notifyIpoClosing !== false) {
+          uids.push(user.uid);
+          redisNotifStore.addIpoClosingUser(user.uid).catch(() => {});
+        }
       } catch { /* skip user if prefs fetch fails */ }
     }
     pageToken = result.pageToken;
   } while (pageToken);
 
-  console.log(`[IpoClosingNotif] Firebase scan complete: ${uids.length} opted-in user(s).`);
+  await redisNotifStore.setIpoClosingUsersIndexReady().catch(() => {});
+
+  console.log(`[IpoClosingNotif] Firebase scan complete: ${uids.length} opted-in user(s). Index seeded.`);
   return uids;
 }
 
 /**
- * Dispatch one IPO's notification to all opted-in users.
- * Enforces per-user per-IPO dedup via Redis atomic SET NX EX.
- *
- * @param {Object} ipo           — IPO object from ipoService.getIposClosingToday()
- * @param {string[]} optedInUids — UIDs of opted-in users
- * @param {string} dateIST       — YYYY-MM-DD in IST
- * @returns {Object}             — stats { sent, failed, expired, dedupSkipped, pushDisabled }
+ * Dispatch one IPO's notification to all opted-in users with lease heartbeats.
  */
-async function dispatchSingleIpo(ipo, optedInUids, dateIST) {
+async function dispatchSingleIpo(ipo, optedInUids, dateIST, ownerToken) {
   const payload = buildSingleIpoPayload(ipo, dateIST);
   const stats   = { sent: 0, failed: 0, expired: 0, dedupSkipped: 0, pushDisabled: 0 };
+  let lastHeartbeat = Date.now();
 
   for (let i = 0; i < optedInUids.length; i += BATCH_SIZE) {
+    // Send lease renewal heartbeat every 30 seconds during long dispatches
+    if (Date.now() - lastHeartbeat > 30000) {
+      await redisNotifStore.renewLease(dateIST, ipo.id, ownerToken, 120000).catch(() => {});
+      lastHeartbeat = Date.now();
+    }
+
     const batch = optedInUids.slice(i, i + BATCH_SIZE);
 
     await Promise.all(batch.map(async (uid) => {
       try {
-        // Skip if user has explicitly disabled web push
         const prefs = await prefsStore.getPrefs(uid).catch(() => null);
         if (prefs && prefs.pushEnabled === false) {
           stats.pushDisabled++;
           return;
         }
 
-        // Per-user per-IPO dedup — atomic Redis SET NX EX 48h
         const canSend = await redisNotifStore.acquireIpoClosingIpoDedupLock(dateIST, ipo.id, uid);
         if (!canSend) {
           stats.dedupSkipped++;
           return;
         }
 
-        const result   = await sendWebPushToUser(uid, payload);
+        const result = await sendWebPushToUser(uid, payload);
         stats.sent    += result.sent    || 0;
         stats.failed  += result.failed  || 0;
         stats.expired += result.expired || 0;
 
+        // If push failed due to a transient network error (no sent, >0 failed), release dedup lock for retry
+        if ((result.sent || 0) === 0 && (result.failed || 0) > 0) {
+          await redisNotifStore.releaseUserDedupLock(dateIST, ipo.id, uid).catch(() => {});
+        }
+
       } catch (err) {
         console.error(`[IpoClosingNotif] Error uid=${uid} ipoId=${ipo.id}:`, err.message);
         stats.failed++;
+        await redisNotifStore.releaseUserDedupLock(dateIST, ipo.id, uid).catch(() => {});
       }
     }));
   }
@@ -163,98 +139,125 @@ async function dispatchSingleIpo(ipo, optedInUids, dateIST) {
   return stats;
 }
 
-// ── Main Tick (called from /api/cron/trigger every 5 min) ────────────────────
-
 /**
  * processIpoClosingQueueTick
  *
- * Designed to be called on every 5-minute main cron invocation.
- * Each call either populates the queue (first call) or dispatches one IPO.
- * Returns immediately if outside the dispatch window.
+ * Called on 1-minute main cron invocations.
+ * Uses atomic state machine, tokenized tick locks, lease heartbeats, and dynamic catch-up mode.
  *
  * @param {boolean} [force=false] — bypass time-window check (for manual testing)
  * @returns {Promise<Object>}     — stats for this tick
  */
 async function processIpoClosingQueueTick({ force = false } = {}) {
-  const dateIST = getISTDateString();
-  const istHour = getISTHour();
+  const { dateIST, istHour, istMinute } = getISTDateTime();
+  const ownerToken = `TICK-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-  // Enforce 11:00 AM – 12:59 PM IST window (unless force-triggered)
-  if (!force && (istHour < DISPATCH_HOUR_START || istHour >= DISPATCH_HOUR_END)) {
-    return { skipped: true, reason: 'OUTSIDE_DISPATCH_WINDOW', istHour, dateIST };
+  // Normal Window: 11:00 AM – 12:59 PM IST. Grace Window: 13:00 PM – 13:15 PM IST.
+  const isNormalWindow = isWithinIpoDispatchWindow();
+  const isGraceWindow  = istHour === 13 && istMinute <= 15;
+
+  if (!force && !isNormalWindow && !isGraceWindow) {
+    return { skipped: true, reason: 'OUTSIDE_DISPATCH_WINDOW', istHour, istMinute, dateIST };
   }
 
-  // ── Step 1: Populate queue on first tick for today ────────────────────────
-  const isPopulated = await redisNotifStore.isIpoClosingQueuePopulated(dateIST);
+  // Step 0: Acquire Tokenized Distributed Tick Lock (FAIL-CLOSED)
+  const lockAcquired = await redisNotifStore.acquireTickLock(dateIST, ownerToken, 120);
+  if (!lockAcquired) {
+    return { skipped: true, reason: 'TICK_LOCK_HELD_OR_REDIS_OFFLINE', dateIST };
+  }
 
-  if (!isPopulated) {
-    const { getIposClosingToday } = require('../services/ipoService');
-    const closingIpos = await getIposClosingToday();
-
-    if (closingIpos.length === 0) {
-      // Mark populated with "0" count so we don't re-fetch on every tick
-      await redisNotifStore.populateIpoClosingQueue(dateIST, []);
-      console.log(`[IpoClosingQueue] ${dateIST}: No IPOs closing today. Queue marked empty.`);
-      return { skipped: true, reason: 'NO_IPOS_CLOSING_TODAY', dateIST };
+  try {
+    // Step 0.5: Recover stale items from crashed workers
+    const recoveryStats = await redisNotifStore.recoverStaleProcessingItems(dateIST, 3);
+    if (recoveryStats.recovered > 0 || recoveryStats.failed > 0) {
+      console.log(`[IpoClosingQueue] Stale recovery: recovered=${recoveryStats.recovered}, maxAttemptsFailed=${recoveryStats.failed}`);
     }
 
-    // Sort highest GMP% first (best opportunity gets the earliest notification)
-    const sorted = [...closingIpos].sort((a, b) => b.gmpPercentage - a.gmpPercentage);
-    await redisNotifStore.populateIpoClosingQueue(dateIST, sorted);
+    // Step 1: Populate queue on first tick for today (only during normal window)
+    const isPopulated = await redisNotifStore.isIpoClosingQueuePopulated(dateIST);
 
-    console.log(
-      `[IpoClosingQueue] ${dateIST}: Populated ${sorted.length} IPO(s): ` +
-      `[${sorted.map(i => `${i.name} (+${i.gmpPercentage}%)`).join(', ')}]`
-    );
-  }
+    if (!isPopulated && isNormalWindow) {
+      const { getIposClosingToday } = require('../services/ipoService');
+      const fetchResult = await getIposClosingToday();
 
-  // ── Step 2: Pop the next IPO from the queue ───────────────────────────────
-  const nextIpo = await redisNotifStore.popNextIpoFromQueue(dateIST);
+      if (!fetchResult.ok) {
+        console.warn(`[IpoClosingQueue] ${dateIST}: Scrapers unavailable (${fetchResult.error}). Will retry next minute.`);
+        return { skipped: true, reason: 'UPSTREAM_SCRAPER_FAILURE', error: fetchResult.error, dateIST };
+      }
 
-  if (!nextIpo) {
-    return { skipped: true, reason: 'QUEUE_EMPTY_ALL_DISPATCHED', dateIST };
-  }
+      const closingIpos = fetchResult.ipos || [];
+      if (closingIpos.length === 0) {
+        await redisNotifStore.populateIpoClosingQueue(dateIST, []);
+        console.log(`[IpoClosingQueue] ${dateIST}: No IPOs closing today. Queue marked empty.`);
+        return { skipped: true, reason: 'NO_IPOS_CLOSING_TODAY', dateIST };
+      }
 
-  // ── Step 3: Resolve opted-in users ───────────────────────────────────────
-  const t0          = Date.now();
-  const optedInUids = await resolveOptedInUsers();
+      const sorted = [...closingIpos].sort((a, b) => b.gmpPercentage - a.gmpPercentage);
+      await redisNotifStore.populateIpoClosingQueue(dateIST, sorted);
 
-  console.log(
-    `[IpoClosingQueue] Dispatching "${nextIpo.name}" (GMP: ₹${nextIpo.gmp}, ` +
-    `+${nextIpo.gmpPercentage}%) to ${optedInUids.length} user(s).`
-  );
+      console.log(
+        `[IpoClosingQueue] ${dateIST}: Populated ${sorted.length} IPO(s): ` +
+        `[${sorted.map(i => `${i.name} (+${i.gmpPercentage}%)`).join(', ')}]`
+      );
+    }
 
-  if (optedInUids.length === 0) {
-    return {
-      dispatched:   true,
-      ipoName:      nextIpo.name,
-      ipoId:        nextIpo.id,
-      optedInUsers: 0,
-      sent: 0, failed: 0, expired: 0, dedupSkipped: 0, pushDisabled: 0,
-      durationMs:   Date.now() - t0,
+    // Step 2: Determine capacity-aware items to process
+    const statusObj = await redisNotifStore.getIpoClosingQueueStatus(dateIST);
+    const pendingCount = statusObj.pendingCount || 0;
+
+    if (pendingCount === 0 && (statusObj.processingCount || 0) === 0) {
+      return { skipped: true, reason: 'QUEUE_EMPTY_ALL_DISPATCHED', dateIST };
+    }
+
+    let itemsToProcess = 1;
+    if (istHour === 12 && istMinute >= 50) {
+      const remainingMinutes = Math.max(1, 60 - istMinute);
+      itemsToProcess = Math.min(5, Math.ceil(pendingCount / remainingMinutes));
+    } else if (isGraceWindow) {
+      itemsToProcess = Math.min(5, pendingCount);
+    }
+
+    const tickStats = {
+      dispatched: false,
+      itemsProcessed: 0,
+      iposHandled: [],
+      sentTotal: 0,
+      failedTotal: 0,
+      durationMs: 0,
       dateIST,
     };
+
+    const t0 = Date.now();
+    const optedInUids = await resolveOptedInUsers();
+
+    for (let count = 0; count < itemsToProcess; count++) {
+      const claimedRecord = await redisNotifStore.claimNextIpoForProcessing(dateIST, ownerToken, 120000);
+      if (!claimedRecord) break;
+
+      const ipo = claimedRecord.ipo;
+      console.log(`[IpoClosingQueue] Claimed "${ipo.name}" (attempt ${claimedRecord.attempts}) for ${optedInUids.length} user(s).`);
+
+      let ipoDispatchStats = { sent: 0, failed: 0, expired: 0, dedupSkipped: 0, pushDisabled: 0 };
+      if (optedInUids.length > 0) {
+        ipoDispatchStats = await dispatchSingleIpo(ipo, optedInUids, dateIST, ownerToken);
+      }
+
+      // Mark completed atomically in Redis
+      await redisNotifStore.markIpoCompleted(dateIST, ipo.id, ownerToken);
+
+      tickStats.dispatched = true;
+      tickStats.itemsProcessed++;
+      tickStats.iposHandled.push({ name: ipo.name, ...ipoDispatchStats });
+      tickStats.sentTotal += ipoDispatchStats.sent || 0;
+      tickStats.failedTotal += ipoDispatchStats.failed || 0;
+    }
+
+    tickStats.durationMs = Date.now() - t0;
+    return tickStats;
+
+  } finally {
+    await redisNotifStore.releaseTickLock(dateIST, ownerToken).catch(() => {});
   }
-
-  // ── Step 4: Dispatch to all users ────────────────────────────────────────
-  const stats = await dispatchSingleIpo(nextIpo, optedInUids, dateIST);
-
-  console.log(
-    `[IpoClosingQueue] "${nextIpo.name}" complete. ` +
-    `sent=${stats.sent} failed=${stats.failed} ` +
-    `expired=${stats.expired} dedup=${stats.dedupSkipped} ` +
-    `durationMs=${Date.now() - t0}ms`
-  );
-
-  return {
-    dispatched:   true,
-    ipoName:      nextIpo.name,
-    ipoId:        nextIpo.id,
-    optedInUsers: optedInUids.length,
-    ...stats,
-    durationMs:   Date.now() - t0,
-    dateIST,
-  };
 }
 
 module.exports = { processIpoClosingQueueTick, getISTDateString };

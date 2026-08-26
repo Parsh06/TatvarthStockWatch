@@ -25,7 +25,7 @@ const { classifyAnnouncementBatch }          = require('./categoryClassifier');
 const { acquireDedupLock }                   = require('./notificationDedup');
 const { getDb }                              = require('./mongoClient');
 
-const { resolveRecipientsForBatch }          = require('./notification/notificationRouter');
+const { resolveRecipientsForBatch, resolveRecipientsMapForBatch } = require('./notification/notificationRouter');
 const { evaluateNotificationFilter }         = require('./notification/notificationFilter');
 const { dispatchPushBatch }                  = require('./notification/notificationDispatcher');
 const redisNotifStore                        = require('./redis/redisNotificationStore');
@@ -270,23 +270,32 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
 
 /**
  * Inverted Notification Engine Flow (O(M) Announcements -> Target Users)
+ * Strictly isolates recipients per announcement to eliminate cross-pollination across user watchlists.
  */
 async function processInvertedAnnouncements({ newAnnouncements, classified, stats, runId, verbose, isShadow = false }) {
   const startTime = Date.now();
   const prefsStore = require('./prefsStore');
+  const { sendTelegramAlert, isConfigured: isTelegramOk } = require('./telegramNotifier');
+  const { getStableAnnouncementId } = require('./notification/notificationRouter');
 
-  // 1. Resolve target UIDs for the entire announcement batch
-  const targetUids = await resolveRecipientsForBatch(newAnnouncements);
-  stats.usersProcessed = targetUids.size;
+  // 1. Resolve exact per-announcement target UIDs map
+  const recipientsMap = await resolveRecipientsMapForBatch(newAnnouncements);
+
+  const uniqueUsersEvaluated = new Set();
+  recipientsMap.forEach(userSet => userSet.forEach(uid => uniqueUsersEvaluated.add(uid)));
+  stats.usersProcessed = uniqueUsersEvaluated.size;
 
   if (verbose) {
-    console.log(`[NotifEngine:${runId}] Inverted Router resolved ${targetUids.size} unique target users`);
+    console.log(`[NotifEngine:${runId}] Inverted Router resolved per-announcement recipients across ${uniqueUsersEvaluated.size} unique users for ${recipientsMap.size} valid announcements`);
   }
 
-  const toDispatch = [];
+  const toDispatchPush = [];
+  const toDispatchTelegram = [];
+  const localPrefsCache = new Map();
 
-  // 2. Evaluate category blocking & dedup for target users only
-  for (const uid of targetUids) {
+  // Helper to fetch prefs with per-run local caching
+  async function getPrefsCached(uid) {
+    if (localPrefsCache.has(uid)) return localPrefsCache.get(uid);
     let prefs = await redisNotifStore.getPrefs(uid);
     if (!prefs) {
       try {
@@ -294,52 +303,117 @@ async function processInvertedAnnouncements({ newAnnouncements, classified, stat
         if (prefs) redisNotifStore.setPrefs(uid, prefs).catch(() => {});
       } catch (err) {
         console.error(`[NotifEngine:${runId}] Prefs fetch error for ${uid} — skip (fail-closed)`);
-        continue;
+        prefs = null;
       }
     }
+    localPrefsCache.set(uid, prefs);
+    return prefs;
+  }
 
-    if (!prefs) continue;
+  // 2. Iterate per announcement and evaluate filters ONLY for targeted users of THAT announcement
+  for (const { announcement: ann, classification } of classified) {
+    const annId = getStableAnnouncementId(ann);
+    if (!annId) continue;
 
-    for (const { announcement: ann, classification } of classified) {
-      const decision = evaluateNotificationFilter({
+    const targetUids = recipientsMap.get(annId) || new Set();
+
+    for (const uid of targetUids) {
+      const prefs = await getPrefsCached(uid);
+      if (!prefs) continue;
+
+      // Onboarding timestamp safeguard: Do NOT notify users for announcements published before registration
+      if (prefs.userCreatedAtMs && prefs.userCreatedAtMs > 0) {
+        const annTimeMs = new Date(ann.announcementDate || ann.savedAt || ann.createdAt || Date.now()).getTime();
+        if (prefs.userCreatedAtMs > (annTimeMs + 5 * 60 * 1000)) {
+          continue;
+        }
+      }
+
+      // ── Push Channel Evaluation ─────────────────────────────────────────
+      const pushDecision = evaluateNotificationFilter({
         announcement: ann,
         classification,
         preferences: prefs,
         channel: 'push',
       });
 
-      if (decision.shouldNotify) {
-        // Atomic deduplication via Redis SET NX EX
-        const acquired = await redisNotifStore.acquireDedupLock(ann.id, uid, 'PUSH', 86400);
+      if (pushDecision.shouldNotify) {
+        // Atomic deduplication via Redis SET NX EX (keyed by ann.id + uid)
+        const acquired = await redisNotifStore.acquireDedupLock(annId, uid, 'PUSH', 86400);
         if (acquired) {
-          toDispatch.push({ uid, announcement: ann });
+          toDispatchPush.push({ uid, announcement: ann });
         } else {
           stats.alreadySent++;
         }
       } else {
         stats.categoryBlocked++;
       }
+
+      // ── Telegram Channel Evaluation ─────────────────────────────────────
+      if (prefs.telegramEnabled !== false) {
+        const targetChat = prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID;
+        if (isTelegramOk(targetChat)) {
+          const tgDecision = evaluateNotificationFilter({
+            announcement: ann,
+            classification,
+            preferences: prefs,
+            channel: 'telegram',
+          });
+
+          if (tgDecision.shouldNotify) {
+            const acquiredTg = await redisNotifStore.acquireDedupLock(annId, uid, 'TELEGRAM', 86400);
+            if (acquiredTg) {
+              toDispatchTelegram.push({ uid, targetChat, announcement: ann });
+            }
+          }
+        }
+      }
     }
   }
 
-  stats.queued = toDispatch.length;
+  stats.queued = toDispatchPush.length + toDispatchTelegram.length;
 
   if (isShadow) {
-    console.log(`[NotifEngine:${runId}] [SHADOW MODE] Would dispatch ${toDispatch.length} web push alerts.`);
+    console.log(`[NotifEngine:${runId}] [SHADOW MODE] Would dispatch ${toDispatchPush.length} Web Push and ${toDispatchTelegram.length} Telegram alerts.`);
     return stats;
   }
 
   // 3. Dispatch Web Push with bounded concurrency
-  if (toDispatch.length > 0) {
-    const dispatchRes = await dispatchPushBatch(toDispatch);
+  if (toDispatchPush.length > 0) {
+    const dispatchRes = await dispatchPushBatch(toDispatchPush);
     stats.pushSent = dispatchRes.sent;
     stats.failed += dispatchRes.failed;
+  }
+
+  // 4. Dispatch Telegram with rate limiting
+  if (toDispatchTelegram.length > 0) {
+    for (const item of toDispatchTelegram) {
+      try {
+        const tgRes = await sendTelegramAlert([item.announcement], item.targetChat);
+        if (tgRes.sent) {
+          stats.telegramSent++;
+        } else {
+          stats.failed++;
+        }
+        await _delay(TELEGRAM_DELAY_MS);
+      } catch (err) {
+        console.error(`[NotifEngine:${runId}] Telegram dispatch error:`, err.message);
+        stats.failed++;
+      }
+    }
   }
 
   stats.durationMs = Date.now() - startTime;
 
   if (verbose) {
-    console.log(`[NotifEngine:${runId}] Inverted Complete`, JSON.stringify(stats));
+    console.log(`[NotifEngine:${runId}] Inverted Pipeline Complete:
+      - Announcements Processed: ${classified.length}
+      - Unique Users Evaluated: ${stats.usersProcessed}
+      - Category Filter Blocked: ${stats.categoryBlocked}
+      - Already Sent (Dedup): ${stats.alreadySent}
+      - Push Sent: ${stats.pushSent}
+      - Telegram Sent: ${stats.telegramSent}
+      - Duration: ${stats.durationMs}ms`);
   }
 
   return stats;

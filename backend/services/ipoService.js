@@ -1,6 +1,6 @@
 'use strict';
 
-const axios = require('axios');
+const { getISTDateString, parseToISTDateString } = require('../lib/time/istTime');
 
 async function fetchIpoGmpData(page = 1, search = '') {
   search = search.toLowerCase();
@@ -31,10 +31,35 @@ async function fetchIpoGmpData(page = 1, search = '') {
     })
   ]);
 
+  const mbData = mbGmpRes.status === 'fulfilled' ? mbGmpRes.value?.data : null;
+  const igData = igRes.status === 'fulfilled' ? igRes.value?.data : null;
+
+  const mbTransportOk = mbGmpRes.status === 'fulfilled' && mbGmpRes.value?.status === 200;
+  const mbSchemaValid = mbData && typeof mbData === 'object' && Array.isArray(mbData.data);
+
+  const igTransportOk = igRes.status === 'fulfilled' && igRes.value?.status === 200;
+  const igSchemaValid = igData && typeof igData === 'object' && Array.isArray(igData.reportTableData);
+
+  const sourcesStatus = {
+    mainboardGmp: {
+      attempted: true,
+      transportOk: mbTransportOk,
+      schemaValid: mbSchemaValid,
+      usable: mbTransportOk && mbSchemaValid,
+      count: mbSchemaValid ? mbData.data.length : 0,
+    },
+    investorgain: {
+      attempted: true,
+      transportOk: igTransportOk,
+      schemaValid: igSchemaValid,
+      usable: igTransportOk && igSchemaValid,
+      count: igSchemaValid ? igData.reportTableData.length : 0,
+    },
+  };
+
   let finalData = { data: [], current_page: page, total_pages: 1, total: 0 };
   const companySet = new Set();
 
-  // Helper to normalize company name for strict deduplication
   const getMatchKey = (name) => {
     return name.toLowerCase()
       .replace(/\bltd\b/g, '')
@@ -43,16 +68,15 @@ async function fetchIpoGmpData(page = 1, search = '') {
   };
 
   // Process MainboardGMP (Primary Source)
-  if (mbGmpRes.status === 'fulfilled' && mbGmpRes.value.data) {
-    finalData = mbGmpRes.value.data;
+  if (sourcesStatus.mainboardGmp.usable) {
+    finalData = mbData;
     if (!finalData.data) finalData.data = [];
-    // Track existing companies to prevent duplicates
     finalData.data.forEach(ipo => companySet.add(getMatchKey(ipo.company_name)));
   }
 
   // Process Investorgain (Secondary Source)
-  if (igRes.status === 'fulfilled' && igRes.value.data && igRes.value.data.reportTableData) {
-    const rawIgData = igRes.value.data.reportTableData;
+  if (sourcesStatus.investorgain.usable) {
+    const rawIgData = igData.reportTableData;
     
     const normalizedIgData = rawIgData.map(item => {
       // Extract name from HTML <a> tag
@@ -93,6 +117,8 @@ async function fetchIpoGmpData(page = 1, search = '') {
       // Clean IPO size
       let ipoSize = (item['IPO Size'] || '-').replace(/&#8377;/g, '₹');
 
+      const rawCloseDate = item['~Srt_Close'] || item.close_date || '';
+
       return {
         id: item['~id'] || Math.floor(Math.random() * 100000),
         slug: company_name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
@@ -103,6 +129,7 @@ async function fetchIpoGmpData(page = 1, search = '') {
         gmp,
         open_date: formatDate(item['~Srt_Open']),
         close_date: formatDate(item['~Srt_Close']),
+        closeDateISO: parseToISTDateString(rawCloseDate),
         listing_date: formatDate(item['~Str_Listing']),
         issue_price: item['Price (₹)'] || '0',
         lot_size: item['Lot'] || '0',
@@ -124,14 +151,17 @@ async function fetchIpoGmpData(page = 1, search = '') {
     finalData.data = finalData.data.map(mbIpo => {
       const nameKey = getMatchKey(mbIpo.company_name);
       const igIpo = igMap.get(nameKey);
+      const rawCloseDate = mbIpo.close_date || igIpo?.close_date || '';
+      const closeDateISO = parseToISTDateString(rawCloseDate) || igIpo?.closeDateISO;
+
       if (igIpo) {
         return {
           ...mbIpo,
+          closeDateISO,
           subscription: igIpo.subscription,
           pe_ratio: igIpo.pe_ratio,
           ipo_size: igIpo.ipo_size,
           fire_rating: igIpo.fire_rating,
-          // Prefer Investorgain data for these fields if it's not 0 or missing
           gmp: igIpo.gmp > 0 ? igIpo.gmp : mbIpo.gmp,
           issue_price: igIpo.issue_price && igIpo.issue_price !== '0' ? igIpo.issue_price : mbIpo.issue_price,
           lot_size: igIpo.lot_size && igIpo.lot_size !== '0' ? igIpo.lot_size : mbIpo.lot_size
@@ -139,6 +169,7 @@ async function fetchIpoGmpData(page = 1, search = '') {
       }
       return {
         ...mbIpo,
+        closeDateISO,
         subscription: '-',
         pe_ratio: '-',
         ipo_size: '-',
@@ -148,19 +179,14 @@ async function fetchIpoGmpData(page = 1, search = '') {
 
     // Filter and Merge unique Investorgain data
     const uniqueIgData = normalizedIgData.filter(ipo => {
-      // Apply search filter manually for investorgain
       if (search && !ipo.company_name.toLowerCase().includes(search)) return false;
-      // Deduplicate
       const nameKey = getMatchKey(ipo.company_name);
       if (companySet.has(nameKey)) return false;
       companySet.add(nameKey);
       return true;
     });
 
-    // Only append Investorgain data on Page 1 (since it returns current active IPOs)
-    // Or if searching, we append to the single page of results.
     if (page === 1 || search) {
-      // Sort active/upcoming first, then append to top of finalData.data
       uniqueIgData.sort((a, b) => {
         const statusWeight = { 'open': 1, 'upcoming': 2, 'closed': 3 };
         return statusWeight[a.tab_status] - statusWeight[b.tab_status];
@@ -171,14 +197,16 @@ async function fetchIpoGmpData(page = 1, search = '') {
     }
   }
 
-  const todayStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const todayIST = getISTDateString();
   finalData.data = finalData.data.map(ipo => {
-    if (ipo.tab_status === 'open' && ipo.close_date === todayStr) {
+    const isClosingTodayByISO = ipo.closeDateISO === todayIST;
+    if (ipo.tab_status === 'open' && isClosingTodayByISO) {
       return { ...ipo, tab_status: 'CT' };
     }
     return ipo;
   });
 
+  finalData.sourcesStatus = sourcesStatus;
   return finalData;
 }
 
@@ -186,34 +214,70 @@ async function fetchIpoGmpData(page = 1, search = '') {
  * getIposClosingToday
  *
  * Clean contract for the IPO closing notification service.
- * Returns a normalized array of IPOs that have tab_status === 'CT'
- * (i.e., today is the last day to apply).
+ * Returns a normalized status object and array of IPOs closing today.
  *
- * @returns {Promise<Array<{id, name, slug, gmp, gmpPercentage, issuePrice, closeDate, exchange}>>}
+ * @returns {Promise<{ ok: boolean, status: string, ipos: Array, sources: Object, error: string|null }>}
  */
 async function getIposClosingToday() {
-  const result = await fetchIpoGmpData(1, '');
-  const ipos = result?.data || [];
+  try {
+    const result = await fetchIpoGmpData(1, '');
+    const ipos = result?.data || [];
+    const sourcesStatus = result?.sourcesStatus || {};
 
-  return ipos
-    .filter(ipo => String(ipo.tab_status || '').trim().toUpperCase() === 'CT')
-    .map(ipo => {
-      const issuePrice = parseFloat(ipo.issue_price) || 0;
-      const gmp        = parseFloat(ipo.gmp)         || 0;
-      const gmpPct     = issuePrice > 0 ? Math.round((gmp / issuePrice) * 1000) / 10 : 0;
-      const slug       = ipo.slug || (ipo.company_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-
+    const isAnySourceUsable = sourcesStatus.mainboardGmp?.usable || sourcesStatus.investorgain?.usable;
+    if (!isAnySourceUsable) {
       return {
-        id:            String(ipo.id || slug),
-        name:          ipo.company_name || 'Unknown IPO',
-        slug,
-        gmp,
-        gmpPercentage: gmpPct,
-        issuePrice,
-        closeDate:     ipo.close_date || '',
-        exchange:      ipo.listing_exch || '',
+        ok: false,
+        status: 'UPSTREAM_FAILURE',
+        ipos: [],
+        sources: sourcesStatus,
+        error: 'Both MainboardGMP and Investorgain scrapers failed transport/schema validation'
       };
-    });
+    }
+
+    const filtered = ipos
+      .filter(ipo => {
+        const isCT = String(ipo.tab_status || '').trim().toUpperCase() === 'CT';
+        const isToday = ipo.closeDateISO === getISTDateString();
+        return isCT || isToday;
+      })
+      .map(ipo => {
+        const issuePrice = parseFloat(ipo.issue_price) || 0;
+        const gmp        = parseFloat(ipo.gmp)         || 0;
+        const gmpPct     = issuePrice > 0 ? Math.round((gmp / issuePrice) * 1000) / 10 : 0;
+        const slug       = ipo.slug || (ipo.company_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+        return {
+          id:            String(ipo.id || slug),
+          name:          ipo.company_name || 'Unknown IPO',
+          slug,
+          gmp,
+          gmpPercentage: gmpPct,
+          issuePrice,
+          closeDate:     ipo.close_date || '',
+          closeDateISO:  ipo.closeDateISO || getISTDateString(),
+          exchange:      ipo.listing_exch || '',
+        };
+      });
+
+    const isPartial = !sourcesStatus.mainboardGmp?.ok || !sourcesStatus.investorgain?.ok;
+
+    return {
+      ok: true,
+      status: isPartial ? 'PARTIAL_SUCCESS' : 'SUCCESS',
+      ipos: filtered,
+      sources: sourcesStatus,
+      error: null
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 'UPSTREAM_FAILURE',
+      ipos: [],
+      sources: {},
+      error: err.message
+    };
+  }
 }
 
 module.exports = {
