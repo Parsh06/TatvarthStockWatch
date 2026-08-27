@@ -251,10 +251,39 @@ async function sendTelegramIpoAlert(ipo, userChatId) {
   }
 }
 
+/**
+ * Send an IPO closing alert to Telegram.
+ */
+async function sendTelegramIpoClosingAlert(ipo, userChatId) {
+  if (!isConfigured(userChatId)) return { sent: false, reason: 'not_configured' };
+  const name = esc(ipo.name || 'Unknown IPO');
+  const exch = esc(ipo.exchange || 'Mainboard');
+  const gmp = ipo.gmp != null ? `₹${ipo.gmp}` : 'N/A';
+  const gmpPct = ipo.gmpPercentage != null ? `+${ipo.gmpPercentage}%` : 'N/A';
+  const price = ipo.issuePrice ? `₹${ipo.issuePrice}` : 'N/A';
+  const closeDate = esc(ipo.closeDate || 'Today');
+
+  const text = `⏰ <b>IPO CLOSING TODAY — LAST CHANCE TO BID</b>\n\n` +
+    `🏢 <b>${name}</b> (${exch})\n\n` +
+    `💰 <b>Issue Price:</b> ${price}\n` +
+    `🚀 <b>Expected Premium:</b> ${gmp} (<b>${gmpPct} Est. Gain</b>)\n` +
+    `📅 <b>Bidding Closes:</b> ${closeDate}\n\n` +
+    `👉 <a href="https://tatvarthstockwatch.web.app/ipo-gmp">View Live IPO GMP & Details</a>`;
+
+  try {
+    await sendMessage(text, userChatId);
+    return { sent: true };
+  } catch (e) {
+    const errorDetail = e.response?.data?.description || e.message;
+    return { sent: false, error: errorDetail };
+  }
+}
+
 module.exports = { 
   sendTelegramAlert, 
   sendTelegramPriceAlert, 
   sendTelegramIpoAlert,
+  sendTelegramIpoClosingAlert,
   sendTelegramTest, 
   editTelegramMessage,
   isConfigured,

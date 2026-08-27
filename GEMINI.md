@@ -118,6 +118,7 @@ stockwatch/
 │   │   ├── nseScraper.js              ← NSE API scraper
 │   │   ├── ipoScraper.js             ← KFintech IPO scraper
 │   │   ├── ipoStore.js               ← IPO Firestore operations
+│   │   ├── ipoClosingStore.js        ← MongoDB Atlas today's closing IPOs store
 │   │   ├── ipoUtils.js               ← IPO helper functions
 │   │   ├── ipoClosingNotificationService.js
 │   │   ├── aiSummarizer.js            ← Gemini AI integration
@@ -608,6 +609,8 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 | 2026-08-26 | Enhanced Cut-off Price row to display actual numeric rate (e.g. ₹540.55 Cut-off) alongside allotment status | `frontend/src/components/OFS/OFSPage.jsx` |
 | 2026-08-26 | Fixed & Hardened notification recipient-isolation architecture: implemented stable ID guards, canonical instrument key normalization, account onboarding safeguards, dual-channel dispatch (Push+Telegram), and comprehensive test suite | `backend/lib/notification/notificationRouter.js`, `backend/lib/notificationEngine.js`, `backend/tests/test_recipient_isolation.js` |
 | 2026-08-26 | Implemented Enterprise Production Hardening for IPO Closing Notification Pipeline: atomic Redis Lua state machine (PENDING -> PROCESSING -> COMPLETED / FAILED), owner-token validation, 30s lease heartbeats, stale recovery, classified delivery retries, transport & schema source-health policy, fail-closed locks, dynamic capacity catch-up, post-1 PM grace window, and queue status diagnostics | `backend/lib/time/istTime.js` (new), `backend/services/ipoService.js`, `backend/lib/redis/redisKeys.js`, `backend/lib/redis/redisNotificationStore.js`, `backend/lib/ipoClosingNotificationService.js`, `backend/tests/test_ipo_closing_hardened.js` (new) |
+| 2026-08-27 | Implemented MongoDB-Backed IPO Closing Notification Architecture: persistent MongoDB Atlas collection `ipo_closing_today` with 12:00 AM IST midnight wipe & pre-seeding, live 11:00 AM scraping refresh for current market GMP & Gain %, atomic PENDING -> DISPATCHING -> COMPLETED state transitions, sequential 1-by-1 delivery sorted by live GMP%, dual-channel alerting (Web Push to all registered devices in Firestore + Telegram), per-user dedup tracking, and auto-recovery | `backend/lib/ipoClosingStore.js` (new), `backend/lib/telegramNotifier.js`, `backend/lib/ipoClosingNotificationService.js`, `backend/server.js`, `backend/tests/test_ipo_closing_mongodb.js` (new) |
+| 2026-08-27 | Enhanced IPO Sorting & Display Hierarchy: strictly prioritizes Closing Today (CT) first, then Open for Bidding (OPEN), then Upcoming, then Closed across both Dashboard IpoActivityWidget (with scrollable sub-sections & badges) and IPO GMP Tracker page (with stat cards, status filter pills, and grouped rows) | `frontend/src/components/Dashboard/IpoActivityWidget.jsx`, `frontend/src/components/IPO/IPOGmpPage.jsx`, `backend/services/dashboardService.js`, `backend/services/ipoService.js` |
 
 
 ---

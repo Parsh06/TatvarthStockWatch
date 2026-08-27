@@ -83,6 +83,7 @@ async function runTestMatrix() {
   console.log('  ✅ PASS: Queue tick processed cleanly:', JSON.stringify(tickStats, null, 2));
 
   console.log('\n🎉 ALL IPO CLOSING HARDENING TESTS PASSED SUCCESSFULLY!');
+  process.exit(0);
 }
 
 runTestMatrix().catch((err) => {

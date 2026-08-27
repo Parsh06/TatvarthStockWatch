@@ -735,11 +735,26 @@ async function performMidnightWipeIfNeeded() {
       const { cleanupHistoricalIpos } = require('./lib/ipoStore');
       const mongoDb = await getDb();
 
+      const { wipeTodayClosingIpos, syncTodayClosingIpos } = require('./lib/ipoClosingStore');
+      const { getIposClosingToday } = require('./services/ipoService');
+
       await Promise.all([
         mongoDb.collection('announcements').deleteMany({}),
         mongoDb.collection('alert_dedup_locks').deleteMany({}),
         cleanupHistoricalIpos().catch(() => {}),
+        wipeTodayClosingIpos().catch((err) => console.error('[Midnight Wipe] IPO closing wipe failed:', err.message)),
       ]);
+
+      // Pre-seed today's closing IPOs into MongoDB for the new day
+      try {
+        const ipoResult = await getIposClosingToday();
+        if (ipoResult?.ok && Array.isArray(ipoResult.ipos) && ipoResult.ipos.length > 0) {
+          await syncTodayClosingIpos(ipoResult.ipos, todayDateStr);
+          console.log(`[Midnight Wipe] Pre-seeded ${ipoResult.ipos.length} closing IPOs into MongoDB for ${todayDateStr}`);
+        }
+      } catch (ipoPreseedErr) {
+        console.error('[Midnight Wipe] Error pre-seeding closing IPOs:', ipoPreseedErr.message);
+      }
 
       writeAnnouncements([], { lastTriggeredAt: new Date().toISOString() });
 

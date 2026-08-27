@@ -184,11 +184,20 @@ async function fetchIpo() {
         status: (i.tab_status || '').toUpperCase()
       };
     }).filter(s => Boolean(s.name));
+
+    // Guarantee ALL CT first (sorted by estGain desc), followed by ALL OPEN (sorted by estGain desc)
+    openSymbols.sort((a, b) => {
+      const isCTA = a.status === 'CT';
+      const isCTB = b.status === 'CT';
+      if (isCTA && !isCTB) return -1;
+      if (!isCTA && isCTB) return 1;
+      return (b.estGain || 0) - (a.estGain || 0);
+    });
   } catch (e) {
     console.warn('[DashboardService] Open IPO fetch failed:', e.message);
   }
 
-  const result = { activeCount: openSymbols.length, symbols: openSymbols.slice(0, 6) };
+  const result = { activeCount: openSymbols.length, symbols: openSymbols };
   toCache(CACHE_KEY, result, 5 * 60_000);
   return result;
 }

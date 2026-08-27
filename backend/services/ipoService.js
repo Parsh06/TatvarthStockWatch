@@ -207,6 +207,22 @@ async function fetchIpoGmpData(page = 1, search = '') {
     return ipo;
   });
 
+  const getStatusWeight = (status) => {
+    const s = String(status || '').trim().toLowerCase();
+    if (s === 'ct') return 1;
+    if (s === 'open') return 2;
+    if (s === 'upcoming' || s === 'soon') return 3;
+    return 4; // closed or other
+  };
+
+  finalData.data.sort((a, b) => {
+    const weightDiff = getStatusWeight(a.tab_status) - getStatusWeight(b.tab_status);
+    if (weightDiff !== 0) return weightDiff;
+    const gmpA = parseFloat(a.gmp) || 0;
+    const gmpB = parseFloat(b.gmp) || 0;
+    return gmpB - gmpA;
+  });
+
   finalData.sourcesStatus = sourcesStatus;
   return finalData;
 }
