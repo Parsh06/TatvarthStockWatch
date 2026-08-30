@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { TrendingUp, TrendingDown, RefreshCw, AlertCircle, ArrowUpRight, ArrowDownRight, Download, Filter } from 'lucide-react'
+import { TrendingUp, TrendingDown, RefreshCw, AlertCircle, ArrowUpRight, ArrowDownRight, Download, Filter, Clock } from 'lucide-react'
 import clsx from 'clsx'
 import toast from 'react-hot-toast'
 import { apiClient } from '../../services/apiClient'
 import { auth } from '../../services/firebase'
 import PageTransition from '../Common/PageTransition'
-import { Spinner } from '../Common/Loader'
+import Loader, { Spinner } from '../Common/Loader'
 import { normalizeBseData, normalizeNseData } from '../../utils/normalizeGainersLosers'
 
 const TABLE_COLUMNS = {
@@ -325,8 +325,8 @@ export default function GainersLosersPage() {
       {/* Main Content Area - Dynamic Table Card */}
       <div className="relative mt-6">
         {loading && (
-          <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-30 flex items-center justify-center rounded-xl">
-            <Spinner size="lg" />
+          <div className="absolute inset-0 bg-[#050811]/80 backdrop-blur-md z-30 flex items-center justify-center rounded-2xl">
+            <Loader text="Fetching top market movers..." />
           </div>
         )}
 

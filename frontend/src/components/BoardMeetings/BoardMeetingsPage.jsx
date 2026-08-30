@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
-import { RefreshCw, Search, Download, CheckCircle2, XCircle, Calendar, FileText, Bell } from 'lucide-react'
+import { RefreshCw, Search, Download, CheckCircle2, XCircle, Calendar, FileText, Bell, BellOff } from 'lucide-react'
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 import { getAnnouncementsFromDB } from '../../services/announcementService'
 import { exportToXLSX } from '../../utils/csvParser'
 import PageTransition from '../Common/PageTransition'
-import { Spinner } from '../Common/Loader'
+import Loader, { Spinner } from '../Common/Loader'
 
 const getISTDate = (d = new Date()) => new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const today = () => getISTDate();
@@ -244,33 +244,31 @@ export default function BoardMeetingsPage() {
 
       {/* Table */}
       <div className="glass-panel rounded-2xl overflow-hidden flex flex-col min-h-[400px]">
-        <div className="overflow-x-auto flex-1 scrollbar-hide">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
-              <tr>
-                <th className="px-4 py-3 font-medium">BSE Code</th>
-                <th className="px-4 py-3 font-medium">Company Name</th>
-                <th className="px-4 py-3 font-medium">Purpose</th>
-                <th className="px-4 py-3 font-medium">Meeting Date</th>
-                <th className="px-4 py-3 font-medium text-center">Result Out?</th>
-                <th className="px-4 py-3 font-medium text-center">Email Sent?</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {loading ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-20 flex-1">
+            <Loader text="Loading board meetings..." />
+          </div>
+        ) : (
+          <div className="overflow-x-auto flex-1 scrollbar-hide">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
                 <tr>
-                  <td colSpan="6" className="px-4 py-16 text-center text-textMuted">
-                    <Spinner size="lg" className="mx-auto mb-4" />
-                    <p>Loading board meetings...</p>
-                  </td>
+                  <th className="px-4 py-3 font-medium">BSE Code</th>
+                  <th className="px-4 py-3 font-medium">Company Name</th>
+                  <th className="px-4 py-3 font-medium">Purpose</th>
+                  <th className="px-4 py-3 font-medium">Meeting Date</th>
+                  <th className="px-4 py-3 font-medium text-center">Result Out?</th>
+                  <th className="px-4 py-3 font-medium text-center">Email Sent?</th>
                 </tr>
-              ) : filteredMeetings.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="px-4 py-16 text-center text-textMuted">
-                    No board meetings found for this date range.
-                  </td>
-                </tr>
-              ) : (
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {filteredMeetings.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-4 py-16 text-center text-textMuted">
+                      No board meetings found for this date range.
+                    </td>
+                  </tr>
+                ) : (
                 filteredMeetings.map((m, idx) => {
                   const hasResult = !!outcomeByScript[m.scrip_code]
                   return (
@@ -339,6 +337,7 @@ export default function BoardMeetingsPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
     </PageTransition>

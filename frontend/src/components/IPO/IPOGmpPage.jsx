@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { apiClient } from '../../services/apiClient';
 import { exportToXLSX } from '../../utils/csvParser';
 import PageTransition from '../Common/PageTransition';
-import { Spinner } from '../Common/Loader';
+import Loader, { Spinner } from '../Common/Loader';
 
 function StatCard({ label, value, sub, color = 'text-textPrimary', icon: Icon, iconColor }) {
   return (
@@ -311,39 +311,37 @@ export default function IPOGmpPage() {
         </div>
       )}
 
-      {/* Main Table */}
+      {/* Main Table Card */}
       <div className="glass-panel rounded-2xl overflow-hidden flex flex-col min-h-[400px]">
-        <div className="overflow-x-auto flex-1 scrollbar-hide">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
-              <tr>
-                <th className="px-4 py-3 font-medium">Company</th>
-                <th className="px-4 py-3 font-medium">Dates</th>
-                <th className="px-4 py-3 font-medium text-right">Size</th>
-                <th className="px-4 py-3 font-medium text-right">P/E</th>
-                <th className="px-4 py-3 font-medium text-right">Sub.</th>
-                <th className="px-4 py-3 font-medium text-right">Issue Price</th>
-                <th className="px-4 py-3 font-medium text-right">Lot Size</th>
-                <th className="px-4 py-3 font-medium text-right">GMP (₹)</th>
-                <th className="px-4 py-3 font-medium text-right">Est. Listing</th>
-                <th className="px-4 py-3 font-medium text-right">Gain %</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {loading && ipos.length === 0 ? (
+        {loading && ipos.length === 0 ? (
+          <div className="flex items-center justify-center py-20 flex-1">
+            <Loader text="Loading live IPO market data..." />
+          </div>
+        ) : (
+          <div className="overflow-x-auto flex-1 scrollbar-hide">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
                 <tr>
-                  <td colSpan="10" className="px-4 py-16 text-center text-textMuted">
-                    <Spinner size="lg" className="mx-auto mb-4" />
-                    <p>Loading live IPO data...</p>
-                  </td>
+                  <th className="px-4 py-3 font-medium">Company</th>
+                  <th className="px-4 py-3 font-medium">Dates</th>
+                  <th className="px-4 py-3 font-medium text-right">Size</th>
+                  <th className="px-4 py-3 font-medium text-right">P/E</th>
+                  <th className="px-4 py-3 font-medium text-right">Sub.</th>
+                  <th className="px-4 py-3 font-medium text-right">Issue Price</th>
+                  <th className="px-4 py-3 font-medium text-right">Lot Size</th>
+                  <th className="px-4 py-3 font-medium text-right">GMP (₹)</th>
+                  <th className="px-4 py-3 font-medium text-right">Est. Listing</th>
+                  <th className="px-4 py-3 font-medium text-right">Gain %</th>
                 </tr>
-              ) : processedIpos.length === 0 ? (
-                <tr>
-                  <td colSpan="10" className="px-4 py-16 text-center text-textMuted">
-                    No IPOs found for the selected filter.
-                  </td>
-                </tr>
-              ) : (
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {processedIpos.length === 0 ? (
+                  <tr>
+                    <td colSpan="10" className="px-4 py-16 text-center text-textMuted">
+                      No IPOs found for the selected filter.
+                    </td>
+                  </tr>
+                ) : (
                 processedIpos.map((m, idx) => {
                   const issuePrice = parseFloat(m.issue_price) || 0;
                   const gmp = parseFloat(m.gmp) || 0;
@@ -463,6 +461,7 @@ export default function IPOGmpPage() {
             </tbody>
           </table>
         </div>
+        )}
 
         {/* Footer / Pagination */}
         <div className="px-4 py-3 border-t border-white/5 bg-black/20 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-textMuted">

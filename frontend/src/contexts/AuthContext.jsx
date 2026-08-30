@@ -36,19 +36,26 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const minLoadTime = 2200; // Minimum 2.2s so user enjoys the full preloader experience
+    const startTime = Date.now();
+
+    const finishLoading = (user) => {
+      setCurrentUser(user);
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, minLoadTime - elapsed);
+      setTimeout(() => setLoading(false), remaining);
+    };
+
     if (!FIREBASE_ENABLED) {
-      // No credentials — auto-login as demo user so the UI is fully visible
-      setCurrentUser(DEMO_USER)
-      setLoading(false)
-      return
+      finishLoading(DEMO_USER);
+      return;
     }
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user)
-      setLoading(false)
-    })
-    return unsubscribe
-  }, [])
+      finishLoading(user);
+    });
+    return unsubscribe;
+  }, []);
 
   async function register(email, password, displayName) {
     if (!FIREBASE_ENABLED) throw new Error('Firebase not configured — add credentials to .env to enable sign-up.')

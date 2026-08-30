@@ -9,7 +9,8 @@ import clsx from 'clsx';
 import { apiClient } from '../../services/apiClient';
 
 import PageTransition from '../Common/PageTransition';
-import { Spinner } from '../Common/Loader';
+import Loader, { Spinner } from '../Common/Loader';
+import { exportToXLSX } from '../../utils/csvParser';
 
 function StatCard({ label, value, sub, color = 'text-textPrimary', icon: Icon, iconColor, gradient, loading }) {
   if (loading) {
@@ -812,21 +813,30 @@ export default function OFSPage() {
 
 
       {/* ============================================================
-          DESKTOP TABLE
+          CONTENT VIEW (LOADER / DESKTOP TABLE / MOBILE CARDS)
       ============================================================ */}
-      <div className="hidden md:block overflow-x-auto scrollbar-hide">
+      {loading && ofsList.length === 0 ? (
+        <div className="py-20 flex items-center justify-center flex-1">
+          <Loader text="Loading live OFS order book..." />
+        </div>
+      ) : (
+        <>
+          {/* ============================================================
+              DESKTOP TABLE
+          ============================================================ */}
+          <div className="hidden md:block overflow-x-auto scrollbar-hide">
 
-        <table className="w-full text-left">
+            <table className="w-full text-left">
 
-          <thead className="bg-black/5 dark:bg-white/5 border-b border-border">
-            <tr>
+              <thead className="bg-black/5 dark:bg-white/5 border-b border-border">
+                <tr>
 
-              <th
-                onClick={() => handleSortToggle('scriptName')}
-                className="px-5 py-3.5 cursor-pointer select-none"
-              >
-                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-textMuted hover:text-textPrimary">
-                  Issue
+                  <th
+                    onClick={() => handleSortToggle('scriptName')}
+                    className="px-5 py-3.5 cursor-pointer select-none"
+                  >
+                    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-textMuted hover:text-textPrimary">
+                      Issue
                   <ArrowUpDown className="w-3 h-3 opacity-60" />
                 </div>
               </th>
@@ -893,29 +903,11 @@ export default function OFSPage() {
 
             {/* Loading */}
             {loading && ofsList.length === 0 ? (
-
               <tr>
-                <td colSpan="8">
-
-                  <div className="py-20 text-center">
-
-                    <div className="w-14 h-14 mx-auto rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-4">
-                      <Spinner size="lg" className="text-primary" />
-                    </div>
-
-                    <p className="text-sm font-bold text-textPrimary">
-                      Loading live OFS snapshot
-                    </p>
-
-                    <p className="text-xs text-textMuted mt-1">
-                      Fetching the latest market data...
-                    </p>
-
-                  </div>
-
+                <td colSpan="8" className="py-12 text-center">
+                  <Loader text="Loading live OFS order book..." />
                 </td>
               </tr>
-
             ) : filteredAndSortedOfs.length === 0 ? (
 
               <tr>
@@ -1463,6 +1455,8 @@ export default function OFSPage() {
         )}
 
       </div>
+      </>
+      )}
 
 
       {/* ============================================================

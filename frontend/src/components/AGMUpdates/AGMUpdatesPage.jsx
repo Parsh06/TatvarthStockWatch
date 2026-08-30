@@ -221,31 +221,30 @@ export default function AGMUpdatesPage() {
 
       {/* Table */}
       <div className="glass-panel rounded-2xl overflow-hidden flex flex-col min-h-[400px]">
-        <div className="overflow-x-auto flex-1 scrollbar-hide">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
-              <tr>
-                <th className="px-4 py-3 font-medium">BSE Code</th>
-                <th className="px-4 py-3 font-medium">Company Name</th>
-                <th className="px-4 py-3 font-medium">Purpose</th>
-                <th className="px-4 py-3 font-medium">Meeting Date</th>
-                <th className="px-4 py-3 font-medium">Announced On</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {loading ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-20 flex-1">
+            <Loader text="Loading AGM updates..." />
+          </div>
+        ) : (
+          <div className="overflow-x-auto flex-1 scrollbar-hide">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
                 <tr>
-                  <td colSpan="5" className="p-0">
-                    <Loader />
-                  </td>
+                  <th className="px-4 py-3 font-medium">BSE Code</th>
+                  <th className="px-4 py-3 font-medium">Company Name</th>
+                  <th className="px-4 py-3 font-medium">Purpose</th>
+                  <th className="px-4 py-3 font-medium">Meeting Date</th>
+                  <th className="px-4 py-3 font-medium">Announced On</th>
                 </tr>
-              ) : filteredAgms.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="px-4 py-16 text-center text-textMuted">
-                    No AGM updates found for this date range.
-                  </td>
-                </tr>
-              ) : (
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {filteredAgms.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="px-4 py-16 text-center text-textMuted">
+                      No AGM updates found for this date range.
+                    </td>
+                  </tr>
+                ) : (
                 filteredAgms.map((m, idx) => {
                   return (
                     <tr key={`${m.scrip_code}-${idx}`} className="hover:bg-white/5 transition-colors group">
@@ -275,6 +274,7 @@ export default function AGMUpdatesPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
     </PageTransition>

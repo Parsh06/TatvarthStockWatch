@@ -1,34 +1,55 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+
+const CornerDeco = ({ position }) => {
+  const styles = {
+    tl: { top: 20, left: 20, borderTop: "1px solid rgba(200,168,75,0.45)", borderLeft: "1px solid rgba(200,168,75,0.45)" },
+    tr: { top: 20, right: 20, borderTop: "1px solid rgba(200,168,75,0.45)", borderRight: "1px solid rgba(200,168,75,0.45)" },
+    bl: { bottom: 20, left: 20, borderBottom: "1px solid rgba(200,168,75,0.45)", borderLeft: "1px solid rgba(200,168,75,0.45)" },
+    br: { bottom: 20, right: 20, borderBottom: "1px solid rgba(200,168,75,0.45)", borderRight: "1px solid rgba(200,168,75,0.45)" },
+  };
+
+  return (
+    <motion.div
+      className="absolute w-8 h-8 sm:w-12 sm:h-12 pointer-events-none"
+      style={styles[position]}
+      initial={{ opacity: 0, scale: 0.6 }}
+      animate={{ opacity: 0.6, scale: 1 }}
+      transition={{ duration: 1, delay: 0.6, ease: "easeOut" }}
+    />
+  );
+};
 
 const STATUS_MESSAGES = [
-  'Connecting to exchange…',
-  'Fetching live prices…',
-  'Syncing your watchlist…',
-  'Calibrating indicators…',
+  "Connecting to BSE & NSE market feeds…",
+  "Calibrating corporate announcement radars…",
+  "Syncing your monitored watchlist…",
+  "Verifying real-time IPO & market data…",
 ];
 
-// Heights (%) for each candle — irregular, like a real intraday move
-const CANDLES = [
-  { h: 38, up: true },
-  { h: 62, up: true },
-  { h: 45, up: false },
-  { h: 80, up: true },
-  { h: 58, up: false },
-  { h: 90, up: true },
-  { h: 70, up: false },
-];
-
-export function Preloader() {
+export function Preloader({ isVisible = true }) {
   const [progress, setProgress] = useState(0);
   const [statusIndex, setStatusIndex] = useState(0);
 
   useEffect(() => {
+    // Smooth progress bar calculation calibrated for ~2.2s display time
+    const startTime = Date.now();
+    const totalDuration = 2000;
+
     const progressTimer = setInterval(() => {
-      setProgress((p) => (p >= 96 ? 96 : p + Math.random() * 9));
-    }, 220);
+      const elapsed = Date.now() - startTime;
+      const pct = Math.min(100, (elapsed / totalDuration) * 100);
+      setProgress(pct);
+
+      if (pct >= 100) {
+        clearInterval(progressTimer);
+      }
+    }, 40);
+
     const statusTimer = setInterval(() => {
       setStatusIndex((i) => (i + 1) % STATUS_MESSAGES.length);
-    }, 1400);
+    }, 1000);
+
     return () => {
       clearInterval(progressTimer);
       clearInterval(statusTimer);
@@ -36,134 +57,214 @@ export function Preloader() {
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-[#060911] flex flex-col items-center justify-center z-50 overflow-hidden">
-      <style>{`
-        @keyframes candleGrow {
-          0% { transform: scaleY(0); opacity: 0; }
-          100% { transform: scaleY(1); opacity: 1; }
-        }
-        @keyframes candlePulse {
-          0%, 100% { transform: scaleY(1); }
-          50% { transform: scaleY(1.08); }
-        }
-        @keyframes trendDraw {
-          0% { stroke-dashoffset: 340; }
-          70%, 100% { stroke-dashoffset: 0; }
-        }
-        @keyframes gridDrift {
-          0% { background-position: 0 0; }
-          100% { background-position: -48px -48px; }
-        }
-        @keyframes shimmer {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(250%); }
-        }
-        @keyframes floatGlow {
-          0%, 100% { transform: translate(-50%, -50%) scale(1); }
-          50% { transform: translate(-50%, -50%) scale(1.15); }
-        }
-      `}</style>
-
-      {/* Faint scrolling chart-grid, grounds the whole scene in "market data" */}
-      <div
-        className="absolute inset-0 opacity-[0.05] pointer-events-none"
-        style={{
-          backgroundImage:
-            'linear-gradient(to right, #7DD3FC 1px, transparent 1px), linear-gradient(to bottom, #7DD3FC 1px, transparent 1px)',
-          backgroundSize: '48px 48px',
-          animation: 'gridDrift 6s linear infinite',
-        }}
-      />
-
-      {/* Ambient glow */}
-      <div
-        className="absolute top-1/2 left-1/2 w-[560px] h-[560px] bg-primary/15 rounded-full blur-[130px] pointer-events-none"
-        style={{ animation: 'floatGlow 5s ease-in-out infinite' }}
-      />
-
-      <div className="relative z-10 flex flex-col items-center px-6">
-        {/* Signature: candlestick chart with sweeping trend line + logo mark */}
-        <div className="relative flex items-end justify-center gap-[6px] sm:gap-2 h-24 sm:h-28 w-[220px] sm:w-[260px]">
-          {/* Trend line drawn across the candles */}
-          <svg
-            viewBox="0 0 260 100"
-            className="absolute inset-0 w-full h-full overflow-visible"
-            preserveAspectRatio="none"
-          >
-            <path
-              d="M 5 70 L 42 40 L 80 55 L 118 18 L 156 45 L 194 8 L 250 25"
-              fill="none"
-              stroke="url(#trendGradient)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeDasharray="340"
-              style={{ animation: 'trendDraw 2.2s ease-out infinite' }}
-            />
-            <defs>
-              <linearGradient id="trendGradient" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="#F5B942" stopOpacity="0" />
-                <stop offset="15%" stopColor="#F5B942" />
-                <stop offset="100%" stopColor="#38E1C6" />
-              </linearGradient>
-            </defs>
-          </svg>
-
-          {CANDLES.map((c, i) => (
-            <div
-              key={i}
-              className="relative w-3 sm:w-3.5 rounded-[3px] origin-bottom"
-              style={{
-                height: `${c.h}%`,
-                background: c.up
-                  ? 'linear-gradient(180deg, #38E1C6, #0EA5E9)'
-                  : 'linear-gradient(180deg, #FB7185, #F43F5E)',
-                animation: `candleGrow 0.6s ease-out ${i * 0.09}s backwards, candlePulse 2.4s ease-in-out ${1.6 + i * 0.09}s infinite`,
-                boxShadow: c.up
-                  ? '0 0 12px rgba(56,225,198,0.35)'
-                  : '0 0 12px rgba(244,63,94,0.3)',
-              }}
-            />
-          ))}
-        </div>
-
-        {/* Logo, sitting on the "chart floor" like a ticker mark */}
-        <div className="relative -mt-2 flex items-center justify-center">
-          <img
-            src="/logo2.png"
-            alt="TatvarthStockWatch Logo"
-            className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-[0_0_18px_rgba(14,165,233,0.35)]"
+    <AnimatePresence>
+      {isVisible && (
+        <motion.div
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-[#050811]"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, scale: 0.98 }}
+          transition={{ duration: 0.6, ease: "easeInOut" }}
+        >
+          {/* Subtle Financial Chart Grid Background */}
+          <div
+            className="absolute inset-0 opacity-[0.04] pointer-events-none"
+            style={{
+              backgroundImage:
+                "linear-gradient(to right, #c8a84b 1px, transparent 1px), linear-gradient(to bottom, #c8a84b 1px, transparent 1px)",
+              backgroundSize: "44px 44px",
+            }}
           />
-        </div>
 
-        {/* Brand + live status */}
-        <div className="mt-6 flex flex-col items-center px-8 py-5 bg-white/[0.03] backdrop-blur-md border border-white/[0.06] rounded-2xl shadow-2xl w-[280px] sm:w-[340px]">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-[#38E1C6] via-primary to-[#F5B942] text-center">
-            TatvarthStockWatch
-          </h1>
+          {/* Radial Ambient Gold & Cyan Glow */}
+          <motion.div
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              width: 540,
+              height: 540,
+              background:
+                "radial-gradient(circle, rgba(200,168,75,0.12) 0%, rgba(14,165,233,0.06) 40%, transparent 70%)",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+            }}
+            animate={{ scale: [0.92, 1.12, 0.92], opacity: [0.6, 1, 0.6] }}
+            transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
+          />
 
-          <p className="mt-2 text-[11px] sm:text-xs text-textMuted font-medium tracking-wide h-4 transition-all">
-            {STATUS_MESSAGES[statusIndex]}
-          </p>
+          {/* Corner Architectural Luxury Accents */}
+          <CornerDeco position="tl" />
+          <CornerDeco position="tr" />
+          <CornerDeco position="bl" />
+          <CornerDeco position="br" />
 
-          {/* Progress bar with shimmer + live ticking % (mono, like a data readout) */}
-          <div className="w-full mt-4">
-            <div className="relative w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+          {/* Center Brand Architecture */}
+          <div className="relative z-10 flex flex-col items-center px-6 max-w-sm sm:max-w-md w-full">
+            {/* Emblem Ring with Logo */}
+            <motion.div
+              className="relative flex items-center justify-center mb-6 sm:mb-7"
+              initial={{ opacity: 0, scale: 0.7, rotate: -10 }}
+              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+              transition={{ duration: 1, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+            >
+              {/* Outer Radar Glow Ring */}
+              <motion.div
+                className="absolute rounded-full"
+                style={{
+                  inset: -10,
+                  border: "1px solid rgba(200,168,75,0.25)",
+                  boxShadow: "0 0 25px rgba(200,168,75,0.15)",
+                }}
+                animate={{ scale: [1, 1.08, 1], opacity: [0.35, 0.85, 0.35] }}
+                transition={{ duration: 3, delay: 0.6, repeat: Infinity, ease: "easeInOut" }}
+              />
+
+              {/* Secondary Concentric Ring */}
+              <motion.div
+                className="absolute rounded-full"
+                style={{
+                  inset: -18,
+                  border: "0.5px dashed rgba(56,225,198,0.25)",
+                }}
+                animate={{ rotate: 360 }}
+                transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+              />
+
+              {/* Inner Luxury Logo Pod */}
               <div
-                className="h-full rounded-full bg-gradient-to-r from-[#38E1C6] via-primary to-[#F5B942] transition-all duration-300 ease-out"
-                style={{ width: `${progress}%` }}
+                className="flex items-center justify-center rounded-full overflow-hidden shadow-2xl backdrop-blur-md"
+                style={{
+                  width: 104,
+                  height: 104,
+                  border: "1px solid rgba(200,168,75,0.4)",
+                  background:
+                    "radial-gradient(circle at 35% 15%, rgba(255,255,255,0.08), transparent 60%), rgba(6,12,24,0.95)",
+                  boxShadow: "0 0 35px rgba(200,168,75,0.2), inset 0 0 20px rgba(0,0,0,0.8)",
+                }}
+              >
+                <img
+                  src="/logo2.png"
+                  alt="Tatvarth StockWatch"
+                  className="w-16 h-16 sm:w-18 sm:h-18 object-contain drop-shadow-[0_0_15px_rgba(200,168,75,0.45)]"
+                />
+              </div>
+            </motion.div>
+
+            {/* Wordmark: TATVARTH */}
+            <motion.div
+              className="flex flex-col items-center"
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.85, delay: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <span
+                className="tracking-[0.45em] sm:tracking-[0.55em] font-medium text-2xl sm:text-3xl text-center select-none"
+                style={{
+                  fontFamily: "'Space Grotesk', 'Playfair Display', serif, sans-serif",
+                  marginLeft: "0.45em",
+                  background: "linear-gradient(135deg, #c8a84b 0%, #f6e096 35%, #c8a84b 70%, #987228 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                  textShadow: "0 0 30px rgba(200,168,75,0.25)",
+                }}
+              >
+                TATVARTH
+              </span>
+            </motion.div>
+
+            {/* Elegant Geometric Diamond Divider */}
+            <motion.div
+              className="flex items-center gap-3 my-3.5"
+              initial={{ opacity: 0, scaleX: 0 }}
+              animate={{ opacity: 1, scaleX: 1 }}
+              transition={{ duration: 0.7, delay: 0.65, ease: "easeOut" }}
+            >
+              <div
+                style={{
+                  width: 32,
+                  height: 1,
+                  background: "linear-gradient(to right, transparent, rgba(200,168,75,0.5))",
+                }}
               />
               <div
-                className="absolute top-0 left-0 h-full w-1/4 bg-white/40 blur-sm"
-                style={{ animation: 'shimmer 1.8s linear infinite' }}
+                style={{
+                  width: 5,
+                  height: 5,
+                  background: "rgba(200,168,75,0.7)",
+                  transform: "rotate(45deg)",
+                  boxShadow: "0 0 8px rgba(200,168,75,0.6)",
+                }}
               />
-            </div>
-            <div className="mt-2 flex items-center justify-between font-mono text-[10px] text-textMuted/80 tabular-nums">
-              <span className="tracking-widest uppercase">Live sync</span>
-              <span>{Math.min(99, Math.round(progress))}%</span>
-            </div>
+              <div
+                style={{
+                  width: 32,
+                  height: 1,
+                  background: "linear-gradient(to left, transparent, rgba(200,168,75,0.5))",
+                }}
+              />
+            </motion.div>
+
+            {/* StockWatch Subtitle */}
+            <motion.span
+              className="text-[10px] sm:text-xs font-mono font-bold tracking-[0.42em] uppercase select-none"
+              style={{
+                marginLeft: "0.42em",
+                color: "rgba(56,225,198,0.85)",
+                textShadow: "0 0 15px rgba(56,225,198,0.3)",
+              }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.8, ease: "easeOut" }}
+            >
+              StockWatch
+            </motion.span>
+
+            {/* Dynamic Market Status Message */}
+            <motion.p
+              className="mt-3.5 text-xs text-slate-400 font-mono tracking-wide text-center h-5 transition-all duration-300"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.95 }}
+            >
+              {STATUS_MESSAGES[statusIndex]}
+            </motion.p>
+
+            {/* Metallic Gold / Cyan Progress Bar */}
+            <motion.div
+              className="mt-5 w-44 sm:w-56 overflow-hidden rounded-full p-[1px] bg-slate-900 border border-white/10 shadow-inner"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 1.05, duration: 0.5 }}
+            >
+              <div className="h-1.5 w-full bg-slate-950/80 rounded-full overflow-hidden relative">
+                <motion.div
+                  className="h-full rounded-full"
+                  style={{
+                    background: "linear-gradient(90deg, #8a6020, #c8a84b, #38E1C6, #f0d080)",
+                    boxShadow: "0 0 12px rgba(200,168,75,0.5)",
+                  }}
+                  animate={{ width: `${Math.min(100, Math.round(progress))}%` }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                />
+              </div>
+            </motion.div>
+
+            {/* Live Data Ticker Percentage Readout */}
+            <motion.div
+              className="mt-2 flex items-center justify-between w-44 sm:w-56 font-mono text-[10px] text-slate-500 tabular-nums"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1.15, duration: 0.5 }}
+            >
+              <span className="tracking-widest uppercase text-cyan-400/70">LIVE FEED</span>
+              <span className="text-amber-400/90 font-bold">{Math.min(99, Math.round(progress))}%</span>
+            </motion.div>
           </div>
-        </div>
-      </div>
-    </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
+
+export default Preloader;
