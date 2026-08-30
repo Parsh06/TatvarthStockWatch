@@ -12,18 +12,18 @@ const BACKEND = import.meta.env.VITE_BACKEND_URL || ''
 
 // ── Category definitions ────────────────────────────────────────────────────
 const CATS = [
-  { key: '',              label: 'All',           color: 'bg-primary/15 text-primary border-primary/30',                  dot: 'bg-primary',      textColor: 'text-primary' },
-  { key: 'Board Meeting', label: 'Board Meeting',  color: 'bg-blue-500/15 text-blue-400 border-blue-500/30',              dot: 'bg-blue-500',     textColor: 'text-blue-400' },
-  { key: 'Dividend',      label: 'Dividend',       color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',     dot: 'bg-emerald-500',  textColor: 'text-emerald-400' },
-  { key: 'Bonus',         label: 'Bonus',          color: 'bg-amber-500/15 text-amber-400 border-amber-500/30',           dot: 'bg-amber-500',    textColor: 'text-amber-400' },
-  { key: 'AGM',           label: 'AGM',            color: 'bg-violet-500/15 text-violet-400 border-violet-500/30',        dot: 'bg-violet-500',   textColor: 'text-violet-400' },
-  { key: 'Rights Issue',  label: 'Rights',         color: 'bg-orange-500/15 text-orange-400 border-orange-500/30',        dot: 'bg-orange-500',   textColor: 'text-orange-400' },
-  { key: 'Stock Split',   label: 'Split',          color: 'bg-pink-500/15 text-pink-400 border-pink-500/30',              dot: 'bg-pink-500',     textColor: 'text-pink-400' },
-  { key: 'Buyback',       label: 'Buyback',        color: 'bg-red-500/15 text-red-400 border-red-500/30',                 dot: 'bg-red-500',      textColor: 'text-red-400' },
+  { key: '',              label: 'All',            color: 'bg-primary/15 text-primary border-primary/30',               dot: 'bg-primary',      textColor: 'text-primary' },
+  { key: 'Board Meeting', label: 'Board Meeting',  color: 'bg-blue-500/15 text-blue-500 dark:text-blue-400 border-blue-500/30', dot: 'bg-blue-500',    textColor: 'text-blue-500 dark:text-blue-400' },
+  { key: 'Dividend',      label: 'Dividend',       color: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30', dot: 'bg-emerald-500', textColor: 'text-emerald-600 dark:text-emerald-400' },
+  { key: 'Bonus',         label: 'Bonus',          color: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30', dot: 'bg-amber-500',   textColor: 'text-amber-600 dark:text-amber-400' },
+  { key: 'AGM',           label: 'AGM',            color: 'bg-violet-500/15 text-violet-600 dark:text-violet-400 border-violet-500/30', dot: 'bg-violet-500',  textColor: 'text-violet-600 dark:text-violet-400' },
+  { key: 'Rights Issue',  label: 'Rights',         color: 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30', dot: 'bg-orange-500',  textColor: 'text-orange-600 dark:text-orange-400' },
+  { key: 'Stock Split',   label: 'Split',          color: 'bg-pink-500/15 text-pink-600 dark:text-pink-400 border-pink-500/30', dot: 'bg-pink-500',    textColor: 'text-pink-600 dark:text-pink-400' },
+  { key: 'Buyback',       label: 'Buyback',        color: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30', dot: 'bg-rose-500',    textColor: 'text-rose-600 dark:text-rose-400' },
 ]
 
 const QUICK_RANGES = [
-  { label: 'Today',     from: () => new Date().toISOString().slice(0, 10), to: () => new Date().toISOString().slice(0, 10) },
+  { label: 'Today',       from: () => new Date().toISOString().slice(0, 10), to: () => new Date().toISOString().slice(0, 10) },
   { label: 'Next 7 Days', from: () => new Date().toISOString().slice(0, 10), to: () => { const d = new Date(); d.setDate(d.getDate() + 6); return d.toISOString().slice(0, 10) } },
   { label: 'Next 14 Days', from: () => new Date().toISOString().slice(0, 10), to: () => { const d = new Date(); d.setDate(d.getDate() + 13); return d.toISOString().slice(0, 10) } },
 ]
@@ -63,7 +63,7 @@ function parsePurposeValue(e) {
     if (match) {
       const val = parseFloat(match[1]);
       value = `₹${val.toFixed(2)} / share`;
-      if (val > 10) important = true; // Highlight large dividends
+      if (val > 10) important = true;
     }
   } else if (e.category === 'Bonus' || lower.includes('bonus')) {
     const match = p.match(/([0-9]+)\s*:\s*([0-9]+)/);
@@ -98,7 +98,6 @@ function parsePurposeValue(e) {
   return { value, important };
 }
 
-
 // ── Dropdown component ───────────────────────────────────────────────────────
 function Dropdown({ value, options, onChange, placeholder = 'Select…', className = '' }) {
   const [open, setOpen] = useState(false)
@@ -129,7 +128,7 @@ function Dropdown({ value, options, onChange, placeholder = 'Select…', classNa
               key={opt.key}
               onClick={() => { onChange(opt.key); setOpen(false) }}
               className={clsx(
-                'w-full text-left px-3 py-2 text-xs hover:bg-white/5 transition',
+                'w-full text-left px-3 py-2 text-xs hover:bg-surfaceHover transition',
                 opt.key === value ? 'text-primary font-medium' : 'text-textMuted'
               )}
             >
@@ -221,7 +220,7 @@ export default function CorporateCalendarPage() {
     let curr = new Date(fromDate);
     const end = new Date(toDate);
     let count = 0;
-    while (curr <= end && count < 60) { // max 60 days to prevent infinite loops
+    while (curr <= end && count < 60) { // max 60 days
       const dateStr = curr.toISOString().slice(0, 10);
       cols.push(dateStr);
       grouped[dateStr] = [];
@@ -233,12 +232,10 @@ export default function CorporateCalendarPage() {
 
     // Assign events to dates
     for (const e of displayed) {
-      // Find the primary date for this event
       const dateKey = e.date || e.exDate || e.recDate || e.bcStart || e.ndStart || e.payDate || '';
       if (dateKey && grouped[dateKey]) {
         grouped[dateKey].push(e);
       } else {
-        // Falls outside the exact column dates or has no date
         others.push(e);
       }
     }
@@ -261,11 +258,11 @@ export default function CorporateCalendarPage() {
   }
 
   return (
-    <PageTransition className="space-y-6 flex flex-col h-[calc(100vh-6rem)] relative">
+    <PageTransition className="space-y-6 flex flex-col relative">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 flex-shrink-0">
         <div>
-          <h1 className="text-xl font-semibold text-textPrimary flex items-center gap-2 uppercase tracking-wide">
+          <h1 className="text-xl font-bold text-textPrimary flex items-center gap-2 uppercase tracking-wide">
             <Calendar className="w-5 h-5 text-emerald-500" />
             EARNINGS PULSE - THE WEEK AHEAD
           </h1>
@@ -276,7 +273,7 @@ export default function CorporateCalendarPage() {
         <div className="flex items-center gap-2 flex-shrink-0">
           <button
             onClick={() => fetchEvents(true)} disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-border rounded-xl text-xs text-textMuted hover:text-textPrimary hover:border-primary/40 disabled:opacity-50 transition"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-surface border border-border rounded-xl text-xs font-semibold text-textMuted hover:text-textPrimary hover:border-primary/40 disabled:opacity-50 transition shadow-sm"
           >
             <RefreshCw className={clsx('w-3.5 h-3.5', loading && 'animate-spin')} />
             <span className="hidden sm:inline ml-1">Refresh</span>
@@ -285,37 +282,51 @@ export default function CorporateCalendarPage() {
       </div>
 
       {/* Date filter + search + watchlist */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap bg-surface/50 p-2 rounded-2xl border border-white/5 shadow-inner flex-shrink-0">
-        <div className="flex flex-wrap gap-2 mr-2">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap bg-surface p-2.5 rounded-2xl border border-border shadow-sm flex-shrink-0">
+        <div className="flex flex-wrap gap-1.5 mr-2">
           {QUICK_RANGES.map((r) => (
-            <button key={r.label} onClick={() => { setFromDate(r.from()); setToDate(r.to()) }}
-              className={clsx('text-[11px] px-3 py-1.5 rounded-xl font-semibold transition shadow-sm border',
+            <button
+              key={r.label}
+              onClick={() => { setFromDate(r.from()); setToDate(r.to()) }}
+              className={clsx(
+                'text-[11px] px-3 py-1.5 rounded-xl font-semibold transition border shadow-sm',
                 fromDate === r.from() && toDate === r.to()
-                  ? 'bg-primary/20 border-primary text-primary'
-                  : 'bg-black/20 border-white/5 text-textMuted hover:border-primary/40 hover:text-textPrimary')}>
+                  ? 'bg-primary/15 border-primary/40 text-primary font-bold'
+                  : 'bg-surface hover:bg-surfaceHover border-border text-textMuted hover:text-textPrimary'
+              )}
+            >
               {r.label}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 flex-shrink-0 shadow-sm transition-colors hover:border-white/20">
-          <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
-            className="bg-transparent text-sm text-textPrimary focus:outline-none cursor-pointer" />
-          <span className="text-textMuted text-sm">–</span>
-          <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
-            className="bg-transparent text-sm text-textPrimary focus:outline-none cursor-pointer" />
+
+        <div className="flex items-center gap-2 bg-surface hover:bg-surfaceHover border border-border rounded-xl px-3 py-1.5 flex-shrink-0 shadow-sm transition-colors">
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="bg-transparent text-xs text-textPrimary focus:outline-none cursor-pointer"
+          />
+          <span className="text-textMuted text-xs">–</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="bg-transparent text-xs text-textPrimary focus:outline-none cursor-pointer"
+          />
         </div>
 
         {/* Search */}
         <div className="relative flex-1 min-w-[160px] max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-textMuted/50" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-textMuted" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search company code…"
-            className="w-full pl-7 pr-7 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-textPrimary placeholder:text-textMuted/40 focus:outline-none focus:border-primary/40 transition shadow-sm"
+            placeholder="Search company or code…"
+            className="w-full pl-7 pr-7 py-2 bg-surface border border-border rounded-xl text-xs text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-primary/40 transition shadow-sm"
           />
           {search && (
-            <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-textMuted/50 hover:text-textMuted">
+            <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-textMuted hover:text-textPrimary">
               <X className="w-3.5 h-3.5" />
             </button>
           )}
@@ -325,9 +336,9 @@ export default function CorporateCalendarPage() {
         <button
           onClick={() => setWlOnly(v => !v)}
           className={clsx(
-            'flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition flex-shrink-0',
+            'flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition flex-shrink-0 shadow-sm',
             wlOnly
-              ? 'bg-primary/15 text-primary border-primary/30'
+              ? 'bg-primary/15 text-primary border-primary/40 font-bold'
               : 'bg-surface text-textMuted border-border hover:border-primary/40 hover:text-textPrimary'
           )}
         >
@@ -336,7 +347,7 @@ export default function CorporateCalendarPage() {
         </button>
 
         {!loading && (
-          <span className="text-xs text-textMuted sm:ml-auto flex-shrink-0">
+          <span className="text-xs font-mono text-textMuted sm:ml-auto flex-shrink-0">
             {displayed.length} events
           </span>
         )}
@@ -351,17 +362,18 @@ export default function CorporateCalendarPage() {
               key={key}
               onClick={() => setActiveCat(key)}
               className={clsx(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition hover:-translate-y-0.5',
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition hover:-translate-y-0.5 shadow-sm',
                 activeCat === key
                   ? color
-                  : 'bg-white/5 text-textMuted border-white/10 hover:border-primary/40 hover:text-textPrimary shadow-sm'
+                  : 'bg-surface text-textMuted border-border hover:border-primary/40 hover:text-textPrimary'
               )}
             >
               {key && <span className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0', activeCat === key ? dot : 'bg-textMuted/40')} />}
               {label}
               {count > 0 && (
-                <span className={clsx('text-[10px] px-1 py-0.5 rounded-full ml-0.5',
-                  activeCat === key ? 'bg-white/10' : 'bg-white/5 text-textMuted/60'
+                <span className={clsx(
+                  'text-[10px] px-1.5 py-0.5 rounded-full ml-0.5 font-mono',
+                  activeCat === key ? 'bg-primary/10' : 'bg-black/5 dark:bg-white/10 text-textMuted'
                 )}>
                   {count}
                 </span>
@@ -390,15 +402,15 @@ export default function CorporateCalendarPage() {
 
       {/* Loading & Error */}
       {loading && (
-        <div className="flex-1 flex flex-col justify-center">
-          <Loader />
+        <div className="py-20 flex flex-col items-center justify-center min-h-[350px]">
+          <Loader text="Tracking corporate earnings & board actions..." />
         </div>
       )}
       {!loading && error && (
-        <div className="bg-danger/10 border border-danger/30 rounded-xl p-5 text-center flex-1 mt-4">
-          <p className="text-sm text-danger mb-1">Could not load events</p>
+        <div className="bg-danger/10 border border-danger/30 rounded-2xl p-6 text-center mt-4">
+          <p className="text-sm font-bold text-danger mb-1">Could not load corporate events</p>
           <p className="text-xs text-textMuted">{error}</p>
-          <button onClick={() => fetchEvents(true)} className="mt-3 text-xs text-primary hover:text-primary/80 transition">
+          <button onClick={() => fetchEvents(true)} className="mt-3 px-4 py-1.5 bg-surface border border-border rounded-xl text-xs font-semibold text-primary hover:text-primary/80 transition">
             Try again
           </button>
         </div>
@@ -406,25 +418,31 @@ export default function CorporateCalendarPage() {
 
       {/* ── KANBAN WEEKLY VIEW ─────────────────────────────────────────────────────── */}
       {!loading && !error && (
-        <div className="flex-1 overflow-x-hidden md:overflow-x-auto overflow-y-auto md:overflow-y-hidden custom-scrollbar flex flex-col md:flex-row gap-4 pb-4 pt-2">
+        <div className="overflow-x-hidden md:overflow-x-auto overflow-y-auto flex flex-col md:flex-row gap-4 pb-4 pt-2">
           {dateCols.map(dateStr => {
             const dayEvents = groupedEvents[dateStr] || [];
             const isToday = dateStr === today();
             
             return (
-              <div key={dateStr} className="w-full md:flex-1 md:min-w-[240px] md:max-w-[320px] flex flex-col bg-[#111318] border border-white/5 rounded-2xl overflow-hidden shrink-0 shadow-lg">
+              <div
+                key={dateStr}
+                className={clsx(
+                  "w-full md:flex-1 md:min-w-[240px] md:max-w-[320px] flex flex-col bg-surface border rounded-2xl overflow-hidden shrink-0 shadow-sm",
+                  isToday ? "border-emerald-500/40 shadow-emerald-500/5" : "border-border"
+                )}
+              >
                 <div className={clsx(
-                  "text-center py-2.5 border-b border-black/40",
-                  isToday ? "bg-emerald-600/90 text-white shadow-[0_0_15px_rgba(5,150,105,0.3)]" : "bg-[#1A1C23] text-gray-200"
+                  "text-center py-2.5 border-b border-border",
+                  isToday ? "bg-emerald-600 text-white font-bold shadow-md" : "bg-black/[0.03] dark:bg-white/[0.03] text-textPrimary"
                 )}>
                   <div className="text-[12px] font-black uppercase tracking-widest">{formatHeaderDay(dateStr)}</div>
-                  <div className="text-[11px] font-medium opacity-75">{formatHeaderDate(dateStr)}</div>
+                  <div className={clsx("text-[11px] font-medium", isToday ? "text-emerald-100" : "text-textMuted")}>{formatHeaderDate(dateStr)}</div>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-2.5 space-y-2.5 bg-[#111318]">
+                <div className="flex-1 overflow-y-auto p-2.5 space-y-2.5 min-h-[140px] max-h-[500px]">
                   {dayEvents.length === 0 ? (
                     <div className="h-full flex items-center justify-center p-8">
-                      <span className="text-xs text-textMuted/30 font-bold tracking-wider">NO EVENTS</span>
+                      <span className="text-[11px] text-textMuted/40 font-bold tracking-widest">NO EVENTS</span>
                     </div>
                   ) : (
                     dayEvents.map((e, i) => (
@@ -437,12 +455,12 @@ export default function CorporateCalendarPage() {
           })}
 
           {otherEvents.length > 0 && (
-            <div className="w-full md:flex-1 md:min-w-[240px] md:max-w-[320px] flex flex-col bg-[#111318] border border-white/5 rounded-2xl overflow-hidden shrink-0 opacity-80 shadow-lg">
-              <div className="bg-[#1A1C23] text-gray-400 text-center py-2.5 border-b border-black/40">
+            <div className="w-full md:flex-1 md:min-w-[240px] md:max-w-[320px] flex flex-col bg-surface border border-border rounded-2xl overflow-hidden shrink-0 opacity-85 shadow-sm">
+              <div className="bg-black/[0.03] dark:bg-white/[0.03] text-textMuted text-center py-2.5 border-b border-border">
                 <div className="text-[12px] font-black uppercase tracking-widest">OTHER DATES</div>
                 <div className="text-[11px] font-medium opacity-75">TBD / Outside Range</div>
               </div>
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-2.5 space-y-2.5 bg-[#111318]">
+              <div className="flex-1 overflow-y-auto p-2.5 space-y-2.5 min-h-[140px] max-h-[500px]">
                 {otherEvents.map((e, i) => (
                   <CompactEventCard key={`other-${i}`} event={e} meta={catMeta(e.category)} onOpenModal={setModalEvent} />
                 ))}
@@ -454,7 +472,7 @@ export default function CorporateCalendarPage() {
 
       {/* Footer */}
       {fetchedAt && !loading && (
-        <p className="text-[11px] text-textMuted/40 text-center pb-2 flex-shrink-0 mt-2">
+        <p className="text-[11px] text-textMuted/60 text-center pb-4 flex-shrink-0 mt-2">
           Board meeting data &amp; corporate actions · Cached 30 min ·
           Last fetched {fetchedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
         </p>
@@ -486,35 +504,35 @@ function CompactEventCard({ event: e, meta, onOpenModal }) {
     <button
       onClick={() => onOpenModal(e)}
       className={clsx(
-        "w-full text-left group bg-[#1A1C23] hover:bg-[#22252D] rounded-xl p-3 transition-all flex flex-col gap-2 relative overflow-hidden",
-        "border", important ? "border-amber-500/30 hover:border-amber-500/60 shadow-[0_4px_20px_rgba(245,158,11,0.05)]" : "border-white/5 hover:border-white/20 hover:shadow-lg"
+        "w-full text-left group bg-surface hover:bg-surfaceHover rounded-xl p-3 transition-all flex flex-col gap-2 relative overflow-hidden shadow-sm",
+        "border", important ? "border-amber-500/40 hover:border-amber-500/70" : "border-border hover:border-primary/40 hover:shadow-md"
       )}
     >
       {/* Top Row: Name and Exchange */}
       <div className="flex items-start justify-between gap-2">
-        <span className="text-[14px] leading-tight font-semibold text-gray-100 group-hover:text-white line-clamp-2">
+        <span className="text-[13px] leading-snug font-semibold text-textPrimary group-hover:text-primary transition-colors line-clamp-2">
           {e.company || '—'}
         </span>
         {e.bseCode && (
-          <span className="text-[9px] font-mono font-medium text-gray-500 bg-black/40 px-1.5 py-0.5 rounded flex-shrink-0">
+          <span className="text-[9px] font-mono font-bold text-textMuted bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded flex-shrink-0">
             BSE
           </span>
         )}
       </div>
 
       {/* Action & Value */}
-      <div className="flex flex-col gap-1 mt-1">
-        <span className={clsx("inline-flex items-center gap-1.5 text-[11px] font-medium w-fit", meta.textColor || 'text-primary')}>
+      <div className="flex flex-col gap-1 mt-0.5">
+        <span className={clsx("inline-flex items-center gap-1.5 text-[11px] font-semibold w-fit", meta.textColor || 'text-primary')}>
           <span className={clsx("w-1.5 h-1.5 rounded-full", meta.dot || 'bg-primary')} />
           {e.category}
         </span>
         
         {value ? (
-          <span className="text-[16px] font-bold text-white tracking-tight mt-0.5">
+          <span className="text-[15px] font-bold text-textPrimary tracking-tight mt-0.5">
             {value}
           </span>
         ) : (
-          <span className="text-[12px] text-gray-400 line-clamp-2 leading-snug">
+          <span className="text-[11px] text-textMuted line-clamp-2 leading-snug">
             {e.purpose}
           </span>
         )}
@@ -522,11 +540,11 @@ function CompactEventCard({ event: e, meta, onOpenModal }) {
 
       {/* Metadata */}
       {dates.length > 0 && (
-        <div className="flex items-center gap-3 mt-2 pt-2 border-t border-white/5">
+        <div className="flex items-center gap-3 mt-1.5 pt-2 border-t border-border">
           {dates.map((d, i) => (
             <div key={i} className="flex items-baseline gap-1.5">
-              <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">{d.label}</span>
-              <span className="text-[11px] text-gray-300 font-medium">{d.val}</span>
+              <span className="text-[9px] uppercase tracking-wider text-textMuted font-bold">{d.label}</span>
+              <span className="text-[11px] text-textPrimary font-mono font-medium">{d.val}</span>
             </div>
           ))}
         </div>
@@ -539,7 +557,6 @@ function CompactEventCard({ event: e, meta, onOpenModal }) {
 function EventDetailsModal({ event: e, meta, onClose, onCompany }) {
   if (!e) return null;
 
-  // Prevent background scrolling when modal is open
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = 'auto'; };
@@ -548,50 +565,50 @@ function EventDetailsModal({ event: e, meta, onClose, onCompany }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
       <div 
-        className="bg-[#15171C] border border-white/10 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"
+        className="bg-surface border border-border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"
         onClick={ev => ev.stopPropagation()}
       >
-        <div className="flex items-start justify-between p-5 border-b border-white/10 bg-[#1A1C23]">
+        <div className="flex items-start justify-between p-5 border-b border-border bg-black/[0.02] dark:bg-white/[0.02]">
           <div>
-            <h2 className="text-lg font-bold text-white leading-tight">{e.company}</h2>
-            {e.bseCode && <p className="text-xs font-mono text-gray-400 mt-1">{e.bseCode}</p>}
+            <h2 className="text-lg font-bold text-textPrimary leading-tight">{e.company}</h2>
+            {e.bseCode && <p className="text-xs font-mono text-textMuted mt-1">{e.bseCode}</p>}
           </div>
-          <button onClick={onClose} className="p-2 -mr-2 -mt-2 text-gray-400 hover:text-white rounded-xl hover:bg-white/5 transition">
+          <button onClick={onClose} className="p-2 -mr-2 -mt-2 text-textMuted hover:text-textPrimary rounded-xl hover:bg-surfaceHover transition">
             <X className="w-5 h-5" />
           </button>
         </div>
         
-        <div className="p-5 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+        <div className="p-5 overflow-y-auto custom-scrollbar flex-1 space-y-5">
            <div className="space-y-1">
-             <span className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Corporate Action</span>
+             <span className="text-[10px] text-textMuted font-bold uppercase tracking-wider">Corporate Action</span>
              <div className="flex items-center gap-2 mt-1">
                <span className={clsx("w-2 h-2 rounded-full", meta.dot || 'bg-primary')} />
-               <span className="text-sm font-medium text-gray-200">{e.category}</span>
+               <span className="text-sm font-semibold text-textPrimary">{e.category}</span>
              </div>
            </div>
            
            <div className="space-y-1">
-             <span className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Purpose Details</span>
-             <p className="text-sm text-gray-300 leading-relaxed bg-white/5 p-3.5 rounded-xl border border-white/5 mt-1 whitespace-pre-wrap">
+             <span className="text-[10px] text-textMuted font-bold uppercase tracking-wider">Purpose Details</span>
+             <p className="text-xs text-textPrimary leading-relaxed bg-surfaceHover p-3.5 rounded-xl border border-border mt-1 whitespace-pre-wrap font-sans">
                {e.purpose || 'No details available.'}
              </p>
            </div>
            
-           <div className="grid grid-cols-2 gap-4">
-              {e.exDate && <div><span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Ex-Date</span><p className="text-sm text-gray-200 font-medium">{fmtDisp(e.exDate)}</p></div>}
-              {e.recDate && <div><span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Record Date</span><p className="text-sm text-gray-200 font-medium">{fmtDisp(e.recDate)}</p></div>}
-              {e.bcStart && <div><span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Book Closure</span><p className="text-sm text-gray-200 font-medium">{fmtDisp(e.bcStart)} to {fmtDisp(e.bcEnd)}</p></div>}
-              {e.payDate && <div><span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Payment Date</span><p className="text-sm text-gray-200 font-medium">{fmtDisp(e.payDate)}</p></div>}
+           <div className="grid grid-cols-2 gap-3.5 bg-surfaceHover p-3.5 rounded-xl border border-border">
+              {e.exDate && <div><span className="text-[9px] uppercase tracking-wider text-textMuted font-bold">Ex-Date</span><p className="text-xs text-textPrimary font-semibold font-mono mt-0.5">{fmtDisp(e.exDate)}</p></div>}
+              {e.recDate && <div><span className="text-[9px] uppercase tracking-wider text-textMuted font-bold">Record Date</span><p className="text-xs text-textPrimary font-semibold font-mono mt-0.5">{fmtDisp(e.recDate)}</p></div>}
+              {e.bcStart && <div><span className="text-[9px] uppercase tracking-wider text-textMuted font-bold">Book Closure</span><p className="text-xs text-textPrimary font-semibold font-mono mt-0.5">{fmtDisp(e.bcStart)} to {fmtDisp(e.bcEnd)}</p></div>}
+              {e.payDate && <div><span className="text-[9px] uppercase tracking-wider text-textMuted font-bold">Payment Date</span><p className="text-xs text-textPrimary font-semibold font-mono mt-0.5">{fmtDisp(e.payDate)}</p></div>}
            </div>
         </div>
         
-        <div className="p-4 border-t border-white/10 bg-[#1A1C23] flex items-center gap-3">
-          <button onClick={() => { onClose(); onCompany(e); }} className="flex-1 flex justify-center items-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary py-2.5 rounded-xl font-medium transition text-sm">
+        <div className="p-4 border-t border-border bg-black/[0.02] dark:bg-white/[0.02] flex items-center gap-3">
+          <button onClick={() => { onClose(); onCompany(e); }} className="flex-1 flex justify-center items-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary py-2.5 rounded-xl font-semibold transition text-xs border border-primary/20">
             <Building2 className="w-4 h-4" />
             Company Data
           </button>
           {e.bseUrl && (
-            <a href={e.bseUrl} target="_blank" rel="noopener noreferrer" className="flex justify-center items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white py-2.5 px-4 rounded-xl font-medium transition text-sm">
+            <a href={e.bseUrl} target="_blank" rel="noopener noreferrer" className="flex justify-center items-center gap-2 bg-surface hover:bg-surfaceHover border border-border text-textPrimary py-2.5 px-4 rounded-xl font-semibold transition text-xs shadow-sm">
               Source Document
             </a>
           )}
