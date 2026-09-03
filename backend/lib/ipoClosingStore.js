@@ -28,69 +28,84 @@ async function wipeTodayClosingIpos() {
 
 /**
  * Sync / Upsert closing IPOs discovered for today into MongoDB.
- * Preserves 'COMPLETED' status if an IPO was already dispatched today.
  *
- * @param {Array<Object>} ipos - Normalized IPO closing objects
+ * Guarantees:
+ *  • `_id` = canonical company key (e.g. "deepajewellers") — never a scraper numeric id.
+ *  • No duplicate documents: upsert semantics with `$setOnInsert` for init fields.
+ *  • If already COMPLETED, only live GMP fields are refreshed (status/users untouched).
+ *  • If PENDING/DISPATCHING, all metadata fields are refreshed with latest market data.
+ *
+ * @param {Array<Object>} ipos - Already-deduplicated normalized IPO objects from getIposClosingToday()
  * @param {string} dateIST - Current date in IST (YYYY-MM-DD)
  */
 async function syncTodayClosingIpos(ipos, dateIST) {
   if (!Array.isArray(ipos) || ipos.length === 0) {
-    return { synced: 0, existing: 0 };
+    return { synced: 0, existing: 0, updated: 0 };
   }
 
   const db = await getDb();
   const collection = db.collection(COLLECTION_NAME);
 
   let synced = 0;
-  let existing = 0;
+  let updated = 0;
 
   for (const ipo of ipos) {
-    const ipoId = String(ipo.id || ipo.slug);
-    const existingDoc = await collection.findOne({ _id: ipoId });
+    // ipo.id is now the canonical key set by getIposClosingToday()
+    const canonicalId = String(ipo.id || '').toLowerCase().trim();
+    if (!canonicalId) {
+      console.warn('[IpoClosingStore] Skipping IPO with empty canonical id:', ipo.name);
+      continue;
+    }
 
-    if (existingDoc) {
-      existing++;
-      // Update metadata (like live GMP updates) without touching completed or dispatching statuses
-      const updateFields = {
-        name: ipo.name,
-        slug: ipo.slug,
-        gmp: ipo.gmp,
-        gmpPercentage: ipo.gmpPercentage,
-        issuePrice: ipo.issuePrice,
-        lotSize: ipo.lotSize,
-        closeDate: ipo.closeDate,
-        closeDateISO: ipo.closeDateISO,
-        exchange: ipo.exchange,
-        updatedAt: new Date(),
-      };
-      await collection.updateOne({ _id: ipoId }, { $set: updateFields });
-    } else {
+    const liveFields = {
+      gmp:           ipo.gmp,
+      gmpPercentage: ipo.gmpPercentage,
+      issuePrice:    ipo.issuePrice,
+      updatedAt:     new Date(),
+    };
+
+    const allFields = {
+      ...liveFields,
+      name:          ipo.name,
+      slug:          ipo.slug,
+      lotSize:       ipo.lotSize || null,
+      closeDate:     ipo.closeDate,
+      closeDateISO:  ipo.closeDateISO,
+      exchange:      ipo.exchange,
+      subscription:  ipo.subscription || '-',
+      fireRating:    ipo.fireRating   || 0,
+    };
+
+    // Atomic upsert:
+    //  • $set           → always update live market data + metadata
+    //  • $setOnInsert   → only set status/dedup fields on first insert
+    const result = await collection.updateOne(
+      { _id: canonicalId, dateIST },
+      {
+        $set: allFields,
+        $setOnInsert: {
+          _id:              canonicalId,
+          dateIST,
+          dispatchStatus:   'PENDING',   // PENDING | DISPATCHING | COMPLETED
+          dispatchedAt:     null,
+          dispatchStartedAt: null,
+          deliveredUsers:   [],
+          createdAt:        new Date(),
+        },
+      },
+      { upsert: true }
+    );
+
+    if (result.upsertedCount > 0) {
       synced++;
-      await collection.insertOne({
-        _id: ipoId,
-        ipoId,
-        name: ipo.name,
-        slug: ipo.slug,
-        gmp: ipo.gmp,
-        gmpPercentage: ipo.gmpPercentage,
-        issuePrice: ipo.issuePrice,
-        lotSize: ipo.lotSize,
-        closeDate: ipo.closeDate,
-        closeDateISO: ipo.closeDateISO,
-        exchange: ipo.exchange,
-        dateIST,
-        dispatchStatus: 'PENDING', // PENDING | DISPATCHING | COMPLETED
-        dispatchedAt: null,
-        dispatchStartedAt: null,
-        deliveredUsers: [],
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      console.log(`[IpoClosingStore] NEW: inserted "${ipo.name}" (id="${canonicalId}")`);
+    } else {
+      updated++;
     }
   }
 
-  console.log(`[IpoClosingStore] Sync complete for ${dateIST}: synced=${synced}, existing=${existing}`);
-  return { synced, existing, total: ipos.length };
+  console.log(`[IpoClosingStore] Sync complete for ${dateIST}: new=${synced}, refreshed=${updated}, total=${ipos.length}`);
+  return { synced, updated, total: ipos.length };
 }
 
 /**

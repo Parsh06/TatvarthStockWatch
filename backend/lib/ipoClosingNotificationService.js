@@ -35,23 +35,38 @@ function _delay(ms) {
 
 /**
  * Build rich push notification payload for an IPO with the latest live GMP & Gain %.
+ *
+ * GMP Scenarios:
+ *  • gmp > 0  → "GMP: ₹47 (+19.7% Gain) • Price: ₹239 • Bidding closes today!"
+ *  • gmp === 0 → "GMP: At Par (₹0) • Price: ₹239 • Bidding closes today!"
+ *  • no price  → "Price: NA"
  */
 function buildSingleIpoPayload(ipo, dateIST) {
-  const gainText = ipo.gmpPercentage > 0 ? ` (+${ipo.gmpPercentage}% Gain)` : '';
-  const gmpText  = ipo.gmp > 0
-    ? `GMP: \u20b9${ipo.gmp}${gainText}`
-    : 'GMP updated';
-  const priceText = ipo.issuePrice ? `\u20b9${ipo.issuePrice}` : 'NA';
+  const gmp     = ipo.gmp || 0;
+  const gainPct = ipo.gmpPercentage || 0;
+  const price   = ipo.issuePrice || 0;
+  const exch    = ipo.exchange ? ` [${ipo.exchange}]` : '';
+
+  // --- GMP line ---
+  let gmpText;
+  if (gmp > 0) {
+    gmpText = `GMP: \u20b9${gmp} (+${gainPct}% Gain)`;
+  } else {
+    gmpText = `GMP: At Par (\u20b90)`;
+  }
+
+  // --- Price line ---
+  const priceText = price > 0 ? `\u20b9${price}` : 'NA';
 
   return {
-    title: `\u23f0 IPO Closing Today: ${ipo.name}${gainText}`,
+    title: `\u23f0 IPO Closing Today: ${ipo.name}${exch}`,
     body:  `${gmpText} \u2022 Price: ${priceText} \u2022 Bidding closes today! Tap to view.`,
     url:   '/ipo-gmp',
     tag:   `ipo-closing-${dateIST}-${ipo.id || ipo.slug}`,
     type:  'ipo',
     actions: [
       { action: 'check-ipo', title: 'View IPO GMP' },
-      { action: 'dismiss', title: 'Dismiss' },
+      { action: 'dismiss',   title: 'Dismiss'       },
     ],
   };
 }

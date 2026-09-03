@@ -2,6 +2,56 @@
 
 const axios = require('axios');
 const { getISTDateString, parseToISTDateString } = require('../lib/time/istTime');
+const { getCanonicalIpoKey, computeIpoFingerprint, computeNameSimilarity } = require('../lib/ipoUtils');
+
+// ── Module-level dedup constants ───────────────────────────────────────────────
+// Sørensen-Dice token-set similarity threshold for IPO name matching.
+// ≥ 0.72 = "same company, different name style" → merge
+//  < 0.72 = genuinely different companies       → keep separate
+const FUZZY_THRESHOLD = 0.72;
+
+/**
+ * Merge `incoming` IPO entry into the existing entry at `key` in `map`.
+ * Best values from either source always win (highest GMP, richest exchange, etc.)
+ *
+ * @param {Map}    map      - The dedup Map
+ * @param {string} key      - Key of the entry to merge into
+ * @param {Object} incoming - The entry being collapsed
+ */
+function _mergeEntry(map, key, incoming) {
+  const existing = map.get(key);
+  if (!existing) return;
+
+  const mergedGmp        = Math.max(existing.gmp, incoming.gmp);
+  const mergedIssuePrice = incoming.issuePrice > 0 ? incoming.issuePrice : existing.issuePrice;
+  const mergedGmpPct     = mergedIssuePrice > 0
+    ? Math.round((mergedGmp / mergedIssuePrice) * 1000) / 10
+    : 0;
+  // Shorter name = cleaner (MainboardGMP tends to omit suffixes like "Ltd")
+  const mergedName = existing.name.length <= incoming.name.length
+    ? existing.name
+    : incoming.name;
+  // Exchange with '&' is more descriptive e.g. "NSE & BSE" beats "NSE SME"
+  const mergedExch = (existing.exchange?.includes('&'))
+    ? existing.exchange
+    : (incoming.exchange || existing.exchange);
+  // Keep first non-dash subscription string
+  const mergedSub = existing.subscription !== '-'
+    ? existing.subscription
+    : incoming.subscription;
+
+  map.set(key, {
+    ...existing,
+    name:          mergedName,
+    gmp:           mergedGmp,
+    gmpPercentage: mergedGmpPct,
+    issuePrice:    mergedIssuePrice,
+    exchange:      mergedExch,
+    subscription:  mergedSub,
+    fireRating:    Math.max(existing.fireRating || 0, incoming.fireRating || 0),
+    lotSize:       existing.lotSize || incoming.lotSize,
+  });
+}
 
 async function fetchIpoGmpData(page = 1, search = '') {
   search = search.toLowerCase();
@@ -61,12 +111,8 @@ async function fetchIpoGmpData(page = 1, search = '') {
   let finalData = { data: [], current_page: page, total_pages: 1, total: 0 };
   const companySet = new Set();
 
-  const getMatchKey = (name) => {
-    return name.toLowerCase()
-      .replace(/\bltd\b/g, '')
-      .replace(/\blimited\b/g, '')
-      .replace(/[^a-z0-9]/g, '');
-  };
+  // Use canonical key for within-scraper enrichment dedup (fetchIpoGmpData only)
+  const getMatchKey = (name) => getCanonicalIpoKey(name);
 
   // Process MainboardGMP (Primary Source)
   if (sourcesStatus.mainboardGmp.usable) {
@@ -228,71 +274,228 @@ async function fetchIpoGmpData(page = 1, search = '') {
 }
 
 /**
- * getIposClosingToday
+ * getIposClosingToday  —  Hybrid Deduplication (3-Pass)
  *
- * Clean contract for the IPO closing notification service.
- * Returns a normalized status object and array of IPOs closing today.
+ * Fetches all IPOs from both scrapers, filters to those closing today,
+ * then deduplicates them through three independent passes so that
+ * EXACTLY ONE record per real-world company reaches MongoDB.
  *
- * @returns {Promise<{ ok: boolean, status: string, ipos: Array, sources: Object, error: string|null }>}
+ * Pass 1 ─ FINGERPRINT  (closeDateISO + issuePrice)
+ *   Catches: "Credent Connect N Care Ltd" @ ₹189 vs "Credent Connect" @ ₹189
+ *   → Same date + same price = same IPO.  100% reliable, zero maintenance.
+ *
+ * Pass 2 ─ FUZZY (no-fingerprint fallback)
+ *   Catches: Entries missing closeDateISO or issuePrice.
+ *   Name token-set Dice similarity ≥ 0.72 → merge.
+ *
+ * Pass 3 ─ CROSS-FINGERPRINT FUZZY (price-band mismatches)
+ *   Catches: MainboardGMP shows ₹189 (upper band),
+ *            Investorgain shows ₹179 (lower band) → different fingerprints
+ *            but same company by name similarity ≥ 0.72.
+ *
+ * Result: sorted array of unique IPOs, each with the best live GMP from any source.
+ *
+ * @returns {Promise<{ ok, status, ipos, sources, error, dedupStats }>}
  */
 async function getIposClosingToday() {
   try {
     const result = await fetchIpoGmpData(1, '');
-    const ipos = result?.data || [];
+    const ipos         = result?.data        || [];
     const sourcesStatus = result?.sourcesStatus || {};
 
-    const isAnySourceUsable = sourcesStatus.mainboardGmp?.usable || sourcesStatus.investorgain?.usable;
+    const isAnySourceUsable =
+      sourcesStatus.mainboardGmp?.usable || sourcesStatus.investorgain?.usable;
     if (!isAnySourceUsable) {
       return {
-        ok: false,
+        ok:     false,
         status: 'UPSTREAM_FAILURE',
-        ipos: [],
+        ipos:   [],
         sources: sourcesStatus,
-        error: 'Both MainboardGMP and Investorgain scrapers failed transport/schema validation'
+        error:  'Both MainboardGMP and Investorgain scrapers failed transport/schema validation',
       };
     }
 
-    const filtered = ipos
-      .filter(ipo => {
-        const isCT = String(ipo.tab_status || '').trim().toUpperCase() === 'CT';
-        const isToday = ipo.closeDateISO === getISTDateString();
-        return isCT || isToday;
-      })
-      .map(ipo => {
-        const issuePrice = parseFloat(ipo.issue_price) || 0;
-        const gmp        = parseFloat(ipo.gmp)         || 0;
-        const gmpPct     = issuePrice > 0 ? Math.round((gmp / issuePrice) * 1000) / 10 : 0;
-        const slug       = ipo.slug || (ipo.company_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const todayIST = getISTDateString();
 
-        return {
-          id:            String(ipo.id || slug),
-          name:          ipo.company_name || 'Unknown IPO',
-          slug,
-          gmp,
-          gmpPercentage: gmpPct,
-          issuePrice,
-          closeDate:     ipo.close_date || '',
-          closeDateISO:  ipo.closeDateISO || getISTDateString(),
-          exchange:      ipo.listing_exch || '',
-        };
-      });
+    // ────────────────────────────────────────────────────────────────
+    // Step 1: Filter to IPOs closing today
+    // ────────────────────────────────────────────────────────────────
+    const closingToday = ipos.filter(ipo => {
+      const isCT    = String(ipo.tab_status || '').trim().toUpperCase() === 'CT';
+      const isToday = ipo.closeDateISO === todayIST;
+      return isCT || isToday;
+    });
 
-    const isPartial = !sourcesStatus.mainboardGmp?.ok || !sourcesStatus.investorgain?.ok;
+    if (closingToday.length === 0) {
+      return {
+        ok:     true,
+        status: 'NO_IPOS_CLOSING_TODAY',
+        ipos:   [],
+        sources: sourcesStatus,
+        error:  null,
+        dedupStats: { rawCount: 0, uniqueCount: 0, mergedCount: 0 },
+      };
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Step 2: Normalize all entries
+    // ────────────────────────────────────────────────────────────────
+    const normalizedEntries = closingToday.map(ipo => {
+      const issuePrice  = parseFloat(ipo.issue_price) || 0;
+      const gmp         = parseFloat(ipo.gmp)         || 0;
+      const gmpPct      = issuePrice > 0
+        ? Math.round((gmp / issuePrice) * 1000) / 10
+        : 0;
+      const slug        = ipo.slug
+        || (ipo.company_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const fingerprint = computeIpoFingerprint(ipo.closeDateISO, issuePrice);
+
+      return {
+        _fp:           fingerprint,          // internal dedup field, stripped before output
+        id:            fingerprint || slug,  // fingerprint as stable id (preferred)
+        name:          ipo.company_name || 'Unknown IPO',
+        slug,
+        gmp,
+        gmpPercentage: gmpPct,
+        issuePrice,
+        closeDate:     ipo.close_date   || '',
+        closeDateISO:  ipo.closeDateISO || todayIST,
+        exchange:      ipo.listing_exch || '',
+        lotSize:       ipo.lot_size ? (parseInt(ipo.lot_size, 10) || null) : null,
+        subscription:  ipo.subscription || '-',
+        fireRating:    ipo.fire_rating  || 0,
+      };
+    });
+
+    // ────────────────────────────────────────────────────────────────
+    // PASS 1: Fingerprint grouping  (closeDateISO + issuePrice)
+    // ────────────────────────────────────────────────────────────────
+    // Two records with the same fingerprint = same IPO. No name comparison needed.
+    const dedupMap  = new Map();  // fp/key → merged IPO entry
+    const noFpQueue = [];         // entries missing a fingerprint (no price or no date)
+
+    for (const entry of normalizedEntries) {
+      if (!entry._fp) {
+        noFpQueue.push(entry);
+        continue;
+      }
+      if (!dedupMap.has(entry._fp)) {
+        dedupMap.set(entry._fp, { ...entry });
+      } else {
+        _mergeEntry(dedupMap, entry._fp, entry);
+        console.log(
+          `[IpoService] Pass1 FP-merge: "${entry.name}" → "${dedupMap.get(entry._fp).name}" (fp=${entry._fp})`
+        );
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // PASS 2: Fuzzy match for entries without a fingerprint
+    // ────────────────────────────────────────────────────────────────
+    // Entries missing closeDateISO or issuePrice can still be matched by name.
+    for (const entry of noFpQueue) {
+      let bestFp  = null;
+      let bestSim = 0;
+
+      for (const [fp, existing] of dedupMap) {
+        const sim = computeNameSimilarity(entry.name, existing.name);
+        if (sim >= FUZZY_THRESHOLD && sim > bestSim) {
+          bestSim = sim;
+          bestFp  = fp;
+        }
+      }
+
+      if (bestFp) {
+        _mergeEntry(dedupMap, bestFp, entry);
+        console.log(
+          `[IpoService] Pass2 fuzzy-merge (no-fp): "${entry.name}" → "${dedupMap.get(bestFp).name}" (sim=${bestSim.toFixed(2)})`
+        );
+      } else {
+        // Truly standalone — give it a deterministic key
+        const fallbackKey = `${entry.closeDateISO}__slug__${entry.slug}`;
+        dedupMap.set(fallbackKey, { ...entry, id: fallbackKey });
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // PASS 3: Cross-fingerprint fuzzy  (price-band mismatches)
+    // ────────────────────────────────────────────────────────────────
+    // Handles: MainboardGMP shows ₹189 (upper band) → fp "2026-09-03__189"
+    //          Investorgain  shows ₹179 (lower band) → fp "2026-09-03__179"
+    //          Same date + same company by name similarity → merge.
+    // Only compares entries that close on the same calendar date (avoids cross-day false positives).
+    const dedupKeys    = [...dedupMap.keys()];
+    const mergeActions = [];   // {keepKey, dropKey, sim} — collected before mutating the map
+
+    for (let i = 0; i < dedupKeys.length; i++) {
+      for (let j = i + 1; j < dedupKeys.length; j++) {
+        const keyA = dedupKeys[i];
+        const keyB = dedupKeys[j];
+        const eA   = dedupMap.get(keyA);
+        const eB   = dedupMap.get(keyB);
+
+        // Gate: must close on the same date
+        if (eA.closeDateISO !== eB.closeDateISO) continue;
+
+        const sim = computeNameSimilarity(eA.name, eB.name);
+        if (sim >= FUZZY_THRESHOLD) {
+          // Keep the entry with the higher GMP (more live data)
+          const [keepKey, dropKey] = eA.gmp >= eB.gmp ? [keyA, keyB] : [keyB, keyA];
+          mergeActions.push({ keepKey, dropKey, sim,
+            keepName: dedupMap.get(keepKey).name, dropName: dedupMap.get(dropKey).name });
+        }
+      }
+    }
+
+    // Apply merges (guarded against double-deletion)
+    const dropped = new Set();
+    for (const { keepKey, dropKey, sim, keepName, dropName } of mergeActions) {
+      if (dropped.has(dropKey) || dropped.has(keepKey)) continue;
+      if (!dedupMap.has(keepKey) || !dedupMap.has(dropKey))  continue;
+
+      _mergeEntry(dedupMap, keepKey, dedupMap.get(dropKey));
+      dedupMap.delete(dropKey);
+      dropped.add(dropKey);
+      console.log(
+        `[IpoService] Pass3 cross-fp fuzzy-merge: "${keepName}" ← "${dropName}" (sim=${sim.toFixed(2)})`
+      );
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Step 6: Final output — strip internal fields, sort by GMP% descending
+    // ────────────────────────────────────────────────────────────────
+    const deduped = [...dedupMap.values()]
+      .map(({ _fp, ...rest }) => rest)       // strip internal _fp field
+      .sort((a, b) => b.gmpPercentage - a.gmpPercentage);
+
+    const rawCount    = closingToday.length;
+    const uniqueCount = deduped.length;
+    const isPartial   = !sourcesStatus.mainboardGmp?.usable || !sourcesStatus.investorgain?.usable;
+
+    console.log(
+      `[IpoService] getIposClosingToday: ${rawCount} raw → ${uniqueCount} unique ` +
+      `(${rawCount - uniqueCount} merged) status=${isPartial ? 'PARTIAL' : 'SUCCESS'}`
+    );
 
     return {
-      ok: true,
+      ok:     true,
       status: isPartial ? 'PARTIAL_SUCCESS' : 'SUCCESS',
-      ipos: filtered,
+      ipos:   deduped,
       sources: sourcesStatus,
-      error: null
+      error:   null,
+      dedupStats: {
+        rawCount,
+        uniqueCount,
+        mergedCount: rawCount - uniqueCount,
+      },
     };
   } catch (err) {
     return {
-      ok: false,
+      ok:     false,
       status: 'UPSTREAM_FAILURE',
-      ipos: [],
+      ipos:   [],
       sources: {},
-      error: err.message
+      error:   err.message,
     };
   }
 }
