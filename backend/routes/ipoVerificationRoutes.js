@@ -107,12 +107,8 @@ module.exports = function (verifyToken) {
   let _unifiedSymbolCache = { data: null, fetchedAt: 0 };
   const UNIFIED_CACHE_TTL_MS = 3 * 60 * 1000;
 
-  async function fetchUnifiedSymbols() {
-    const now = Date.now();
-    if (_unifiedSymbolCache.data && (now - _unifiedSymbolCache.fetchedAt < UNIFIED_CACHE_TTL_MS)) {
-      return _unifiedSymbolCache.data;
-    }
-
+  async function syncRegistrarsToMongo() {
+    const { saveIpoSymbols } = require('../lib/ipoStore');
     const [mufgRes, kfinRes, bigshareRes] = await Promise.allSettled([
       scrapeMufgCompanies(),
       scrapeKfinCompanies(),
@@ -123,8 +119,6 @@ module.exports = function (verifyToken) {
     const kfinList = kfinRes.status === 'fulfilled' && Array.isArray(kfinRes.value) ? kfinRes.value : [];
     const bigshareList = bigshareRes.status === 'fulfilled' && Array.isArray(bigshareRes.value) ? bigshareRes.value : [];
 
-    // Save/Sync scraped symbols to MongoDB
-    const { saveIpoSymbols, getActiveIpoSymbols } = require('../lib/ipoStore');
     try {
       if (kfinList.length > 0) await saveIpoSymbols(kfinList, 'KFINTECH');
       if (mufgList.length > 0) await saveIpoSymbols(mufgList, 'MUFG');
@@ -132,13 +126,34 @@ module.exports = function (verifyToken) {
     } catch (dbErr) {
       console.error('[Unified Symbols] MongoDB sync error:', dbErr.message);
     }
+  }
 
-    // Query all active symbols from MongoDB sorted by discovery time (firstSeenAt desc)
+  async function fetchUnifiedSymbols(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && _unifiedSymbolCache.data && (now - _unifiedSymbolCache.fetchedAt < UNIFIED_CACHE_TTL_MS)) {
+      return _unifiedSymbolCache.data;
+    }
+
+    const { getActiveIpoSymbols } = require('../lib/ipoStore');
+
+    // 1. Fast Path: Read pre-cached active symbols directly from MongoDB (sub-15ms)
     let mongoDocs = [];
-    try {
-      mongoDocs = await getActiveIpoSymbols('ALL');
-    } catch (err) {
-      console.error('[Unified Symbols] MongoDB read error:', err.message);
+    if (!forceRefresh) {
+      try {
+        mongoDocs = await getActiveIpoSymbols('ALL');
+      } catch (err) {
+        console.error('[Unified Symbols] Fast MongoDB read error:', err.message);
+      }
+    }
+
+    // 2. If DB is empty or forceRefresh is true, sync live from registrars
+    if (mongoDocs.length === 0 || forceRefresh) {
+      await syncRegistrarsToMongo();
+      try {
+        mongoDocs = await getActiveIpoSymbols('ALL');
+      } catch (err) {
+        console.error('[Unified Symbols] Post-sync read error:', err.message);
+      }
     }
 
     let unified = [];
@@ -150,17 +165,6 @@ module.exports = function (verifyToken) {
         registrar: doc.source || 'KFINTECH',
         isLatest: idx < 5,
         discoveredAt: doc.firstSeenAt ? new Date(doc.firstSeenAt).toISOString() : new Date().toISOString(),
-      }));
-    } else {
-      // Fallback if MongoDB is temporarily unreachable
-      const allFallback = [
-        ...kfinList.map(c => ({ ...c, registrar: 'KFINTECH' })),
-        ...mufgList.map(c => ({ ...c, registrar: 'MUFG' })),
-        ...bigshareList.map(c => ({ ...c, registrar: 'BIGSHARE' })),
-      ];
-      unified = allFallback.map((item, idx) => ({
-        ...item,
-        isLatest: idx < 5,
       }));
     }
 
@@ -174,24 +178,34 @@ module.exports = function (verifyToken) {
   router.get('/symbols', verifyToken, async (req, res) => {
     try {
       const registrar = String(req.query.registrar || 'ALL').toUpperCase();
+      const forceRefresh = req.query.forceRefresh === 'true' || req.query.refresh === 'true';
       let symbols = [];
       let source = 'ALL';
 
+      // Set edge CDN & browser cache headers for instantaneous client navigation
+      res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+
       if (registrar === 'MUFG' || registrar === 'LINKINTIME' || registrar === 'LINK_INTIME') {
-        symbols = await scrapeMufgCompanies();
+        const { getActiveIpoSymbols } = require('../lib/ipoStore');
+        const docs = await getActiveIpoSymbols('MUFG');
+        symbols = docs.length > 0 && !forceRefresh ? docs : await scrapeMufgCompanies();
         source = 'MUFG';
       } else if (registrar === 'BIGSHARE' || registrar === 'BIG_SHARE') {
-        symbols = await scrapeBigshareCompanies();
+        const { getActiveIpoSymbols } = require('../lib/ipoStore');
+        const docs = await getActiveIpoSymbols('BIGSHARE');
+        symbols = docs.length > 0 && !forceRefresh ? docs : await scrapeBigshareCompanies();
         source = 'BIGSHARE';
       } else if (registrar === 'KFINTECH' || registrar === 'KFIN') {
-        symbols = await scrapeKfinCompanies();
+        const { getActiveIpoSymbols } = require('../lib/ipoStore');
+        const docs = await getActiveIpoSymbols('KFINTECH');
+        symbols = docs.length > 0 && !forceRefresh ? docs : await scrapeKfinCompanies();
         source = 'KFINTECH';
       } else {
-        symbols = await fetchUnifiedSymbols();
+        symbols = await fetchUnifiedSymbols(forceRefresh);
         source = 'UNIFIED';
       }
 
-      res.json({ success: true, symbols, source });
+      res.json({ success: true, symbols, source, count: symbols.length });
     } catch (err) {
       console.error('[IPO Symbols Error]', err.message);
       res.status(400).json({ success: false, error: 'Unable to fetch IPO symbols. ' + err.message });
