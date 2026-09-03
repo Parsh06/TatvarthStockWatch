@@ -123,60 +123,46 @@ module.exports = function (verifyToken) {
     const kfinList = kfinRes.status === 'fulfilled' && Array.isArray(kfinRes.value) ? kfinRes.value : [];
     const bigshareList = bigshareRes.status === 'fulfilled' && Array.isArray(bigshareRes.value) ? bigshareRes.value : [];
 
-    // Load or initialize discovery timestamps from Firestore
-    let storedTimestamps = {};
+    // Save/Sync scraped symbols to MongoDB
+    const { saveIpoSymbols, getActiveIpoSymbols } = require('../lib/ipoStore');
     try {
-      const admin = require('firebase-admin');
-      const db = admin.firestore();
-      const docRef = db.collection('system_meta').doc('allotment_discovery_timestamps');
-      const doc = await docRef.get();
-      if (doc.exists) storedTimestamps = doc.data() || {};
-
-      const allItems = [
-        ...kfinList.map((c, i) => ({ ...c, registrar: 'KFINTECH', originalRank: i })),
-        ...mufgList.map((c, i) => ({ ...c, registrar: 'MUFG', originalRank: i })),
-        ...bigshareList.map((c, i) => ({ ...c, registrar: 'BIGSHARE', originalRank: i })),
-      ];
-
-      let updated = false;
-      for (const item of allItems) {
-        const key = `${item.registrar}_${item.clientId}`;
-        if (!storedTimestamps[key]) {
-          storedTimestamps[key] = new Date(now - item.originalRank * 3600 * 1000).toISOString();
-          updated = true;
-        }
-      }
-
-      if (updated) {
-        docRef.set(storedTimestamps, { merge: true }).catch(() => {});
-      }
-    } catch {
-      // ignore Firestore errors and fallback to natural ordering
+      if (kfinList.length > 0) await saveIpoSymbols(kfinList, 'KFINTECH');
+      if (mufgList.length > 0) await saveIpoSymbols(mufgList, 'MUFG');
+      if (bigshareList.length > 0) await saveIpoSymbols(bigshareList, 'BIGSHARE');
+    } catch (dbErr) {
+      console.error('[Unified Symbols] MongoDB sync error:', dbErr.message);
     }
 
-    // Attach discovery timestamp and sort descending
-    const allEnriched = [
-      ...kfinList.map(c => {
-        const key = `KFINTECH_${c.clientId}`;
-        return { ...c, registrar: 'KFINTECH', discoveredAt: storedTimestamps[key] || new Date().toISOString() };
-      }),
-      ...mufgList.map(c => {
-        const key = `MUFG_${c.clientId}`;
-        return { ...c, registrar: 'MUFG', discoveredAt: storedTimestamps[key] || new Date().toISOString() };
-      }),
-      ...bigshareList.map(c => {
-        const key = `BIGSHARE_${c.clientId}`;
-        return { ...c, registrar: 'BIGSHARE', discoveredAt: storedTimestamps[key] || new Date().toISOString() };
-      }),
-    ];
+    // Query all active symbols from MongoDB sorted by discovery time (firstSeenAt desc)
+    let mongoDocs = [];
+    try {
+      mongoDocs = await getActiveIpoSymbols('ALL');
+    } catch (err) {
+      console.error('[Unified Symbols] MongoDB read error:', err.message);
+    }
 
-    allEnriched.sort((a, b) => new Date(b.discoveredAt) - new Date(a.discoveredAt));
-
-    // Tag top 5 as latest
-    const unified = allEnriched.map((item, idx) => ({
-      ...item,
-      isLatest: idx < 5,
-    }));
+    let unified = [];
+    if (mongoDocs.length > 0) {
+      unified = mongoDocs.map((doc, idx) => ({
+        clientId: doc.clientId || doc._id,
+        symbol: doc.symbol,
+        name: doc.name || doc.symbol,
+        registrar: doc.source || 'KFINTECH',
+        isLatest: idx < 5,
+        discoveredAt: doc.firstSeenAt ? new Date(doc.firstSeenAt).toISOString() : new Date().toISOString(),
+      }));
+    } else {
+      // Fallback if MongoDB is temporarily unreachable
+      const allFallback = [
+        ...kfinList.map(c => ({ ...c, registrar: 'KFINTECH' })),
+        ...mufgList.map(c => ({ ...c, registrar: 'MUFG' })),
+        ...bigshareList.map(c => ({ ...c, registrar: 'BIGSHARE' })),
+      ];
+      unified = allFallback.map((item, idx) => ({
+        ...item,
+        isLatest: idx < 5,
+      }));
+    }
 
     if (unified.length > 0) {
       _unifiedSymbolCache = { data: unified, fetchedAt: now };

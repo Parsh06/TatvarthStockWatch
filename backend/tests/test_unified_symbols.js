@@ -53,10 +53,20 @@ async function runTests() {
     assert('Unified list items contain clientId', unified.every(u => !!u.clientId));
     assert('Unified list items contain registrar', unified.every(u => ['MUFG', 'KFINTECH', 'BIGSHARE'].includes(u.registrar)));
 
-    console.log(`\n   Master Unified IPO Count: ${unified.length} active offerings across India`);
+    const { saveIpoSymbols, getActiveIpoSymbols } = require('../lib/ipoStore');
+    await saveIpoSymbols(kfinList, 'KFINTECH');
+    await saveIpoSymbols(mufgList, 'MUFG');
+    await saveIpoSymbols(bigshareList, 'BIGSHARE');
+
+    const mongoActive = await getActiveIpoSymbols('ALL');
+    assert('MongoDB getActiveIpoSymbols returns unified list', mongoActive.length >= 10);
+    assert('MongoDB active records have valid firstSeenAt', mongoActive.every(u => !!u.firstSeenAt));
+    assert('MongoDB active records have valid source', mongoActive.every(u => ['MUFG', 'KFINTECH', 'BIGSHARE'].includes(u.source)));
+
+    console.log(`\n   Master MongoDB Active Count: ${mongoActive.length} active offerings across India`);
     console.log('   Top 5 Latest Offerings in Feed:');
-    unified.slice(0, 5).forEach((u, i) => {
-      console.log(`    ${i + 1}. [${u.registrar}] ${u.symbol} (ID: ${u.clientId})${u.isLatest ? ' ★ LATEST' : ''}`);
+    mongoActive.slice(0, 5).forEach((u, i) => {
+      console.log(`    ${i + 1}. [${u.source}] ${u.symbol} (ID: ${u.clientId})`);
     });
   } catch (err) {
     assert('Unified scraping test failed', false, err.message);

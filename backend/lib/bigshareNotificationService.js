@@ -35,23 +35,19 @@ function buildBigshareAllotmentPayload(company) {
  */
 async function checkAndNotifyNewBigshareIpos() {
   try {
+    const { saveIpoSymbols, markNotificationsSent } = require('./ipoStore');
     const symbols = await scrapeBigshareCompanies({ forceRefresh: true });
     if (!Array.isArray(symbols) || symbols.length === 0) {
       return { checked: 0, newIpos: 0 };
     }
 
-    const db = getDb();
-    const metaRef = db.collection('system_meta').doc('bigshare_known_ipos');
-    const doc = await metaRef.get();
-
-    const knownIds = new Set(doc.exists ? (doc.data()?.knownIds || []) : []);
-    const newlyDiscovered = symbols.filter(s => !knownIds.has(s.clientId));
-
-    if (newlyDiscovered.length === 0) {
+    // Save to MongoDB iposymbols - returns only truly new IPOs inserted
+    const newIpos = await saveIpoSymbols(symbols, 'BIGSHARE');
+    if (!Array.isArray(newIpos) || newIpos.length === 0) {
       return { checked: symbols.length, newIpos: 0 };
     }
 
-    console.log(`[BigShare Notification] Discovered ${newlyDiscovered.length} NEW IPO allotment(s) on BigShare:`, newlyDiscovered.map(s => s.symbol).join(', '));
+    console.log(`[BigShare Notification] Discovered ${newIpos.length} NEW IPO allotment(s) in MongoDB:`, newIpos.map(s => s.symbol).join(', '));
 
     // Resolve opted-in users
     const admin = require('firebase-admin');
@@ -77,8 +73,10 @@ async function checkAndNotifyNewBigshareIpos() {
       console.error('[BigShare Notification] Error scanning users:', scanErr.message);
     }
 
-    // Dispatch notification for each new IPO
-    for (const newIpo of newlyDiscovered) {
+    // Dispatch notification for each truly new IPO
+    for (const newIpo of newIpos) {
+      if (newIpo.notificationSent) continue;
+
       const payload = buildBigshareAllotmentPayload(newIpo);
 
       for (const uid of uids) {
@@ -91,7 +89,7 @@ async function checkAndNotifyNewBigshareIpos() {
         try {
           const userPrefs = await prefsStore.getPrefs(uid);
           if (userPrefs?.telegramChatId) {
-            const tgMsg = `🔔 *BigShare IPO Allotment Live*\n\n*${newIpo.symbol}* allotment is now live on BigShare!\n\n👉 [Check Allotment Status](https://tatvarthstockwatch.web.app/ipo-check)`;
+            const tgMsg = `🔔 *IPO Allotment Live*\n\n*${newIpo.symbol}* allotment is now live!\n\n👉 [Check Family Allotment Status](https://tatvarthstockwatch.web.app/ipo-check)`;
             await sendTelegram(userPrefs.telegramChatId, tgMsg);
           }
         } catch {
@@ -99,25 +97,14 @@ async function checkAndNotifyNewBigshareIpos() {
         }
       }
 
-      // Add to knownIds
-      knownIds.add(newIpo.clientId);
+      // Mark notification as permanently sent in MongoDB
+      await markNotificationsSent([newIpo], 'BIGSHARE');
     }
 
-    // Save updated knownIds
-    await metaRef.set({
-      knownIds: Array.from(knownIds),
-      lastUpdated: new Date().toISOString(),
-      lastDiscoveredCount: newlyDiscovered.length,
-    }, { merge: true });
-
-    return {
-      checked: symbols.length,
-      newIpos: newlyDiscovered.length,
-      discovered: newlyDiscovered.map(s => s.symbol),
-    };
+    return { checked: symbols.length, newIpos: newIpos.length };
   } catch (err) {
-    console.error('[BigShare Notification Service Error]', err.message);
-    return { error: err.message };
+    console.error('[BigShare Notification Service] Error:', err.message);
+    return { checked: 0, newIpos: 0, error: err.message };
   }
 }
 

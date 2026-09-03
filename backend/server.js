@@ -1030,11 +1030,6 @@ app.all('/api/cron/trigger', async (req, res) => {
       if (newIpos && newIpos.length > 0) {
         ipoStats = await processNewIpos(newIpos);
       }
-
-      const { checkAndNotifyNewMufgIpos } = require('./lib/mufgNotificationService');
-      await checkAndNotifyNewMufgIpos().catch(mufgErr => {
-        console.error('[Global Cron] MUFG Discovery Error:', mufgErr.message);
-      });
     } catch (ipoErr) {
       console.error('[Global Cron] IPO Discovery Error:', ipoErr.message);
     }
@@ -1069,6 +1064,14 @@ app.all('/api/cron/trigger', async (req, res) => {
       await checkAndNotifyNewBigshareIpos().catch(e => console.error('[Global Cron] BigShare Allotment Check Error:', e.message));
     } catch (bigshareErr) {
       console.error('[Global Cron] BigShare notifier error:', bigshareErr.message);
+    }
+
+    // ── Multi-Registrar Reconciliation & Historical Cleanup ───────────────────────
+    try {
+      const { cleanupHistoricalIpos } = require('./lib/ipoStore');
+      await cleanupHistoricalIpos().catch(() => {});
+    } catch (cleanErr) {
+      console.error('[Global Cron] IPO cleanup error:', cleanErr.message);
     }
 
     // Write meta status to Firestore for real-time frontend updates
