@@ -2,7 +2,15 @@
 
 const express = require('express');
 const axios   = require('axios');
-const { encryptPan, decryptPan, maskPan, validatePan, normalizeKfinResponse } = require('../lib/ipoUtils');
+const { 
+  encryptPan, 
+  decryptPan, 
+  maskPan, 
+  validatePan, 
+  normalizeKfinResponse,
+  normalizeMufgResponse,
+  normalizeBigshareResponse 
+} = require('../lib/ipoUtils');
 
 // ── KFintech Headers ─────────────────────────────────────────────────────────
 const KFIN_HEADERS = {
@@ -12,12 +20,14 @@ const KFIN_HEADERS = {
 };
 
 const { scrapeKfinCompanies } = require('../lib/ipoScraper');
+const { scrapeMufgCompanies, queryMufg } = require('../lib/mufgScraper');
+const { scrapeBigshareCompanies, queryBigshare } = require('../lib/bigshareScraper');
 
 // ── Per-user IPO Rate Limiter ─────────────────────────────────────────────────
 const _ipoRl = new Map();
 const IPO_RL_WINDOW = 60_000; // 1 minute
-const IPO_RL_MAX_VERIFY = 10;
-const IPO_RL_MAX_BULK   = 3;
+const IPO_RL_MAX_VERIFY = 15;
+const IPO_RL_MAX_BULK   = 5;
 
 function checkIpoRateLimit(uid, action) {
   const key = `${uid}:${action}`;
@@ -41,8 +51,8 @@ setInterval(() => {
 }, 5 * 60_000);
 
 // ── Bulk Concurrency Control ──────────────────────────────────────────────────
-const MAX_CONCURRENT_KFIN = 2;
-const INTER_REQUEST_DELAY_MS = 500;
+const MAX_CONCURRENT_IPO = 2;
+const INTER_REQUEST_DELAY_MS = 400;
 
 async function runWithConcurrencyLimit(tasks, concurrency, delayMs) {
   const results = new Array(tasks.length);
@@ -93,27 +103,126 @@ async function queryKfintech(clientId, pan) {
 module.exports = function (verifyToken) {
   const router = express.Router();
 
+  // In-memory cache for unified symbols
+  let _unifiedSymbolCache = { data: null, fetchedAt: 0 };
+  const UNIFIED_CACHE_TTL_MS = 3 * 60 * 1000;
+
+  async function fetchUnifiedSymbols() {
+    const now = Date.now();
+    if (_unifiedSymbolCache.data && (now - _unifiedSymbolCache.fetchedAt < UNIFIED_CACHE_TTL_MS)) {
+      return _unifiedSymbolCache.data;
+    }
+
+    const [mufgRes, kfinRes, bigshareRes] = await Promise.allSettled([
+      scrapeMufgCompanies(),
+      scrapeKfinCompanies(),
+      scrapeBigshareCompanies(),
+    ]);
+
+    const mufgList = mufgRes.status === 'fulfilled' && Array.isArray(mufgRes.value) ? mufgRes.value : [];
+    const kfinList = kfinRes.status === 'fulfilled' && Array.isArray(kfinRes.value) ? kfinRes.value : [];
+    const bigshareList = bigshareRes.status === 'fulfilled' && Array.isArray(bigshareRes.value) ? bigshareRes.value : [];
+
+    // Load or initialize discovery timestamps from Firestore
+    let storedTimestamps = {};
+    try {
+      const admin = require('firebase-admin');
+      const db = admin.firestore();
+      const docRef = db.collection('system_meta').doc('allotment_discovery_timestamps');
+      const doc = await docRef.get();
+      if (doc.exists) storedTimestamps = doc.data() || {};
+
+      const allItems = [
+        ...kfinList.map((c, i) => ({ ...c, registrar: 'KFINTECH', originalRank: i })),
+        ...mufgList.map((c, i) => ({ ...c, registrar: 'MUFG', originalRank: i })),
+        ...bigshareList.map((c, i) => ({ ...c, registrar: 'BIGSHARE', originalRank: i })),
+      ];
+
+      let updated = false;
+      for (const item of allItems) {
+        const key = `${item.registrar}_${item.clientId}`;
+        if (!storedTimestamps[key]) {
+          storedTimestamps[key] = new Date(now - item.originalRank * 3600 * 1000).toISOString();
+          updated = true;
+        }
+      }
+
+      if (updated) {
+        docRef.set(storedTimestamps, { merge: true }).catch(() => {});
+      }
+    } catch {
+      // ignore Firestore errors and fallback to natural ordering
+    }
+
+    // Attach discovery timestamp and sort descending
+    const allEnriched = [
+      ...kfinList.map(c => {
+        const key = `KFINTECH_${c.clientId}`;
+        return { ...c, registrar: 'KFINTECH', discoveredAt: storedTimestamps[key] || new Date().toISOString() };
+      }),
+      ...mufgList.map(c => {
+        const key = `MUFG_${c.clientId}`;
+        return { ...c, registrar: 'MUFG', discoveredAt: storedTimestamps[key] || new Date().toISOString() };
+      }),
+      ...bigshareList.map(c => {
+        const key = `BIGSHARE_${c.clientId}`;
+        return { ...c, registrar: 'BIGSHARE', discoveredAt: storedTimestamps[key] || new Date().toISOString() };
+      }),
+    ];
+
+    allEnriched.sort((a, b) => new Date(b.discoveredAt) - new Date(a.discoveredAt));
+
+    // Tag top 5 as latest
+    const unified = allEnriched.map((item, idx) => ({
+      ...item,
+      isLatest: idx < 5,
+    }));
+
+    if (unified.length > 0) {
+      _unifiedSymbolCache = { data: unified, fetchedAt: now };
+    }
+    return unified;
+  }
+
   // ── GET /api/ipo/symbols ────────────────────────────────────────────────────
   router.get('/symbols', verifyToken, async (req, res) => {
     try {
-      const symbols = await scrapeKfinCompanies();
-      res.json({ success: true, symbols, source: 'KFINTECH' });
+      const registrar = String(req.query.registrar || 'ALL').toUpperCase();
+      let symbols = [];
+      let source = 'ALL';
+
+      if (registrar === 'MUFG' || registrar === 'LINKINTIME' || registrar === 'LINK_INTIME') {
+        symbols = await scrapeMufgCompanies();
+        source = 'MUFG';
+      } else if (registrar === 'BIGSHARE' || registrar === 'BIG_SHARE') {
+        symbols = await scrapeBigshareCompanies();
+        source = 'BIGSHARE';
+      } else if (registrar === 'KFINTECH' || registrar === 'KFIN') {
+        symbols = await scrapeKfinCompanies();
+        source = 'KFINTECH';
+      } else {
+        symbols = await fetchUnifiedSymbols();
+        source = 'UNIFIED';
+      }
+
+      res.json({ success: true, symbols, source });
     } catch (err) {
-      console.error('[IPO Symbols KFintech]', err.message);
-      res.status(400).json({ success: false, error: 'Unable to fetch IPO symbols from KFintech' });
+      console.error('[IPO Symbols Error]', err.message);
+      res.status(400).json({ success: false, error: 'Unable to fetch IPO symbols. ' + err.message });
     }
   });
 
   // ── POST /api/ipo/verify ────────────────────────────────────────────────────
   router.post('/verify', verifyToken, async (req, res) => {
     try {
-      const { symbol, verificationType, identifier } = req.body;
+      const { symbol, verificationType, identifier, registrar = 'KFINTECH' } = req.body;
+      const reg = String(registrar).toUpperCase();
 
       if (!symbol || typeof symbol !== 'string') {
         return res.status(400).json({ success: false, error: 'Please select an IPO symbol' });
       }
       if (!verificationType || verificationType !== 'pan') {
-        return res.status(400).json({ success: false, error: 'Only PAN verification is supported for KFintech' });
+        return res.status(400).json({ success: false, error: 'Only PAN verification is supported' });
       }
       if (!identifier || typeof identifier !== 'string' || !identifier.trim()) {
         return res.status(400).json({ success: false, error: 'Please enter your PAN number' });
@@ -130,27 +239,38 @@ module.exports = function (verifyToken) {
         return res.status(429).json({ success: false, error: 'Too many verification requests. Please wait a minute.' });
       }
 
-      // Query KFintech
       const startMs = Date.now();
-      let kfinResponse;
-      try {
-        kfinResponse = await queryKfintech(symbol, cleanPan);
-      } catch (err) {
-        if (err.response && err.response.status === 404 && err.response.data && err.response.data.error === 'Record Not Found') {
-          kfinResponse = { data: [] };
-        } else {
-          throw err;
-        }
-      }
-      
-      const normalized = normalizeKfinResponse(kfinResponse);
-      const durationMs = Date.now() - startMs;
+      let normalized;
 
-      console.log(`[IPO Verify KFintech] uid=${req.uid} clientId=${symbol} masked=${maskPan(cleanPan)} records=${normalized.records?.length || 0} duration=${durationMs}ms`);
+      if (reg === 'MUFG' || reg === 'LINKINTIME' || reg === 'LINK_INTIME') {
+        const mufgXml = await queryMufg(symbol, cleanPan);
+        normalized = await normalizeMufgResponse(mufgXml, cleanPan);
+      } else if (reg === 'BIGSHARE' || reg === 'BIG_SHARE') {
+        const bigshareData = await queryBigshare(symbol, cleanPan);
+        normalized = normalizeBigshareResponse(bigshareData, cleanPan);
+      } else {
+        // Query KFintech
+        let kfinResponse;
+        try {
+          kfinResponse = await queryKfintech(symbol, cleanPan);
+        } catch (err) {
+          if (err.response && err.response.status === 404 && err.response.data && err.response.data.error === 'Record Not Found') {
+            kfinResponse = { data: [] };
+          } else {
+            throw err;
+          }
+        }
+        normalized = normalizeKfinResponse(kfinResponse);
+      }
+
+      const durationMs = Date.now() - startMs;
+      console.log(`[IPO Verify] uid=${req.uid} reg=${reg} symbol=${symbol} masked=${maskPan(cleanPan)} records=${normalized.records?.length || 0} duration=${durationMs}ms`);
+
+      const providerName = (reg === 'MUFG' || reg === 'LINKINTIME') ? 'MUFG' : (reg === 'BIGSHARE' ? 'BIGSHARE' : 'KFINTECH');
 
       res.json({
         success: normalized.success,
-        provider: 'KFINTECH',
+        provider: providerName,
         verification: {
           type: 'pan',
           maskedIdentifier: maskPan(cleanPan),
@@ -159,10 +279,10 @@ module.exports = function (verifyToken) {
         verifiedAt: new Date().toISOString(),
       });
     } catch (err) {
-      console.error('[IPO Verify KFintech Error]', err.message);
+      console.error('[IPO Verify Error]', err.message);
       res.status(400).json({
         success: false,
-        error: 'Unable to connect to KFintech verification service. Details: ' + err.message,
+        error: 'Unable to connect to verification service. Details: ' + err.message,
       });
     }
   });
@@ -285,7 +405,8 @@ module.exports = function (verifyToken) {
   // ── POST /api/ipo/verify-bulk ───────────────────────────────────────────────
   router.post('/verify-bulk', verifyToken, async (req, res) => {
     try {
-      const { symbol, applicantIds } = req.body;
+      const { symbol, applicantIds, registrar = 'KFINTECH' } = req.body;
+      const reg = String(registrar).toUpperCase();
 
       if (!symbol || typeof symbol !== 'string') {
         return res.status(400).json({ success: false, error: 'Please select an IPO symbol' });
@@ -338,18 +459,26 @@ module.exports = function (verifyToken) {
           }
 
           try {
-            let kfinResponse;
-            try {
-              kfinResponse = await queryKfintech(symbol, app.pan);
-            } catch (err) {
-              if (err.response && err.response.status === 404 && err.response.data && err.response.data.error === 'Record Not Found') {
-                kfinResponse = { data: [] };
-              } else {
-                throw err;
+            let normalized;
+            if (reg === 'MUFG' || reg === 'LINKINTIME' || reg === 'LINK_INTIME') {
+              const mufgXml = await queryMufg(symbol, app.pan);
+              normalized = await normalizeMufgResponse(mufgXml, app.pan);
+            } else if (reg === 'BIGSHARE' || reg === 'BIG_SHARE') {
+              const bigshareData = await queryBigshare(symbol, app.pan);
+              normalized = normalizeBigshareResponse(bigshareData, app.pan);
+            } else {
+              let kfinResponse;
+              try {
+                kfinResponse = await queryKfintech(symbol, app.pan);
+              } catch (err) {
+                if (err.response && err.response.status === 404 && err.response.data && err.response.data.error === 'Record Not Found') {
+                  kfinResponse = { data: [] };
+                } else {
+                  throw err;
+                }
               }
+              normalized = normalizeKfinResponse(kfinResponse);
             }
-            
-            const normalized = normalizeKfinResponse(kfinResponse);
 
             return {
               applicantId: app.id,
@@ -364,14 +493,14 @@ module.exports = function (verifyToken) {
               name: app.name,
               maskedPan: maskPan(app.pan),
               status: 'error',
-              error: err.message || 'KFintech query failed',
+              error: err.message || 'Verification query failed',
               records: [],
             };
           }
         };
       });
 
-      const results = await runWithConcurrencyLimit(tasks, MAX_CONCURRENT_KFIN, INTER_REQUEST_DELAY_MS);
+      const results = await runWithConcurrencyLimit(tasks, MAX_CONCURRENT_IPO, INTER_REQUEST_DELAY_MS);
 
       const finalResults = results.map((r, i) => {
         if (r && r._error) {
@@ -394,9 +523,12 @@ module.exports = function (verifyToken) {
         errors: finalResults.filter(r => r.status === 'error').length,
       };
 
+      const providerName = (reg === 'MUFG' || reg === 'LINKINTIME') ? 'MUFG' : (reg === 'BIGSHARE' || reg === 'BIG_SHARE' ? 'BIGSHARE' : 'KFINTECH');
+
       res.json({
         success: true,
         symbol,
+        provider: providerName,
         summary,
         results: finalResults,
         verifiedAt: new Date().toISOString(),

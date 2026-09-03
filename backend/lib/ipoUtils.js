@@ -165,6 +165,128 @@ function normalizeKfinResponse(response) {
   };
 }
 
+// ── MUFG (Link Intime) Response Normalization ────────────────────────────────
+function normalizeMufgRecord(raw, pan = '') {
+  const toNum = (v) => {
+    if (v === null || v === undefined || v === '' || v === '-') return 0;
+    const n = Number(v);
+    return isNaN(n) ? 0 : n;
+  };
+
+  const cleanStr = (v) => {
+    if (v === null || v === undefined || v === '-' || v === '') return null;
+    return String(v).trim();
+  };
+
+  const allotted = toNum(raw.ALLOT);
+  const applied = toNum(raw.SHARES);
+  const refund = toNum(raw.RFNDAMT);
+  const offerPrice = toNum(raw.offer_price);
+
+  return {
+    applicantName: cleanStr(raw.NAME1) || 'Unknown',
+    maskedPan: maskPan(pan || ''),
+    applicationNumber: cleanStr(raw.RFNDNO),
+    appliedShares: applied,
+    allottedShares: allotted,
+    refundAmount: refund,
+    offerPrice: offerPrice,
+    dpClientId: cleanStr(raw.DPCLITID),
+    category: cleanStr(raw.PEMNDG) || 'General',
+    bankCode: cleanStr(raw.BNKCODE),
+    companyName: cleanStr(raw.companyname),
+    allotmentStatus: allotted > 0 ? 'Allotted' : (applied > 0 ? 'Not Allotted' : 'Unknown'),
+  };
+}
+
+const xml2js = require('xml2js');
+
+async function normalizeMufgResponse(xmlString, pan = '') {
+  if (!xmlString || typeof xmlString !== 'string') {
+    return { success: true, provider: 'MUFG', records: [] };
+  }
+
+  try {
+    const parsed = await xml2js.parseStringPromise(xmlString, { explicitArray: false });
+    const tableData = parsed?.NewDataSet?.Table;
+    if (!tableData) {
+      return { success: true, provider: 'MUFG', records: [] }; // Not Applied / Empty dataset
+    }
+
+    const rawRecords = Array.isArray(tableData) ? tableData : [tableData];
+    const records = rawRecords.map(r => normalizeMufgRecord(r, pan));
+
+    return {
+      success: true,
+      provider: 'MUFG',
+      records,
+    };
+  } catch (err) {
+    console.error('[MUFG XML Normalization Error]', err.message);
+    return { success: false, provider: 'MUFG', error: 'INVALID_XML', message: 'Failed to parse response from Link Intime', records: [] };
+  }
+}
+
+// ── BigShare Online Response Normalization ────────────────────────────────────
+function normalizeBigshareRecord(raw, pan = '') {
+  const toNum = (v) => {
+    if (v === null || v === undefined || v === '' || v === '-') return 0;
+    const n = Number(String(v).replace(/[^0-9.]/g, ''));
+    return isNaN(n) ? 0 : n;
+  };
+
+  const cleanStr = (v) => {
+    if (v === null || v === undefined || v === '-' || v === '') return null;
+    return String(v).trim();
+  };
+
+  const rawAlloted = cleanStr(raw.ALLOTED) || '';
+  const isNonAllotted = /non|not/i.test(rawAlloted) || rawAlloted === '0';
+  const numericAlloted = toNum(rawAlloted);
+  const allottedShares = isNonAllotted ? 0 : numericAlloted;
+  const appliedShares = toNum(raw.APPLIED);
+
+  return {
+    applicantName: cleanStr(raw.Name) || 'Applicant',
+    maskedPan: maskPan(pan || ''),
+    applicationNumber: cleanStr(raw.APPLICATION_NO),
+    appliedShares: appliedShares,
+    allottedShares: allottedShares,
+    refundAmount: 0,
+    dpClientId: cleanStr(raw.DPID),
+    category: 'General',
+    allotmentStatus: allottedShares > 0 ? 'Allotted' : (appliedShares > 0 ? 'Not Allotted' : 'Unknown'),
+  };
+}
+
+function normalizeBigshareResponse(bigshareData, pan = '') {
+  if (!bigshareData || bigshareData.Status === 'NOTFOUND') {
+    return { success: true, provider: 'BIGSHARE', records: [] };
+  }
+
+  if (bigshareData.Status === 'CAPTCHA') {
+    return { success: false, provider: 'BIGSHARE', error: 'CAPTCHA_FAILED', message: 'Failed to solve captcha challenge', records: [] };
+  }
+
+  if (Array.isArray(bigshareData.Records) && bigshareData.Records.length > 0) {
+    return {
+      success: true,
+      provider: 'BIGSHARE',
+      records: bigshareData.Records.map(r => normalizeBigshareRecord(r, pan)),
+    };
+  }
+
+  if (bigshareData.Name || bigshareData.APPLICATION_NO) {
+    return {
+      success: true,
+      provider: 'BIGSHARE',
+      records: [normalizeBigshareRecord(bigshareData, pan)],
+    };
+  }
+
+  return { success: true, provider: 'BIGSHARE', records: [] };
+}
+
 // ── Canonical IPO Company Key ─────────────────────────────────────────────────
 // Produces a stable lowercase alphanum-only key that two scrapers will both map
 // to the same value even when they spell the company name differently.
@@ -259,6 +381,10 @@ module.exports = {
   mapFlagCode,
   normalizeKfinRecord,
   normalizeKfinResponse,
+  normalizeMufgRecord,
+  normalizeMufgResponse,
+  normalizeBigshareRecord,
+  normalizeBigshareResponse,
   PAN_REGEX,
   getCanonicalIpoKey,
   computeIpoFingerprint,

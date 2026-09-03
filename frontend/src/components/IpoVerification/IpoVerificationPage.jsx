@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   ShieldCheck, RefreshCw, Search, Plus, Trash2, X, ChevronDown, 
-  Users, AlertCircle, CheckCircle2, XCircle, Clock, Loader2, 
-  Info, FileCheck2, Check, Copy, Sparkles, Building2, UserCheck, CreditCard
+  Users, CheckCircle2, XCircle, Clock, 
+  FileCheck2, Check, Copy, Sparkles, Building2, UserCheck, CreditCard
 } from 'lucide-react'
 import { apiClient } from '../../services/apiClient'
 import toast from 'react-hot-toast'
@@ -16,7 +16,7 @@ export default function IpoVerificationPage() {
   // ── State ───────────────────────────────────────────────────────────────────
   const [symbols, setSymbols] = useState([])
   const [symbolsLoading, setSymbolsLoading] = useState(false)
-  const [selectedSymbol, setSelectedSymbol] = useState(null) // holds { clientId, symbol }
+  const [selectedSymbol, setSelectedSymbol] = useState(null) // holds { clientId, symbol, registrar, isLatest }
   const [symbolSearch, setSymbolSearch] = useState('')
   const [symbolDropdownOpen, setSymbolDropdownOpen] = useState(false)
 
@@ -37,25 +37,31 @@ export default function IpoVerificationPage() {
   const [bulkResult, setBulkResult] = useState(null)
   const [copiedField, setCopiedField] = useState(null)
 
-  // ── Fetch IPO Symbols ───────────────────────────────────────────────────────
+  // ── Fetch Master Unified IPO Symbols ────────────────────────────────────────
   const fetchSymbols = useCallback(async () => {
     setSymbolsLoading(true)
     try {
-      const data = await apiClient('/api/ipo/symbols')
+      const data = await apiClient('/api/ipo/symbols?registrar=ALL')
       const fetched = data.symbols || []
       setSymbols(fetched)
-      if (fetched.length > 0 && !selectedSymbol) {
+      if (fetched.length > 0) {
         setSelectedSymbol(fetched[0])
+      } else {
+        setSelectedSymbol(null)
       }
     } catch (err) {
-      toast.error('Failed to load active IPO issues')
+      toast.error('Failed to load active IPO offerings')
       console.error(err)
+      setSymbols([])
+      setSelectedSymbol(null)
     } finally {
       setSymbolsLoading(false)
     }
-  }, [selectedSymbol])
+  }, [])
 
-  useEffect(() => { fetchSymbols() }, [fetchSymbols])
+  useEffect(() => { 
+    fetchSymbols() 
+  }, [fetchSymbols])
 
   // ── Fetch Family Applicants ─────────────────────────────────────────────────
   const fetchApplicants = useCallback(async () => {
@@ -129,13 +135,14 @@ export default function IpoVerificationPage() {
         body: JSON.stringify({
           symbol: selectedSymbol.clientId,
           verificationType: 'pan',
-          identifier: cleanId
+          identifier: cleanId,
+          registrar: selectedSymbol.registrar || 'KFINTECH',
         }),
       })
       setVerifyResult(data)
     } catch (err) {
       const msg = err.message || 'Verification failed'
-      if (msg.includes('429')) toast.error('Rate limit reached. Please wait a minute.')
+      if (msg.includes('429')) toast.error('Rate limit reached. Please wait a moment.')
       else toast.error(err.error || 'Verification query failed. Please try again.')
     } finally {
       setVerifying(false)
@@ -154,12 +161,13 @@ export default function IpoVerificationPage() {
         body: JSON.stringify({
           symbol: selectedSymbol.clientId,
           applicantIds: applicants.map(a => a.id),
+          registrar: selectedSymbol.registrar || 'KFINTECH',
         }),
       })
       setBulkResult(data)
     } catch (err) {
       const msg = err.message || ''
-      if (msg.includes('429')) toast.error('Rate limit reached. Please wait.')
+      if (msg.includes('429')) toast.error('Rate limit reached. Please wait a moment.')
       else toast.error('Bulk verification query failed. Please try again.')
     } finally {
       setBulkVerifying(false)
@@ -173,12 +181,6 @@ export default function IpoVerificationPage() {
     setCopiedField(fieldName)
     toast.success(`Copied ${fieldName}!`)
     setTimeout(() => setCopiedField(null), 2000)
-  }
-
-  // Helper to mask demat client ID
-  function maskDpId(id) {
-    if (!id || id.length < 4) return '—'
-    return '*'.repeat(id.length - 4) + id.slice(-4)
   }
 
   // Filtered symbols
@@ -195,6 +197,7 @@ export default function IpoVerificationPage() {
   const appliedCount = bulkResult?.results?.filter(r => r.status === 'found').length || 0
   const allottedCount = bulkResult?.results?.filter(r => r.status === 'found' && r.records?.some(rec => rec.allottedShares > 0)).length || 0
   const didNotApplyCount = bulkResult?.results?.filter(r => r.status === 'not_found').length || 0
+  const errorCount = bulkResult?.results?.filter(r => r.status === 'error').length || 0
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto py-4">
@@ -212,7 +215,7 @@ export default function IpoVerificationPage() {
               <Sparkles className="w-6 h-6 text-amber-500 hidden sm:inline" />
             </h1>
             <p className="text-sm sm:text-base text-textMuted max-w-2xl">
-              Verify application status & allotment records seamlessly across family portfolios.
+              Verify application status & allotment records for all family members across all active Indian IPOs in one click.
             </p>
           </div>
 
@@ -220,8 +223,10 @@ export default function IpoVerificationPage() {
             <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-surfaceHover border border-border self-start md:self-auto">
               <Building2 className="w-5 h-5 text-primary shrink-0" />
               <div>
-                <p className="text-[10px] uppercase font-bold text-textMuted tracking-wider">Active Offer Selection</p>
-                <p className="text-sm font-bold text-textPrimary truncate max-w-[200px]">{selectedSymbol.symbol}</p>
+                <p className="text-[10px] uppercase font-bold text-textMuted tracking-wider">
+                  Active IPO Offer
+                </p>
+                <p className="text-sm font-bold text-textPrimary truncate max-w-[240px]">{selectedSymbol.symbol}</p>
               </div>
             </div>
           )}
@@ -248,9 +253,9 @@ export default function IpoVerificationPage() {
               <button
                 onClick={() => setShowAddForm(!showAddForm)}
                 className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
-                  showAddForm 
-                    ? 'bg-danger/10 text-danger hover:bg-danger/20' 
-                    : 'bg-primary/10 text-primary hover:bg-primary/20 hover:scale-105'
+                  showAddForm
+                    ? 'bg-danger/10 text-danger border border-danger/20'
+                    : 'bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20'
                 }`}
                 title={showAddForm ? 'Cancel' : 'Add Family Member'}
               >
@@ -258,64 +263,38 @@ export default function IpoVerificationPage() {
               </button>
             </div>
 
-            {/* Add Applicant Drawer */}
+            {/* Add Applicant Form */}
             <AnimatePresence>
               {showAddForm && (
                 <motion.form
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.25 }}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
                   onSubmit={handleAddApplicant}
-                  className="overflow-hidden mb-5"
+                  className="mb-5 p-4 rounded-2xl bg-surfaceHover border border-border overflow-hidden space-y-3"
                 >
-                  <div className="space-y-3.5 p-4 rounded-2xl bg-surfaceHover border border-border">
-                    <p className="text-xs font-bold text-textMuted uppercase tracking-wider">Add New Applicant</p>
-                    
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={newName}
-                        onChange={e => setNewName(e.target.value)}
-                        placeholder="Applicant Name (e.g., Father)"
-                        maxLength={50}
-                        className={`w-full pl-3.5 pr-9 py-2.5 bg-background border rounded-xl text-sm text-textPrimary placeholder:text-textMuted focus:outline-none transition-all ${
-                          isNameValid ? 'border-success/40 focus:border-success' : 'border-border focus:border-primary/40'
-                        }`}
-                      />
-                      {isNameValid && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-success/20 flex items-center justify-center">
-                          <Check className="w-3 h-3 text-success" />
-                        </div>
-                      )}
-                    </div>
+                  <p className="text-xs font-bold text-textPrimary">Add Family Member PAN</p>
+                  
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Applicant Name (e.g. Parsh Jain)"
+                      value={newName}
+                      onChange={e => setNewName(e.target.value)}
+                      maxLength={50}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-primary/50"
+                      autoFocus
+                    />
 
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={newPan}
-                        onChange={e => {
-                          const val = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10)
-                          setNewPan(val)
-                        }}
-                        placeholder="PAN Number (10 characters)"
-                        maxLength={10}
-                        className={`w-full pl-3.5 pr-9 py-2.5 bg-background border rounded-xl text-sm text-textPrimary placeholder:text-textMuted focus:outline-none transition-all font-mono tracking-wider ${
-                          isPanValid ? 'border-success/40 focus:border-success' : newPan.length === 10 ? 'border-danger/40' : 'border-border focus:border-primary/40'
-                        }`}
-                      />
-                      {isPanValid ? (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-success/20 flex items-center justify-center">
-                          <Check className="w-3 h-3 text-success" />
-                        </div>
-                      ) : newPan.length > 0 && (
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-textMuted">
-                          {newPan.length}/10
-                        </span>
-                      )}
-                    </div>
+                    <input
+                      type="text"
+                      placeholder="10-digit PAN (e.g. ABCDE1234F)"
+                      value={newPan}
+                      onChange={e => setNewPan(e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10))}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono text-textPrimary placeholder:font-sans placeholder:text-textMuted focus:outline-none focus:border-primary/50 uppercase"
+                    />
 
-                    <div className="flex items-center gap-1.5 text-[11px] text-textMuted">
+                    <div className="flex items-center gap-1 text-[11px] text-textMuted">
                       <ShieldCheck className="w-3.5 h-3.5 text-success shrink-0" />
                       <span>AES-256 GCM encrypted before storage</span>
                     </div>
@@ -342,7 +321,7 @@ export default function IpoVerificationPage() {
                 <UserCheck className="w-10 h-10 text-textMuted mx-auto mb-2 opacity-50" />
                 <p className="text-sm font-semibold text-textPrimary">No applicants saved yet</p>
                 <p className="text-xs text-textMuted mt-1 max-w-[220px] mx-auto">
-                  Add your PAN and family members to verify all bids in bulk with one click.
+                  Add your PAN and family members to verify all bids in bulk across active IPOs.
                 </p>
               </div>
             ) : (
@@ -433,7 +412,14 @@ export default function IpoVerificationPage() {
                       : 'border-border bg-background text-textMuted'
                   } hover:border-primary/50`}
                 >
-                  <span className="truncate">{selectedSymbol ? selectedSymbol.symbol : 'Select an IPO Offer...'}</span>
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="truncate">{selectedSymbol ? selectedSymbol.symbol : 'Select an active IPO offer...'}</span>
+                    {selectedSymbol?.isLatest && (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[10px] font-extrabold uppercase tracking-wide shrink-0">
+                        Latest
+                      </span>
+                    )}
+                  </div>
                   <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${symbolDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
 
@@ -459,18 +445,18 @@ export default function IpoVerificationPage() {
                         </div>
                       </div>
 
-                      <div className="max-h-56 overflow-y-auto scrollbar-hide divide-y divide-border">
+                      <div className="max-h-64 overflow-y-auto scrollbar-hide divide-y divide-border">
                         {symbolsLoading ? (
                           <div className="flex items-center justify-center py-8 text-textMuted gap-2">
                             <Spinner size="sm" />
-                            Loading registry offers...
+                            Loading active offerings...
                           </div>
                         ) : filteredSymbols.length === 0 ? (
                           <div className="text-center py-6 text-sm text-textMuted">No matching active offers found</div>
                         ) : (
-                          filteredSymbols.map(s => (
+                          filteredSymbols.map((s, idx) => (
                             <button
-                              key={s.clientId}
+                              key={`${s.clientId}_${s.registrar}_${idx}`}
                               type="button"
                               onClick={() => {
                                 setSelectedSymbol(s)
@@ -479,14 +465,23 @@ export default function IpoVerificationPage() {
                                 setVerifyResult(null)
                                 setBulkResult(null)
                               }}
-                              className={`w-full text-left px-4 py-3 text-sm transition-all flex items-center justify-between ${
-                                selectedSymbol?.clientId === s.clientId
+                              className={`w-full text-left px-4 py-3 text-sm transition-all flex items-center justify-between gap-2 ${
+                                selectedSymbol?.clientId === s.clientId && selectedSymbol?.registrar === s.registrar
                                   ? 'bg-primary/10 text-primary font-bold'
                                   : 'text-textPrimary hover:bg-surfaceHover'
                               }`}
                             >
-                              <span className="truncate">{s.symbol}</span>
-                              {selectedSymbol?.clientId === s.clientId && <Check className="w-4 h-4 shrink-0" />}
+                              <div className="flex items-center gap-2 truncate">
+                                <span className="truncate">{s.symbol}</span>
+                                {s.isLatest && (
+                                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[10px] font-extrabold uppercase tracking-wide shrink-0">
+                                    Latest Allotment
+                                  </span>
+                                )}
+                              </div>
+                              {selectedSymbol?.clientId === s.clientId && selectedSymbol?.registrar === s.registrar && (
+                                <Check className="w-4 h-4 shrink-0" />
+                              )}
                             </button>
                           ))
                         )}
@@ -533,7 +528,7 @@ export default function IpoVerificationPage() {
               {verifying ? (
                 <>
                   <Spinner size="sm" className="scale-75" />
-                  Querying Allotment Registry...
+                  Querying Allotment Status...
                 </>
               ) : (
                 <>
@@ -614,99 +609,86 @@ export default function IpoVerificationPage() {
                     <div className="mt-4 p-4 rounded-2xl bg-danger/5 border border-danger/20 text-xs text-danger space-y-1">
                       <p className="font-bold">No active allotment bid record exists for this PAN.</p>
                       <p className="opacity-90">
-                        This indicates that the applicant did not submit an application for this IPO offer, or the bid was not submitted through an eligible intermediary.
+                        This indicates that the applicant did not submit an application for this IPO offer under {selectedSymbol?.symbol}, or the bid was not submitted through an eligible intermediary.
                       </p>
                     </div>
                   )}
                 </div>
 
-                {/* Record Detail Cards */}
-                {verifyResult.records?.map((record, idx) => (
-                  <div key={idx} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      
-                      {/* Applicant & App No Card */}
-                      <div className="bg-surface rounded-2xl p-5 border border-border shadow-sm space-y-4">
-                        <div className="flex items-center gap-2 text-xs font-bold text-textMuted uppercase tracking-wider">
-                          <UserCheck className="w-4 h-4 text-primary" />
-                          Applicant & Application Info
-                        </div>
-                        
-                        <div className="space-y-3 divide-y divide-border">
-                          <div className="flex items-center justify-between text-sm pt-1">
-                            <span className="text-textMuted">Applicant Name</span>
-                            <span className="font-bold text-textPrimary text-right">{record.applicantName || '—'}</span>
-                          </div>
-                          
-                          <div className="flex items-center justify-between text-sm pt-2">
-                            <span className="text-textMuted">PAN</span>
-                            <span className="font-mono font-semibold text-textPrimary">{record.maskedPan}</span>
-                          </div>
-
-                          <div className="flex items-center justify-between text-sm pt-2">
-                            <span className="text-textMuted">Application No</span>
-                            <button
-                              onClick={() => copyToClipboard(record.applicationNumber, 'Application No')}
-                              className="font-mono font-bold text-primary hover:text-primaryHover flex items-center gap-1.5 transition-colors"
-                              title="Click to Copy"
-                            >
-                              {record.applicationNumber || '—'}
-                              {record.applicationNumber && <Copy className="w-3.5 h-3.5 opacity-70" />}
-                            </button>
-                          </div>
-                        </div>
+                {/* Allotment Details Cards */}
+                {verifyResult.records?.map((record, index) => (
+                  <div
+                    key={index}
+                    className="bg-surface rounded-3xl p-6 border border-border shadow-sm space-y-6"
+                  >
+                    <div className="flex items-center justify-between pb-4 border-b border-border">
+                      <div>
+                        <p className="text-xs font-extrabold text-textMuted uppercase tracking-wider">Applicant Name</p>
+                        <p className="text-lg font-bold text-textPrimary">{record.applicantName || '—'}</p>
                       </div>
-
-                      {/* Shares Allotment Breakdown Card */}
-                      <div className="bg-surface rounded-2xl p-5 border border-border shadow-sm space-y-4">
-                        <div className="flex items-center gap-2 text-xs font-bold text-textMuted uppercase tracking-wider">
-                          <Sparkles className="w-4 h-4 text-amber-500" />
-                          Shares Allotment Breakdown
-                        </div>
-
-                        <div className="space-y-3 divide-y divide-border">
-                          <div className="flex items-center justify-between text-sm pt-1">
-                            <span className="text-textMuted">Applied Quantity</span>
-                            <span className="font-bold text-textPrimary">{record.appliedShares != null ? `${record.appliedShares.toLocaleString()} Shares` : '—'}</span>
+                      <div className="flex items-center gap-2">
+                        {record.allottedShares > 0 ? (
+                          <div className="px-3 py-1.5 rounded-full bg-success/10 text-success border border-success/20 text-xs font-black tracking-wide">
+                            ALLOTTED
                           </div>
-
-                          <div className="flex items-center justify-between text-sm pt-2">
-                            <span className="text-textMuted">Allotted Quantity</span>
-                            <span className={`font-bold ${record.allottedShares > 0 ? 'text-success text-base' : 'text-textPrimary'}`}>
-                              {record.allottedShares != null ? `${record.allottedShares.toLocaleString()} Shares` : '—'}
-                            </span>
+                        ) : (
+                          <div className="px-3 py-1.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-bold tracking-wide">
+                            NOT ALLOTTED
                           </div>
-
-                          <div className="flex items-center justify-between text-sm pt-2">
-                            <span className="text-textMuted">Final Allotment Status</span>
-                            {record.allottedShares > 0 ? (
-                              <span className="px-2.5 py-1 rounded-lg bg-success/10 text-success border border-success/20 text-xs font-extrabold">
-                                ALLOTTED
-                              </span>
-                            ) : (
-                              <span className="px-2.5 py-1 rounded-lg bg-danger/10 text-danger border border-danger/20 text-xs font-extrabold">
-                                NOT ALLOTTED
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* DP / Demat Account Card */}
-                      <div className="bg-surface rounded-2xl p-5 border border-border shadow-sm md:col-span-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-textMuted uppercase tracking-wider">Demat Account / Client ID</p>
-                          <p className="text-sm font-mono text-textPrimary">{maskDpId(record.dpClientId)}</p>
-                        </div>
-                        {record.dpClientId && record.dpClientId !== '—' && (
-                          <button
-                            onClick={() => copyToClipboard(record.dpClientId, 'Demat Client ID')}
-                            className="px-3.5 py-2 rounded-xl bg-surfaceHover border border-border text-xs font-semibold text-textPrimary hover:bg-border transition-all flex items-center gap-1.5 self-start sm:self-auto"
-                          >
-                            <Copy className="w-3.5 h-3.5 text-textMuted" />
-                            Copy Client ID
-                          </button>
                         )}
+                      </div>
+                    </div>
+
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="p-4 rounded-2xl bg-background border border-border">
+                        <p className="text-[10px] font-extrabold text-textMuted uppercase tracking-wider">Applied Quantity</p>
+                        <p className="text-lg font-black text-textPrimary mt-1">
+                          {record.appliedShares != null ? `${record.appliedShares.toLocaleString()} Shs` : '—'}
+                        </p>
+                      </div>
+
+                      <div className={`p-4 rounded-2xl border ${
+                        record.allottedShares > 0 ? 'bg-success/5 border-success/20' : 'bg-background border-border'
+                      }`}>
+                        <p className="text-[10px] font-extrabold text-textMuted uppercase tracking-wider">Allotted Quantity</p>
+                        <p className={`text-lg font-black mt-1 ${record.allottedShares > 0 ? 'text-success' : 'text-textPrimary'}`}>
+                          {record.allottedShares != null ? `${record.allottedShares.toLocaleString()} Shs` : '—'}
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-2xl bg-background border border-border">
+                        <p className="text-[10px] font-extrabold text-textMuted uppercase tracking-wider">Application No</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-sm font-bold font-mono text-textPrimary truncate">{record.applicationNumber || '—'}</p>
+                          {record.applicationNumber && (
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(record.applicationNumber, 'Application No')}
+                              className="text-textMuted hover:text-primary transition-all ml-1 shrink-0"
+                            >
+                              {copiedField === 'Application No' ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="p-4 rounded-2xl bg-background border border-border">
+                        <p className="text-[10px] font-extrabold text-textMuted uppercase tracking-wider">Demat Client ID</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-sm font-bold font-mono text-textPrimary truncate">
+                            {record.dpClientId ? (record.dpClientId.length > 4 ? `************${record.dpClientId.slice(-4)}` : record.dpClientId) : '—'}
+                          </p>
+                          {record.dpClientId && (
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(record.dpClientId, 'Demat Client ID')}
+                              className="text-textMuted hover:text-primary transition-all ml-1 shrink-0"
+                            >
+                              {copiedField === 'Demat Client ID' ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -715,7 +697,7 @@ export default function IpoVerificationPage() {
             )}
           </AnimatePresence>
 
-          {/* ── BULK DASHBOARD RESULTS VIEW ───────────────────────────────────── */}
+          {/* ── BULK FAMILY VERIFICATION RESULT STREAM ─────────────────────────── */}
           <AnimatePresence mode="wait">
             {bulkResult && !verifying && !bulkVerifying && (
               <motion.div
@@ -725,20 +707,19 @@ export default function IpoVerificationPage() {
                 exit={{ opacity: 0, y: -10 }}
                 className="space-y-6"
               >
-                {/* Metrics Header Grid */}
-                <div className="bg-surface rounded-3xl p-6 border border-border shadow-sm space-y-5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                      <Users className="w-5 h-5" />
-                    </div>
+                {/* Summary Header Card */}
+                <div className="bg-surface rounded-3xl p-6 sm:p-7 border border-border shadow-sm space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
                       <h3 className="text-lg font-bold text-textPrimary">{selectedSymbol?.symbol} — Family Allotment Summary</h3>
-                      <p className="text-xs text-textMuted">{totalChecked} applicant bids verified</p>
+                      <p className="text-xs text-textMuted">
+                        {totalChecked} applicant bids verified
+                      </p>
                     </div>
                   </div>
 
-                  {/* 4 Metric Cards */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {/* Metric Cards */}
+                  <div className={`grid grid-cols-2 ${errorCount > 0 ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-3`}>
                     <div className="p-4 rounded-2xl bg-background border border-border text-center">
                       <p className="text-2xl font-black text-textPrimary">{totalChecked}</p>
                       <p className="text-[10px] font-extrabold text-textMuted uppercase tracking-wider mt-1">Total Checked</p>
@@ -758,6 +739,13 @@ export default function IpoVerificationPage() {
                       <p className="text-2xl font-black text-danger">{didNotApplyCount}</p>
                       <p className="text-[10px] font-extrabold text-danger uppercase tracking-wider mt-1">Did Not Apply</p>
                     </div>
+
+                    {errorCount > 0 && (
+                      <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/10 text-center col-span-2 sm:col-span-1">
+                        <p className="text-2xl font-black text-amber-500">{errorCount}</p>
+                        <p className="text-[10px] font-extrabold text-amber-500 uppercase tracking-wider mt-1">Retry Needed</p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -803,6 +791,10 @@ export default function IpoVerificationPage() {
                                 APPLIED (NOT ALLOTTED)
                               </div>
                             )
+                          ) : result.status === 'error' ? (
+                            <div className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 text-xs font-bold tracking-wide text-center">
+                              RETRY NEEDED
+                            </div>
                           ) : (
                             <div className="px-3 py-1.5 rounded-xl bg-danger/10 text-danger border border-danger/20 text-xs font-bold tracking-wide text-center">
                               IPO NOT APPLIED
@@ -810,6 +802,12 @@ export default function IpoVerificationPage() {
                           )}
                         </div>
                       </div>
+
+                      {result.status === 'error' && (
+                        <div className="mt-3 pt-2.5 border-t border-border text-xs text-amber-500">
+                          {result.error || 'Verification query timed out. Please retry.'}
+                        </div>
+                      )}
 
                       {/* Detail Breakdown for Found Bids */}
                       {result.status === 'found' && result.records?.length > 0 && (
@@ -820,19 +818,24 @@ export default function IpoVerificationPage() {
                                 <p className="text-[10px] uppercase font-bold text-textMuted">Applied</p>
                                 <p className="text-xs font-bold text-textPrimary mt-0.5">{rec.appliedShares != null ? `${rec.appliedShares.toLocaleString()} Shs` : '—'}</p>
                               </div>
-                              <div className="p-2.5 rounded-xl bg-background border border-border">
+
+                              <div className={`p-2.5 rounded-xl border ${rec.allottedShares > 0 ? 'bg-success/5 border-success/20' : 'bg-background border-border'}`}>
                                 <p className="text-[10px] uppercase font-bold text-textMuted">Allotted</p>
                                 <p className={`text-xs font-bold mt-0.5 ${rec.allottedShares > 0 ? 'text-success' : 'text-textPrimary'}`}>
                                   {rec.allottedShares != null ? `${rec.allottedShares.toLocaleString()} Shs` : '—'}
                                 </p>
                               </div>
+
                               <div className="p-2.5 rounded-xl bg-background border border-border">
                                 <p className="text-[10px] uppercase font-bold text-textMuted">App No</p>
-                                <p className="text-xs font-mono font-bold text-textPrimary mt-0.5 truncate">{rec.applicationNumber || '—'}</p>
+                                <p className="text-xs font-bold font-mono text-textPrimary mt-0.5 truncate">{rec.applicationNumber || '—'}</p>
                               </div>
+
                               <div className="p-2.5 rounded-xl bg-background border border-border">
                                 <p className="text-[10px] uppercase font-bold text-textMuted">Demat ID</p>
-                                <p className="text-xs font-mono text-textMuted mt-0.5 truncate">{maskDpId(rec.dpClientId)}</p>
+                                <p className="text-xs font-bold font-mono text-textPrimary mt-0.5 truncate">
+                                  {rec.dpClientId ? (rec.dpClientId.length > 4 ? `************${rec.dpClientId.slice(-4)}` : rec.dpClientId) : '—'}
+                                </p>
                               </div>
                             </div>
                           ))}
@@ -840,7 +843,7 @@ export default function IpoVerificationPage() {
                       )}
 
                       {result.status === 'not_found' && (
-                        <p className="text-xs text-danger/80 mt-2.5 pt-2 border-t border-border">
+                        <p className="text-xs text-textMuted mt-3 pt-2.5 border-t border-border">
                           No active application bid was recorded for this applicant under {selectedSymbol?.symbol}.
                         </p>
                       )}
@@ -850,52 +853,41 @@ export default function IpoVerificationPage() {
               </motion.div>
             )}
           </AnimatePresence>
-
         </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* ── DELETE CONFIRMATION MODAL ────────────────────────────────────────── */}
       <AnimatePresence>
         {deleteConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-            onClick={() => setDeleteConfirm(null)}
-          >
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              onClick={e => e.stopPropagation()}
-              className="bg-surface border border-border rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4"
+              className="bg-surface rounded-3xl p-6 border border-border shadow-2xl max-w-sm w-full space-y-4"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-danger/10 border border-danger/20 flex items-center justify-center text-danger">
-                  <Trash2 className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-textPrimary">Remove {deleteConfirm.name}?</h3>
-              </div>
-              <p className="text-xs text-textMuted leading-relaxed">
-                This will remove the encrypted applicant record from your family portfolio.
+              <h3 className="text-lg font-bold text-textPrimary">Remove Family Member</h3>
+              <p className="text-sm text-textMuted">
+                Are you sure you want to remove <span className="font-bold text-textPrimary">{deleteConfirm.name}</span> ({deleteConfirm.maskedPan}) from your portfolio?
               </p>
-              <div className="flex gap-3 pt-2">
+              <div className="flex items-center gap-3 pt-2">
                 <button
+                  type="button"
                   onClick={() => setDeleteConfirm(null)}
-                  className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-surfaceHover text-textPrimary border border-border hover:bg-border transition-all"
+                  className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-textMuted hover:bg-surfaceHover transition-all"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleDeleteApplicant(deleteConfirm.id)}
-                  className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-danger text-white hover:opacity-90 transition-all"
+                  className="flex-1 py-2.5 rounded-xl bg-danger text-white text-sm font-semibold hover:bg-danger/90 transition-all"
                 >
                   Remove
                 </button>
               </div>
             </motion.div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

@@ -1030,6 +1030,11 @@ app.all('/api/cron/trigger', async (req, res) => {
       if (newIpos && newIpos.length > 0) {
         ipoStats = await processNewIpos(newIpos);
       }
+
+      const { checkAndNotifyNewMufgIpos } = require('./lib/mufgNotificationService');
+      await checkAndNotifyNewMufgIpos().catch(mufgErr => {
+        console.error('[Global Cron] MUFG Discovery Error:', mufgErr.message);
+      });
     } catch (ipoErr) {
       console.error('[Global Cron] IPO Discovery Error:', ipoErr.message);
     }
@@ -1049,6 +1054,21 @@ app.all('/api/cron/trigger', async (req, res) => {
       }
     } catch (ipoCloseErr) {
       console.error('[Global Cron] IPO closing tick error:', ipoCloseErr.message);
+    }
+
+    // ── Check & Notify for New Allotments on Registrars (MUFG & BigShare) ─────────
+    try {
+      const { checkAndNotifyNewMufgIpos } = require('./lib/mufgNotificationService');
+      await checkAndNotifyNewMufgIpos().catch(e => console.error('[Global Cron] MUFG Allotment Check Error:', e.message));
+    } catch (mufgErr) {
+      console.error('[Global Cron] MUFG notifier error:', mufgErr.message);
+    }
+
+    try {
+      const { checkAndNotifyNewBigshareIpos } = require('./lib/bigshareNotificationService');
+      await checkAndNotifyNewBigshareIpos().catch(e => console.error('[Global Cron] BigShare Allotment Check Error:', e.message));
+    } catch (bigshareErr) {
+      console.error('[Global Cron] BigShare notifier error:', bigshareErr.message);
     }
 
     // Write meta status to Firestore for real-time frontend updates
