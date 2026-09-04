@@ -19,9 +19,6 @@ function sanitizeWatchlistScript(script) {
     notes: String(script.notes || ''),
     group: String(script.group || ''),
     isin: String(script.isin || ''),
-    alertAbove: script.alertAbove != null ? Number(script.alertAbove) : null,
-    alertBelow: script.alertBelow != null ? Number(script.alertBelow) : null,
-    alertEnabled: script.alertEnabled != null ? Boolean(script.alertEnabled) : true,
     addedAt: script.addedAt ? new Date(script.addedAt).toISOString() : null,
   };
 }

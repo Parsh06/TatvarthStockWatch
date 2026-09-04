@@ -43,9 +43,9 @@ export default function VolumeSpurtSection() {
   const [lastUpdated, setLastUpdated] = useState(null)
   const [search, setSearch]         = useState('')
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (force = false) => {
     try {
-      const data = await apiClient('/api/market/volume-spurt')
+      const data = await apiClient(`/api/market/volume-spurt${force ? '?force=true' : ''}`)
       setStocks(data?.stocks || [])
       setLastUpdated(data?.lastUpdated ? new Date(data.lastUpdated) : new Date())
       setError(null)
@@ -58,7 +58,8 @@ export default function VolumeSpurtSection() {
 
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 60000)
+    // Automatically fetch live volume spurt data every 60 seconds while viewing the page
+    const interval = setInterval(() => fetchData(true), 60000)
     return () => clearInterval(interval)
   }, [fetchData])
 
@@ -79,12 +80,15 @@ export default function VolumeSpurtSection() {
           </p>
         </div>
         <button
-          onClick={fetchData}
+          onClick={() => {
+            setLoading(true)
+            fetchData(true)
+          }}
           disabled={loading}
           className="flex items-center gap-2 px-3 py-2 bg-surface hover:bg-surfaceHover border border-border rounded-lg text-sm font-medium transition-colors"
         >
           <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
-          Refresh
+          {loading ? 'Fetching Live...' : 'Refresh'}
         </button>
       </div>
 
@@ -127,12 +131,20 @@ export default function VolumeSpurtSection() {
 
       {/* Table */}
       <div className="glass-panel rounded-2xl overflow-hidden border border-border relative">
-        {loading && stocks.length === 0 && (
-          <div className="flex items-center justify-center py-12">
+        {loading && stocks.length === 0 ? (
+          <div className="flex items-center justify-center py-16">
             <Loader text="Tracking real-time volume spurts..." />
           </div>
-        )}
-        {stocks.length > 0 && (
+        ) : stocks.length === 0 ? (
+          <div className="py-16 text-center text-textMuted flex flex-col items-center justify-center gap-2">
+            <Zap className="w-8 h-8 text-textMuted opacity-40 mb-1" />
+            <p className="text-base font-medium text-textPrimary">No Volume Spurt Data Available</p>
+            <p className="text-xs text-textMuted max-w-md">
+              BSE volume spurts are published during active market hours (9:15 AM – 3:30 PM IST). 
+              Click &quot;Refresh&quot; to fetch the latest exchange data.
+            </p>
+          </div>
+        ) : (
           <div className={clsx("transition-opacity duration-300", loading ? "opacity-60 pointer-events-none" : "opacity-100")}>
             <VolumeSpurtTable stocks={stocks} search={search} />
           </div>

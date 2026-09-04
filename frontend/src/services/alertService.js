@@ -71,19 +71,6 @@ export async function clearAllAlerts(uid) {
   await Promise.all(snp.docs.map((d) => deleteDoc(d.ref)))
 }
 
-// ── Price alert threshold update ──────────────────────────────────────────────
-
-export async function setScriptAlert(uid, scriptId, { alertAbove, alertBelow, alertEnabled }) {
-  if (LOCAL_MODE) {
-    return apiClient(`/api/watchlist/${encodeURIComponent(scriptId)}/alert`, {
-      method: 'PATCH',
-      body:   JSON.stringify({ alertAbove, alertBelow, alertEnabled }),
-    })
-  }
-  const { updateScript } = await import('./watchlistService')
-  return updateScript(uid, scriptId, { alertAbove, alertBelow, alertEnabled })
-}
-
 // ── User profile creation ─────────────────────────────────────────────────────
 
 export async function ensureUserProfile(uid, { displayName, email }) {

@@ -7,12 +7,58 @@ const _calCache   = new Map(); // key: `${from}|${to}|${cat}`, val: { data, exp 
 const CAL_TTL     = 30 * 60 * 1000; // 30 min
 const _qCache     = new Map();
 const QUOTE_TTL   = 5 * 60 * 1000;
+let   _moversCache    = null;
+let   _moversCacheExp = 0;
+const MOVERS_TTL  = 5 * 60 * 1000;  // 5 min
 
-// Dummy auth middleware for /api/bse/announcements (replace with real one from server.js later if needed)
-// Wait, `verifyToken` is defined in server.js. Let's just import it or redefine it.
-// For now, let's assume we pass it or import it. It's better to pass it.
-// Export a function that takes `verifyToken` as an argument.
 module.exports = function(verifyToken) {
+
+// ── OPEN: BSE top gainers / losers (market-wide, 5-min cache) ────────────────
+router.get('/movers', async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || '10', 10), 50);
+
+  if (_moversCache && Date.now() < _moversCacheExp) {
+    return res.json({
+      gainers:   _moversCache.gainers.slice(0, limit),
+      losers:    _moversCache.losers.slice(0, limit),
+      fetchedAt: _moversCache.fetchedAt,
+      cached: true,
+    });
+  }
+
+  const _f = (v) => { const n = parseFloat(String(v ?? '').replace(/,/g, '')); return isNaN(n) ? null : n; };
+
+  function parseMovers(r) {
+    if (r.status !== 'fulfilled' || !r.value) return [];
+    const rows = r.value?.Table || r.value?.Table1 || r.value?.Data || (Array.isArray(r.value) ? r.value : []);
+    return rows.map((i) => ({
+      bseCode:   String(i.SCRIP_CODE  || i.scripcode   || i.ScripCode  || '').trim(),
+      company:   (i.SCRIP_NAME  || i.scripname    || i.ScripName  || i.CompanyName || '').trim(),
+      symbol:    (i.NSE_SYMBOL  || i.nseSymbol    || i.Symbol     || '').trim(),
+      ltp:       _f(i.LTP        || i.ltp          || i.CURRENT_VALUE),
+      change:    _f(i.NET_CHANGE || i.NetChange    || i.change     || i.NETCHANGE),
+      pctChange: _f(i.PERCENT_CHG|| i.PercentChg   || i.PctChg     || i.PERCHANGE  || i.perChange),
+      volume:    parseInt(String(i.VOLUME || i.volume || i.TotalTradedQuantity || '0').replace(/,/g,''), 10) || null,
+    })).filter((m) => m.bseCode && m.ltp != null);
+  }
+
+  try {
+    const [grR, lrR] = await Promise.allSettled([
+      bseGet('https://api.bseindia.com/BseIndiaAPI/api/GetTopGainerLoser/w',
+        { Type: 'gainer', CategoryName: 'equity', IndexName: '' }, 12000),
+      bseGet('https://api.bseindia.com/BseIndiaAPI/api/GetTopGainerLoser/w',
+        { Type: 'loser',  CategoryName: 'equity', IndexName: '' }, 12000),
+    ]);
+    const gainers = parseMovers(grR);
+    const losers  = parseMovers(lrR);
+    _moversCache    = { gainers, losers, fetchedAt: new Date().toISOString() };
+    _moversCacheExp = Date.now() + MOVERS_TTL;
+    res.json({ gainers: gainers.slice(0, limit), losers: losers.slice(0, limit), fetchedAt: _moversCache.fetchedAt, cached: false });
+  } catch (e) {
+    console.error('[BSE Movers]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // ── OPEN: BSE script search ───────────────────────────────────────────────────
 router.get('/search', async (req, res) => {

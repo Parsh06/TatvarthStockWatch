@@ -2,8 +2,10 @@
 
 const { bseGet, getBseCookies } = require('./apiClients');
 
-// ── In-memory snapshot ────────────────────────────────────────────────────────
+// ── In-memory snapshot & TTL ──────────────────────────────────────────────────
 let _snapshot = null; // { lastUpdated, exchange, stocks: [] }
+let _lastFetchedAt = 0;
+const CACHE_TTL_MS = 60 * 1000; // 60 seconds
 
 // ── Normalize raw BSE Volume Spurt item ──────────────────────────────────────
 function normalizeSpurtItem(item, rank) {
@@ -12,8 +14,6 @@ function normalizeSpurtItem(item, rank) {
     return isNaN(n) ? 0 : n;
   };
 
-  // Actual BSE fields: scrip_cd, scripname, long_name, Trd_vol, wkavgqty,
-  // volumechangetimes, Ltradert, change_val, change_percent, TurnOver, NSURL
   const bseCode   = String(item.scrip_cd || item.SCRIP_CD || '').trim();
   const symbol    = (item.scripname || item.SCRIP_ID || bseCode).trim();
   const company   = (item.long_name || item.SLONGNAME || symbol).trim();
@@ -41,14 +41,18 @@ function normalizeSpurtItem(item, rank) {
     currentVolume: curVol,
     avgVolume:     avgVol,
     volMultiple:   volMulti,
-    turnoverCr:    turnover,  // in Crores
+    turnoverCr:    turnover,
     bseUrl,
   };
 }
 
+// ── Fetch and cache snapshot on-demand ────────────────────────────────────────
+async function fetchAndCache(force = false) {
+  const now = Date.now();
+  if (!force && _snapshot && (now - _lastFetchedAt) < CACHE_TTL_MS) {
+    return _snapshot;
+  }
 
-// ── Fetch and cache snapshot ──────────────────────────────────────────────────
-async function fetchAndCache() {
   try {
     const cookies = await getBseCookies();
     const sessionHdr = cookies ? { Cookie: cookies } : {};
@@ -60,31 +64,37 @@ async function fetchAndCache() {
       sessionHdr
     );
 
-    // BSE returns the array at root or inside a key like Table
     let raw = [];
     if (Array.isArray(data)) {
       raw = data;
     } else if (Array.isArray(data?.Table)) {
       raw = data.Table;
     } else if (data && typeof data === 'object') {
-      // Try to find the first array property
       const firstArr = Object.values(data).find(Array.isArray);
       if (firstArr) raw = firstArr;
     }
 
     const stocks = raw.map((item, i) => normalizeSpurtItem(item, i + 1));
 
-    _snapshot = {
+    if (stocks.length > 0 || !_snapshot) {
+      _snapshot = {
+        lastUpdated: new Date().toISOString(),
+        exchange:    'BSE',
+        count:       stocks.length,
+        stocks,
+      };
+    }
+    _lastFetchedAt = Date.now();
+
+    return _snapshot;
+  } catch (e) {
+    console.error('[Volume Spurt] Fetch error:', e.message);
+    return _snapshot || {
       lastUpdated: new Date().toISOString(),
       exchange:    'BSE',
-      count:       stocks.length,
-      stocks,
+      count:       0,
+      stocks:      [],
     };
-
-    console.log(`[Spurt Poller] ✅ Refreshed — ${stocks.length} stocks at ${_snapshot.lastUpdated}`);
-  } catch (e) {
-    console.error('[Spurt Poller] ❌ Fetch failed:', e.message);
-    // Keep the old snapshot so the frontend still has data
   }
 }
 
@@ -93,18 +103,18 @@ function getLatestSpurt() {
   return _snapshot;
 }
 
-let _pollerStarted = false;
-
-async function startSpurtPoller() {
-  if (_pollerStarted) return;
-  _pollerStarted = true;
-
-  // Initial fetch immediately
-  await fetchAndCache();
-
-  // Then every 60 seconds
-  setInterval(fetchAndCache, 60 * 1000);
-  console.log('[Spurt Poller] Started — polling every 60 seconds');
+async function getOrFetchSpurt(force = false) {
+  return await fetchAndCache(force);
 }
 
-module.exports = { startSpurtPoller, getLatestSpurt };
+// Optional backward-compatible helper (does not poll)
+async function startSpurtPoller() {
+  return Promise.resolve();
+}
+
+module.exports = {
+  startSpurtPoller,
+  getLatestSpurt,
+  getOrFetchSpurt,
+  fetchAndCache,
+};

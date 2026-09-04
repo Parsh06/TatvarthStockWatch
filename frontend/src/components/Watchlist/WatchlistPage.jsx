@@ -8,7 +8,6 @@ import { useCronStatus } from '../../hooks/useCronStatus'
 import { apiClient } from '../../services/apiClient'
 import { getCategoryColor } from '../../utils/formatters'
 import ScriptCard from './ScriptCard'
-import SetAlertModal from './SetAlertModal'
 import AddScriptModal from './AddScriptModal'
 import BulkUploadModal from './BulkUploadModal'
 import ScriptDrawer from './ScriptDrawer'
@@ -82,8 +81,6 @@ export default function WatchlistPage() {
   const [addOpen, setAddOpen]         = useState(false)
   const [bulkOpen, setBulkOpen]       = useState(false)
   const [drawerScript, setDrawerScript]   = useState(null)
-  const [alertScript,  setAlertScript]    = useState(null)
-  const [alertOverrides, setAlertOverrides] = useState({})
   const [bulkMode, setBulkMode]       = useState(false)
   const [selected, setSelected]       = useState(new Set())
   const [triggering, setTriggering]   = useState(false)
@@ -410,17 +407,12 @@ export default function WatchlistPage() {
                 lastDate,
                 lastSubject: (bseSt.lastDate || '') > (nseSt.lastDate || '') ? bseSt.lastSubject : (nseSt.lastSubject || bseSt.lastSubject),
               }
-              // Merge alert overrides so the card updates instantly after modal save
-              const scriptWithAlert = alertOverrides[script.id]
-                ? { ...script, ...alertOverrides[script.id] }
-                : script
               return (
                 <ScriptCard 
                   key={script.id} 
-                  script={scriptWithAlert} 
+                  script={script} 
                   annStats={annStats}
                   onOpenDrawer={setDrawerScript}
-                  onSetAlert={(s) => setAlertScript(scriptWithAlert)}
                   bulkMode={bulkMode}
                   isSelected={selected.has(script.id)}
                   onSelect={toggleSelect}
@@ -431,18 +423,6 @@ export default function WatchlistPage() {
         </>
       )}
 
-
-      <SetAlertModal
-        script={alertScript}
-        onClose={() => setAlertScript(null)}
-        onSaved={(updated) => {
-          setAlertOverrides((prev) => ({ ...prev, [updated.id]: {
-            alertAbove: updated.alertAbove,
-            alertBelow: updated.alertBelow,
-            alertEnabled: updated.alertEnabled,
-          }}))
-        }}
-      />
       <AddScriptModal isOpen={addOpen} onClose={() => setAddOpen(false)} />
       <BulkUploadModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
       <ScriptDrawer script={drawerScript} onClose={() => setDrawerScript(null)} />

@@ -3,24 +3,27 @@
 const express = require('express');
 const router = express.Router();
 
-const { getLatestSpurt } = require('../lib/spurtStore');
+const { getOrFetchSpurt } = require('../lib/spurtStore');
 const { fetchIpoGmpData } = require('../services/ipoService');
 const { getLatestOfs, fetchOfsList, fetchOfsDetail } = require('../lib/ofsScraper');
 
 module.exports = function marketRoutes(verifyToken) {
   // GET /api/market/volume-spurt
-  // Returns the latest in-memory BSE Volume Spurt snapshot.
-  // No MongoDB involved — pure real-time.
-  router.get('/volume-spurt', verifyToken, (req, res) => {
-    const snapshot = getLatestSpurt();
-
-    if (!snapshot) {
-      return res.status(503).json({
-        error: 'Data not yet available. The server is warming up. Please try again in 60 seconds.',
-      });
+  // Returns real-time BSE Volume Spurt data with 45-second cache and force refresh support.
+  router.get('/volume-spurt', verifyToken, async (req, res) => {
+    try {
+      const force = req.query.force === 'true';
+      const snapshot = await getOrFetchSpurt(force);
+      if (!snapshot) {
+        return res.status(503).json({
+          error: 'Volume spurt data is temporarily unavailable. Please try again.',
+        });
+      }
+      res.json(snapshot);
+    } catch (err) {
+      console.error('Failed to fetch volume spurt:', err.message);
+      res.status(500).json({ error: 'Failed to fetch volume spurt', details: err.message });
     }
-
-    res.json(snapshot);
   });
 
   // GET /api/market/ipo-gmp

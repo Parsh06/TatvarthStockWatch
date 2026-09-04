@@ -10,7 +10,6 @@ import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 import ScriptSearchInput from '../Common/ScriptSearchInput'
-import SetAlertModal from '../Watchlist/SetAlertModal'
 import PageTransition from '../Common/PageTransition'
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid
@@ -260,7 +259,6 @@ export default function CompanyDataPage() {
   const [error,    setError]      = useState(null)
   const [data,     setData]       = useState(null)
   const [chart,    setChart]      = useState(null)
-  const [alertScript, setAlertScript] = useState(null)
   const [addingToWL,  setAddingToWL]  = useState(false)
   const [histRange,   setHistRange]   = useState('1M')
   const [histData,    setHistData]    = useState(null)
@@ -476,19 +474,9 @@ export default function CompanyDataPage() {
                 {/* Watchlist + Alert + Portfolio actions */}
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {inWatchlist ? (
-                    <>
-                      <span className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-semibold">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> In Watchlist
-                      </span>
-                      <button
-                        onClick={() => setAlertScript(inWatchlist)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 rounded-lg text-xs font-semibold transition"
-                        title="Set price alert"
-                      >
-                        <Bell className="w-3.5 h-3.5" />
-                        {(inWatchlist.alertAbove || inWatchlist.alertBelow) ? 'Edit Alert' : 'Set Alert'}
-                      </button>
-                    </>
+                    <span className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-semibold">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> In Watchlist
+                    </span>
                   ) : (
                     <button
                       onClick={handleAddToWatchlist}
@@ -1090,14 +1078,6 @@ export default function CompanyDataPage() {
           )}
         </div>
       )}
-
-      {/* Price Alert Modal */}
-      <SetAlertModal
-        script={alertScript}
-        rate={alertScript && ltp != null ? { ltp, pctChange: changePct } : null}
-        onClose={() => setAlertScript(null)}
-        onSaved={() => setAlertScript(null)}
-      />
 
       {/* ── Empty state ── */}
       {!data && !loading && (

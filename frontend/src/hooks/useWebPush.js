@@ -33,8 +33,21 @@ function getDeviceInfo() {
 }
 
 /**
+ * Check if the browser is Brave.
+ */
+async function isBraveBrowser() {
+  if (navigator.brave && typeof navigator.brave.isBrave === 'function') {
+    try {
+      return await navigator.brave.isBrave();
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
  * Get or create a stable device ID, persisted in localStorage.
- * This ensures the same device always uses the same ID even across sessions.
  */
 function getDeviceId() {
   const KEY = 'sw_push_device_id';
@@ -50,10 +63,12 @@ function getDeviceId() {
 
 /**
  * Convert a VAPID public key from URL-safe base64 to Uint8Array.
+ * Strips whitespace, quotes, and applies correct RFC4648 padding.
  */
 function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding)
+  const clean = String(base64String || '').trim().replace(/[\r\n"']/g, '');
+  const padding = '='.repeat((4 - (clean.length % 4)) % 4);
+  const base64 = (clean + padding)
     .replace(/-/g, '+')
     .replace(/_/g, '/');
 
@@ -77,31 +92,30 @@ function withTimeout(promise, ms, message) {
 }
 
 /**
- * useWebPush — Hook for managing Web Push subscriptions.
+ * useWebPush — Universal Hook for Web Push subscriptions.
  *
- * Supports:
- * - Multi-device registration (each device gets a unique deviceId)
- * - Permission state awareness (granted / denied / default)
- * - Automatic re-subscribe if subscription refreshed by browser
- * - Heartbeat to keep device alive in the backend
- * - Guided UX when permission is denied
+ * Robust cross-browser compatibility:
+ * - Handles stale / desynchronized subscriptions without throwing push service errors
+ * - Automated self-healing retry on service worker or PushManager state mismatch
+ * - Comprehensive browser diagnostic guidance (Brave, Chrome, Firefox, Safari iOS)
  */
 export function useWebPush() {
   const [isSupported, setIsSupported] = useState(false);
   const [permission, setPermission] = useState(
-    'Notification' in window ? Notification.permission : 'default'
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
   );
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [pushErrorDetails, setPushErrorDetails] = useState(null);
   const heartbeatSent = useRef(false);
 
   // Check support and current subscription status on mount
   useEffect(() => {
-    if ('serviceWorker' in navigator && 'PushManager' in window) {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
       setIsSupported(true);
 
-      navigator.serviceWorker.ready.then(reg => {
-        reg.pushManager.getSubscription().then(sub => {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.pushManager.getSubscription().then((sub) => {
           if (sub) {
             setIsSubscribed(true);
 
@@ -119,17 +133,21 @@ export function useWebPush() {
                   browser: deviceInfo.browser,
                   userAgent: deviceInfo.userAgent,
                 }),
-              }).catch(() => {}); // best-effort
+              }).catch(() => {});
             }
           }
-        }).catch(err => console.error('Error checking subscription:', err));
-      });
+        }).catch((err) => console.warn('[WebPush] Error checking subscription:', err));
+      }).catch(() => {});
     }
 
-    // Update permission state if it changes
-    setPermission('Notification' in window ? Notification.permission : 'default');
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPermission(Notification.permission);
+    }
   }, []);
 
+  /**
+   * Universal Subscribe with Self-Healing & Fallback
+   */
   const subscribe = useCallback(async () => {
     if (!isSupported) {
       toast.error('Web Push is not supported in this browser.');
@@ -137,113 +155,187 @@ export function useWebPush() {
     }
 
     setLoading(true);
+    setPushErrorDetails(null);
+
     try {
-      // 1. Check / Request Permission
+      // ── 1. Check / Request Permission ──────────────────────────────────────
       let perm = Notification.permission;
 
       if (perm === 'denied') {
-        toast.error(
-          'Notifications are blocked by your browser. Please go to your browser\'s site settings to allow notifications for this site.',
-          { duration: 6000 }
-        );
         setPermission('denied');
+        setPushErrorDetails('PERMISSION_DENIED');
+        toast.error(
+          'Notifications are blocked by your browser settings. Please click the lock/settings icon in your address bar and set Notifications to "Allow".',
+          { duration: 7000 }
+        );
         return false;
       }
 
-      if (perm === 'default' || perm === 'granted') {
-        if (perm === 'default') {
-          perm = await withTimeout(
-            Notification.requestPermission(),
-            15000,
-            'Permission request timed out. Please check your browser notification settings.'
-          );
-          setPermission(perm);
-        }
-        
-        if (perm !== 'granted') {
-          if (perm === 'denied') {
-            toast.error('Notifications were blocked. You can re-enable them in your browser\'s site settings.', { duration: 6000 });
-          } else {
-            toast.error('Notification permission was not granted.');
-          }
-          return false;
-        } else {
-          // Tell the user explicitly if it was already granted
-          if (Notification.permission === 'granted' && !isSubscribed) {
-            toast('Browser permission is already Allowed. Syncing subscription...', { icon: '🔄' });
-          }
-        }
+      if (perm === 'default') {
+        perm = await withTimeout(
+          Notification.requestPermission(),
+          20000,
+          'Permission prompt timed out. Please check your browser notification prompt.'
+        );
+        setPermission(perm);
       }
 
-      // 2. Register Service Worker
-      await navigator.serviceWorker.register('/sw.js');
-      const registration = await withTimeout(
+      if (perm !== 'granted') {
+        if (perm === 'denied') {
+          setPermission('denied');
+          setPushErrorDetails('PERMISSION_DENIED');
+          toast.error('Notification permission was blocked. Please allow notifications in site settings.', { duration: 6000 });
+        } else {
+          toast.error('Notification permission was dismissed.');
+        }
+        return false;
+      }
+
+      // ── 2. Register & Prepare Service Worker ───────────────────────────────
+      let registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      await registration.update().catch(() => {});
+      
+      const readyReg = await withTimeout(
         navigator.serviceWorker.ready,
-        10000,
-        'Service Worker activation timed out. If you are in Private/Incognito mode, push notifications may be blocked.'
+        12000,
+        'Service Worker activation timed out. Push notifications might be restricted in Incognito / Private mode.'
       );
 
-      // 3. Get VAPID Public Key from Backend
+      // ── 3. Fetch VAPID Public Key from Backend ─────────────────────────────
       const { publicKey } = await withTimeout(
         apiClient('/api/push/public-key'),
         10000,
-        'Network timeout while fetching encryption keys.'
+        'Network timeout while fetching encryption keys from server.'
       );
 
       if (!publicKey) {
-        throw new Error('VAPID public key not found on server. Push notifications may not be configured on the backend.');
+        throw new Error('VAPID public key not found on server.');
       }
 
-      // 4. Subscribe to PushManager
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey)
-      });
+      const applicationServerKey = urlBase64ToUint8Array(publicKey);
 
-      // 5. Send Subscription + Device Info to Backend
+      // ── 4. Check & Clean Existing Subscription ─────────────────────────────
+      // If an existing subscription is present, check if we can reuse or clean it up
+      let existingSub = null;
+      try {
+        existingSub = await readyReg.pushManager.getSubscription();
+      } catch (subCheckErr) {
+        console.warn('[WebPush] Error inspecting existing sub:', subCheckErr);
+      }
+
+      let activeSubscription = null;
+
+      if (existingSub) {
+        // Try cleaning stale subscription first to prevent push service conflict error
+        try {
+          await existingSub.unsubscribe();
+          console.log('[WebPush] Unsubscribed stale subscription to ensure clean sync');
+        } catch (unsubErr) {
+          console.warn('[WebPush] Could not unsubscribe existing sub, proceeding to subscribe:', unsubErr);
+        }
+      }
+
+      // ── 5. Subscribe to PushManager (with Self-Healing Retry) ───────────────
+      try {
+        activeSubscription = await readyReg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey,
+        });
+      } catch (firstSubErr) {
+        console.warn('[WebPush] First subscribe attempt failed, initiating self-healing recovery:', firstSubErr.message);
+
+        // Self-Healing Step: Reset service worker registration and retry
+        try {
+          const allRegistrations = await navigator.serviceWorker.getRegistrations();
+          for (const reg of allRegistrations) {
+            await reg.unregister().catch(() => {});
+          }
+          const freshReg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+          const freshReady = await navigator.serviceWorker.ready;
+          activeSubscription = await freshReady.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey,
+          });
+          console.log('[WebPush] ✅ Self-healing subscription recovery succeeded!');
+        } catch (retryErr) {
+          console.error('[WebPush] Self-healing retry failed:', retryErr);
+          throw retryErr; // Re-throw to trigger detailed browser diagnostics
+        }
+      }
+
+      if (!activeSubscription) {
+        throw new Error('Browser PushManager returned null subscription.');
+      }
+
+      // ── 6. Sync Subscription & Device to Backend ───────────────────────────
       const deviceId = getDeviceId();
       const deviceInfo = getDeviceInfo();
 
       await apiClient('/api/push/subscribe', {
         method: 'POST',
         body: JSON.stringify({
-          subscription: subscription.toJSON(),
+          subscription: activeSubscription.toJSON(),
           deviceId,
           platform: deviceInfo.platform,
           browser: deviceInfo.browser,
           userAgent: deviceInfo.userAgent,
-        })
+        }),
       });
 
       setIsSubscribed(true);
-      toast.success('Push notifications enabled for this device!');
+      setPermission('granted');
+      toast.success('Push notifications successfully enabled on this device!');
       return true;
+
     } catch (err) {
-      console.error('Failed to subscribe to web push:', err);
-      toast.error(`Subscription failed: ${err.message}`);
+      console.error('[WebPush Subscribe Error]', err);
+      const errStr = (err?.message || '').toLowerCase();
+
+      // ── Browser-Specific Error Diagnostics ─────────────────────────────────
+      const isBrave = await isBraveBrowser();
+
+      if (isBrave || errStr.includes('push service error') || errStr.includes('registration failed')) {
+        if (isBrave) {
+          setPushErrorDetails('BRAVE_CONFIG_REQUIRED');
+          toast.error(
+            'Brave Browser detected: Please enable "Use Google services for push messaging" in brave://settings/privacy, then click Sync Subscription.',
+            { duration: 9000 }
+          );
+        } else {
+          setPushErrorDetails('PUSH_SERVICE_ERROR');
+          toast.error(
+            'Push service error: If in Incognito / Private browsing, please switch to a standard window. Also check if VPN / AdBlocker is blocking push services.',
+            { duration: 8000 }
+          );
+        }
+      } else {
+        toast.error(`Subscription failed: ${err.message || 'Unknown error'}`);
+      }
+
       return false;
     } finally {
       setLoading(false);
     }
   }, [isSupported]);
 
+  /**
+   * Unsubscribe from Push Notifications
+   */
   const unsubscribe = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Unsubscribe from PushManager
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
       if (subscription) {
         await subscription.unsubscribe();
       }
 
-      // 2. Tell backend to remove this device
       const deviceId = getDeviceId();
       await apiClient('/api/push/unsubscribe', {
         method: 'POST',
         body: JSON.stringify({ deviceId }),
-      }).catch(err => {
-        console.error('Backend unsubscribe failed:', err);
+      }).catch((err) => {
+        console.warn('Backend unsubscribe warning:', err.message);
       });
 
       setIsSubscribed(false);
@@ -264,12 +356,12 @@ export function useWebPush() {
   const sendTest = useCallback(async () => {
     try {
       const deviceId = getDeviceId();
-      const result = await apiClient('/api/push/test', { 
+      const result = await apiClient('/api/push/test', {
         method: 'POST',
-        body: JSON.stringify({ deviceId }) 
+        body: JSON.stringify({ deviceId }),
       });
       if (result.sent > 0) {
-        toast.success(`Test notification sent to this device!`);
+        toast.success('Test notification sent to this device!');
       } else {
         toast.error(`Could not send notification: ${result.error || 'Unknown error'}`);
       }
@@ -286,6 +378,7 @@ export function useWebPush() {
     permission,
     isSubscribed,
     loading,
+    pushErrorDetails,
     subscribe,
     unsubscribe,
     sendTest,

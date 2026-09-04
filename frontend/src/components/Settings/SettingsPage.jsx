@@ -198,6 +198,7 @@ export default function SettingsPage() {
     isSupported,
     isSubscribed,
     loading: pushLoading,
+    pushErrorDetails,
     subscribe,
     unsubscribe,
     sendTest,
@@ -672,13 +673,34 @@ export default function SettingsPage() {
                   <div className="p-4 bg-danger/5 border border-danger/20 rounded-xl">
                     <p className="text-sm text-danger font-semibold mb-1">Notifications are blocked</p>
                     <p className="text-xs text-textMuted leading-relaxed">
-                      {permission === 'denied' ? (
-                        'Open your browser site permissions, set Notifications to Allow, reload StockWatch, and enable push again.'
-                      ) : permission === 'granted' && !isSubscribed ? (
-                        'Browser permission is currently Allowed. Click Sync Subscription to register this device.'
-                      ) : (
-                        'Receive instant market alerts directly in your browser or desktop.'
-                      )}
+                      Open your browser site permissions (click the lock icon in the address bar), set Notifications to <strong>Allow</strong>, reload StockWatch, and click Enable.
+                    </p>
+                  </div>
+                )}
+
+                {pushErrorDetails === 'BRAVE_CONFIG_REQUIRED' && (
+                  <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-1.5">
+                    <p className="text-sm text-amber-500 font-semibold flex items-center gap-1.5">
+                      🦁 Brave Browser Push Setup Required
+                    </p>
+                    <p className="text-xs text-textMuted leading-relaxed">
+                      Brave blocks push notification services by default. To receive announcements:
+                    </p>
+                    <ol className="text-xs text-textMuted list-decimal list-inside space-y-1 font-mono">
+                      <li>Open <code className="bg-surface px-1.5 py-0.5 rounded border border-border">brave://settings/privacy</code></li>
+                      <li>Turn ON <strong>"Use Google services for push messaging"</strong></li>
+                      <li>Relaunch Brave and click <strong>Sync Subscription</strong> above</li>
+                    </ol>
+                  </div>
+                )}
+
+                {pushErrorDetails === 'PUSH_SERVICE_ERROR' && (
+                  <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-1.5">
+                    <p className="text-sm text-amber-500 font-semibold flex items-center gap-1.5">
+                      ⚠️ Browser Push Service Connection Issue
+                    </p>
+                    <p className="text-xs text-textMuted leading-relaxed">
+                      The browser push service could not be reached. If you are in <strong>Incognito / Private Browsing</strong> mode, please switch to a normal window. Also check that your VPN, AdBlocker, or firewall allows Google/Mozilla push services.
                     </p>
                   </div>
                 )}

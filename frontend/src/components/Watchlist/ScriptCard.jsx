@@ -1,13 +1,13 @@
 import { useState, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trash2, Bell, BellRing, BarChart2 } from 'lucide-react'
+import { Trash2, Bell, BarChart2 } from 'lucide-react'
 import clsx from 'clsx'
 import { getExchangeColor, formatRelativeDate } from '../../utils/formatters'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 import ConfirmDialog from '../Common/ConfirmDialog'
 import toast from 'react-hot-toast'
 
-function ScriptCard({ script, annStats = {}, onOpenDrawer, onSetAlert, bulkMode, isSelected, onSelect }) {
+function ScriptCard({ script, annStats = {}, onOpenDrawer, bulkMode, isSelected, onSelect }) {
   const navigate = useNavigate()
   const { removeScript } = useWatchlist()
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -119,18 +119,6 @@ function ScriptCard({ script, annStats = {}, onOpenDrawer, onSetAlert, bulkMode,
             )}
           </div>
 
-          {/* Alert active indicator */}
-          {script.alertEnabled && (script.alertAbove != null || script.alertBelow != null) && (
-            <div className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl mt-1">
-              <BellRing className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="text-[11px] text-amber-400 font-bold tracking-wide">
-                {script.alertAbove != null && `▲ ₹${script.alertAbove}`}
-                {script.alertAbove != null && script.alertBelow != null && ' · '}
-                {script.alertBelow != null && `▼ ₹${script.alertBelow}`}
-              </span>
-            </div>
-          )}
-
           {/* Row 3 — actions */}
           <div className="flex items-center gap-2.5 pt-3.5 border-t border-white/5 mt-auto">
             <button
@@ -139,14 +127,6 @@ function ScriptCard({ script, annStats = {}, onOpenDrawer, onSetAlert, bulkMode,
             >
               <BarChart2 className="w-3.5 h-3.5 flex-shrink-0" />
               <span className="truncate">Announcements</span>
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onSetAlert?.(script) }}
-              aria-label={`Set price alert for ${script.scriptName}`}
-              title="Set price alert"
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-textMuted hover:text-amber-400 bg-surface/40 hover:bg-amber-500/10 rounded-xl transition-all duration-200 border border-transparent hover:border-amber-500/20 shadow-sm hover:-translate-y-0.5"
-            >
-              <Bell className="w-4 h-4" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setConfirmOpen(true) }}
@@ -178,9 +158,6 @@ export default memo(ScriptCard, (prev, next) => {
   return (
     prev.script.id           === next.script.id           &&
     prev.script.scriptName   === next.script.scriptName   &&
-    prev.script.alertAbove   === next.script.alertAbove   &&
-    prev.script.alertBelow   === next.script.alertBelow   &&
-    prev.script.alertEnabled === next.script.alertEnabled &&
     prev.annStats.count      === next.annStats.count      &&
     prev.annStats.lastDate   === next.annStats.lastDate   &&
     prev.bulkMode            === next.bulkMode            &&

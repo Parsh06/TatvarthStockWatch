@@ -25,6 +25,7 @@ import InsiderTradingPage from './components/InsiderTrading/InsiderTradingPage'
 import AppLayout from './components/Layout/AppLayout'
 import SecurityGuard from './components/SecurityGuard/SecurityGuard'
 import CommandPalette from './components/Common/CommandPalette'
+import OfflineBanner from './components/Common/OfflineBanner'
 
 import { Preloader } from './components/Common/Preloader'
 
@@ -49,6 +50,7 @@ function PublicRoute({ children }) {
 function AppRoutes() {
   return (
     <>
+      <OfflineBanner />
       <CommandPalette />
       <Routes>
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />

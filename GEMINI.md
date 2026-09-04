@@ -84,11 +84,13 @@ stockwatch/
 ├── firebase.json                      ← Firebase hosting config (public: frontend/dist)
 ├── firestore.rules                    ← Firestore security rules
 ├── .firebaserc                        ← Firebase project alias
-├── deploy.ps1 / deploy.sh / deploy.bat ← One-click deploy scripts
+├── deploy.ps1 / deploy.bat / deploy.sh ← Master interactive deploy manager (Both / Backend / Frontend)
+├── deploy-backend.bat / deploy-backend.ps1 ← Dedicated backend-only deploy (Git Push to Vercel)
+├── deploy-frontend.bat / deploy-frontend.ps1 ← Dedicated frontend-only deploy (Vite Build + Firebase Hosting)
 ├── Equity.csv                         ← BSE equity master data
 │
 ├── backend/                           ← EXPRESS SERVER (Vercel Serverless)
-│   ├── server.js                      ← ★ MAIN ENTRY (1116 lines) — all route definitions, middleware chain, cron logic
+│   ├── server.js                      ← ★ MAIN ENTRY (91 lines) — clean Express bootstrapping, global middleware, and route mounting
 │   ├── vercel.json                    ← Vercel build config (routes all to server.js)
 │   ├── package.json
 │   ├── .env / .env.example / .env.production
@@ -98,18 +100,32 @@ stockwatch/
 │   │   ├── announcements/
 │   │   └── search/
 │   │
-│   ├── routes/                        ← Express route modules
+│   ├── routes/                        ← Domain-specific Express route modules
+│   │   ├── alertRoutes.js             ← Historical alert logs CRUD
 │   │   ├── analyzeRoute.js            ← AI analysis endpoint
-│   │   ├── bseRoutes.js               ← BSE proxy routes (largest: 51KB)
-│   │   ├── nseRoutes.js               ← NSE proxy routes
+│   │   ├── announcementRoutes.js      ← Market announcements feed & stats
+│   │   ├── bseRoutes.js               ← BSE proxy routes & movers
+│   │   ├── cronRoutes.js              ← Scheduled & manual cron triggers
 │   │   ├── dashboardRoutes.js         ← Dashboard overview
+│   │   ├── healthRoutes.js            ← Health diagnostics & telegram tests
 │   │   ├── ipoVerificationRoutes.js   ← IPO verify + bulk verify + applicants CRUD
-│   │   └── marketRoutes.js            ← Volume spurt, IPO GMP
+│   │   ├── marketRoutes.js            ← Volume spurt, IPO GMP
+│   │   ├── nseRoutes.js               ← NSE proxy routes
+│   │   ├── portfolioRoutes.js         ← Family portfolio CRUD
+│   │   ├── prefRoutes.js              ← User notification preferences CRUD
+│   │   ├── pushRoutes.js              ← Multi-device Web Push subscriptions CRUD
+│   │   └── watchlistRoutes.js         ← Watchlist CRUD, bulk import, catchup & CSV export
 │   │
 │   ├── middleware/
 │   │   ├── authenticateFirebase.js    ← Firebase JWT verification (verifyToken)
 │   │   ├── authorization.js           ← stripClientUserParams
 │   │   └── rateLimiter.js             ← globalRateLimiter (120/min), strictRateLimiter (15/min), userMutationRateLimiter (60/min)
+│   │
+│   ├── services/                      ← Business service layer
+│   │   ├── cronService.js             ← Cronjob orchestration & midnight wipe logic
+│   │   ├── dashboardService.js        ← Dashboard data aggregation (17KB)
+│   │   ├── ipoService.js              ← IPO business logic
+│   │   └── nseService.js              ← NSE data service
 │   │
 │   ├── lib/                           ← Core business logic
 │   │   ├── firebaseAdmin.js           ← Firebase Admin SDK init
@@ -132,10 +148,7 @@ stockwatch/
 │   │   ├── prefsStore.js              ← User preferences Firestore operations
 │   │   ├── pushStore.js               ← Push device Firestore operations
 │   │   ├── portfolioStore.js          ← Portfolio Firestore operations
-│   │   ├── ratesStore.js              ← Live rates (Redis/JSON fallback)
 │   │   ├── spurtStore.js              ← Volume spurt Firestore operations
-│   │   ├── bseRates.js               ← BSE live rates fetcher
-│   │   ├── priceAlertChecker.js       ← Price alert checking logic
 │   │   ├── notificationEngine.js      ← Core notification pipeline (18KB)
 │   │   ├── notificationFilter.js      ← Category-based notification filtering (15KB)
 │   │   ├── notificationDedup.js       ← Deduplication via Firestore locks
@@ -193,6 +206,7 @@ stockwatch/
         │   │   ├── ErrorBoundary.jsx      ← React error boundary
         │   │   ├── GlobalSearch.jsx       ← Search overlay (15KB)
         │   │   ├── Loader.jsx             ← Loading spinner
+        │   │   ├── OfflineBanner.jsx      ← Floating offline & network degradation alert banner
         │   │   ├── PageTransition.jsx     ← Framer Motion page transition
         │   │   ├── Preloader.jsx          ← App preloader animation
         │   │   ├── MarketPulse.jsx         ← TickerTape, MarketPulseRibbon, CandlestickHero (auth page decorations)
@@ -225,7 +239,7 @@ stockwatch/
         │   ├── useAnnouncements.js    ← Announcement fetching/filtering
         │   ├── useCronStatus.js       ← Cron status polling
         │   ├── useDashboardOverview.js ← Dashboard data hook
-        │   ├── useRatesSocket.js      ← Live rates polling
+        │   ├── useNetworkStatus.js    ← Real-time online/offline and connection quality hook
         │   ├── useWatchlist.js        ← Watchlist CRUD operations
         │   └── useWebPush.js          ← Web push subscription management
         │
@@ -281,19 +295,28 @@ stockwatch/
 
 | Method | Path | Auth | Handler/Router |
 |---|---|---|---|
-| GET | `/api/health` | Open | Inline in server.js |
+| GET | `/api/health` | Open | `healthRoutes.js` |
+| GET | `/api/health/notification` | Open | `healthRoutes.js` |
+| GET/POST | `/api/health/telegram-*` | 🔒 | `healthRoutes.js` |
 | GET | `/api/dashboard/overview` | 🔒 | `dashboardRoutes.js` |
-| GET | `/api/cron/trigger` | Secret | Inline (CRON_SECRET) |
-| GET | `/api/announcements` | 🔒 | Inline in server.js |
+| ALL | `/api/cron/trigger` | Secret | `cronRoutes.js` |
+| ALL | `/api/cron/ipo-closing` | Secret | `cronRoutes.js` |
+| POST | `/api/trigger` | 🔒 | `server.js` → `cronService.js` |
+| GET | `/api/announcements` | Open | `announcementRoutes.js` |
+| GET | `/api/announcements/my-count` | 🔒 | `announcementRoutes.js` |
+| GET | `/api/announcements/stats` | Open | `announcementRoutes.js` |
+| POST | `/api/announcements/fetch-nse` | 🔒 | `announcementRoutes.js` |
 | POST | `/api/announcements/:id/analyze` | 🔒 | `analyzeRoute.js` |
-| GET | `/api/prefs` | 🔒 | Inline in server.js |
-| GET/POST/DELETE | `/api/watchlist` | 🔒 | Inline in server.js |
+| GET/POST/PATCH | `/api/prefs` | 🔒 | `prefRoutes.js` |
+| GET/POST/DELETE/PATCH | `/api/watchlist/*` | 🔒 | `watchlistRoutes.js` |
 | GET/POST/DELETE | `/api/ipo/applicants` | 🔒 | `ipoVerificationRoutes.js` |
 | GET | `/api/ipo/symbols` | 🔒 | `ipoVerificationRoutes.js` |
 | POST | `/api/ipo/verify` | 🔒 | `ipoVerificationRoutes.js` |
 | POST | `/api/ipo/verify-bulk` | 🔒 | `ipoVerificationRoutes.js` |
-| POST | `/api/push/subscribe` | 🔒 | Inline in server.js |
-| GET | `/api/bse/*` | 🔒 | `bseRoutes.js` |
+| GET/POST | `/api/push/*` | 🔒 / Open | `pushRoutes.js` |
+| GET/PUT | `/api/portfolio` | 🔒 | `portfolioRoutes.js` |
+| GET/DELETE | `/api/alerts/*` | 🔒 | `alertRoutes.js` |
+| GET | `/api/bse/*` | 🔒 / Open | `bseRoutes.js` |
 | GET | `/api/nse/*` | 🔒 | `nseRoutes.js` |
 | GET | `/api/market/*` | 🔒 | `marketRoutes.js` |
 
@@ -627,6 +650,15 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 | 2026-09-04 | Unified Multi-Registrar MongoDB Architecture (KFintech, MUFG, BigShare): Migrated all active IPO offerings, discovery timestamps (`firstSeenAt`), and notification states (`notificationSent`, `lastNotificationAt`) from Firestore into MongoDB `iposymbols` collection. Updated `ipoStore.js` with multi-registrar upserts and queries. Hardened `bigshareNotificationService.js`, `mufgNotificationService.js`, and `ipoVerificationRoutes.js` to use MongoDB as single source of truth | `backend/lib/ipoStore.js`, `backend/routes/ipoVerificationRoutes.js`, `backend/lib/bigshareNotificationService.js`, `backend/lib/mufgNotificationService.js` |
 | 2026-09-04 | MongoDB 14-Day Native TTL Auto-Purge & Multi-Registrar Reconciliation Engine: Configured native background TTL index on `iposymbols.lastSeenAt` (`expireAfterSeconds: 14 * 86400`) for automatic background purging of inactive IPO documents. Added multi-registrar reconciliation (`reconcileMissingIpos`) and historical cleanup (`cleanupHistoricalIpos`) to scheduled maintenance cron. Added 60-day background TTL auto-purge index on `allotment_notification_history.notifiedAt` (`expireAfterSeconds: 60 * 86400`) guaranteeing the database remains permanently lean (<30 KB for lifetime) with zero duplicate notifications. Test suite `test_ipo_store_lifecycle.js` verified 22/22 tests passing | `backend/lib/ipoStore.js`, `backend/server.js`, `backend/tests/test_ipo_store_lifecycle.js` (new) |
 | 2026-09-04 | GET /api/ipo/symbols MongoDB Fast Path & Edge CDN Caching: Optimized `GET /api/ipo/symbols` to serve directly from pre-cached MongoDB documents and in-memory cache in sub-15ms, eliminating synchronous blocking multi-registrar live scraping on user HTTP requests. Added Vercel Edge CDN `Cache-Control: public, max-age=60, s-maxage=120, stale-while-revalidate=300` headers for instant (<5ms) client loads | `backend/routes/ipoVerificationRoutes.js` |
+| 2026-09-04 | Granular Deployment Automation (Backend / Frontend / Both): Upgraded `deploy.bat`, `deploy.ps1`, and `deploy.sh` with interactive target selection menus and CLI flags (`backend`, `frontend`, `all`). Added dedicated standalone one-click scripts `deploy-backend.bat`, `deploy-backend.ps1`, `deploy-frontend.bat`, and `deploy-frontend.ps1` for rapid isolated deployments | `deploy.bat`, `deploy.ps1`, `deploy.sh`, `deploy-backend.bat` (new), `deploy-backend.ps1` (new), `deploy-frontend.bat` (new), `deploy-frontend.ps1` (new) |
+| 2026-09-05 | Deprecate & Remove Unused Live Rates Polling Infrastructure: Removed unused live rates polling (`/api/rates`, `/api/rates/status`, `useRatesSocket.js`, `ratesStore.js`, `bseRates.js`, `priceAlertChecker.js`), eliminating periodic polling overhead and extraneous background memory variables | `backend/server.js`, `backend/lib/ratesStore.js` (deleted), `backend/lib/bseRates.js` (deleted), `backend/lib/priceAlertChecker.js` (deleted), `frontend/src/hooks/useRatesSocket.js` (deleted) |
+| 2026-09-05 | Complete Removal of Price Alert Functionality: Fully removed price alert endpoints, alert modals (`SetAlertModal.jsx`), threshold indicators, bell buttons in `ScriptCard.jsx` & `CompanyDataPage.jsx`, and backend serializer fields (`alertAbove`, `alertBelow`, `alertEnabled`), streamlining the watchlist UI purely for corporate announcements & market tracking | `frontend/src/components/Watchlist/SetAlertModal.jsx` (deleted), `frontend/src/components/Watchlist/ScriptCard.jsx`, `frontend/src/components/Watchlist/WatchlistPage.jsx`, `frontend/src/components/CompanyData/CompanyDataPage.jsx`, `frontend/src/services/alertService.js`, `backend/server.js`, `backend/utils/sanitizeResponse.js` |
+| 2026-09-05 | Backend Modularization & Route Decoupling: Decoupled monolithic `server.js` (reduced from 1044 lines to 91 lines) into dedicated domain route controllers (`alertRoutes.js`, `announcementRoutes.js`, `cronRoutes.js`, `healthRoutes.js`, `portfolioRoutes.js`, `prefRoutes.js`, `pushRoutes.js`, `watchlistRoutes.js`) and background orchestration service `cronService.js`. Added `test_modular_server.js` test suite verifying all route mountings and auth middleware | `backend/server.js`, `backend/services/cronService.js` (new), `backend/routes/cronRoutes.js` (new), `backend/routes/announcementRoutes.js` (new), `backend/routes/watchlistRoutes.js` (new), `backend/routes/prefRoutes.js` (new), `backend/routes/pushRoutes.js` (new), `backend/routes/portfolioRoutes.js` (new), `backend/routes/alertRoutes.js` (new), `backend/routes/healthRoutes.js` (new), `backend/routes/bseRoutes.js`, `backend/tests/test_modular_server.js` (new) |
+| 2026-09-05 | 5-Tier Gemini Model Cascade & JSON Schema Normalizer for AI Summarizer: Upgraded `aiSummarizer.js` with 5-tier fallback pool (`gemini-2.5-flash` → `gemini-2.0-flash` → `gemini-1.5-flash` → `gemini-3.1-flash-lite` → `gemini-3.5-flash-lite`), robust markdown code fence & nested JSON parsing, and schema normalizer with safe defaults for `executiveSummary`, `financials`, `forwardLooking`, `riskFactorsAndRedFlags`, `managementCommentary`, and `corporateActions`. Verified via `test_ai_summarizer_cascade.js` (15/15 tests passing) | `backend/lib/aiSummarizer.js`, `backend/tests/test_ai_summarizer_cascade.js` (new) |
+| 2026-09-05 | Offline Banner & Network Status Hook: Created `useNetworkStatus.js` hook tracking real-time browser online/offline events, connection speed/quality (downlink, RTT, 2G/3G degradation), and manual active health ping. Built luxury animated `OfflineBanner.jsx` with Framer Motion spring physics, offline indicators, "Retry Now" button, and auto-dismissing "Connection Restored" confirmation toast. Mounted globally in `App.jsx` | `frontend/src/hooks/useNetworkStatus.js` (new), `frontend/src/components/Common/OfflineBanner.jsx` (new), `frontend/src/App.jsx` |
+| 2026-09-05 | Universal Push Subscription Self-Healing & Browser Diagnostic Engine: Resolved `Registration failed - push service error` by adding automatic stale-subscription unsubscription, Service Worker re-registration recovery, VAPID key sanitization, and browser-specific error diagnostics (Brave Shields `brave://settings/privacy` toggle, Incognito mode detection, and site permission guidance) in `useWebPush.js` and `SettingsPage.jsx` | `frontend/src/hooks/useWebPush.js`, `frontend/src/components/Settings/SettingsPage.jsx` |
+| 2026-09-05 | Eliminate Unnecessary Background Pollers: Converted Volume Spurt (`spurtStore.js`) and OFS (`ofsScraper.js`) to on-demand lazy in-memory TTL caching (60s TTL), eliminating background `setInterval` timers from `server.js` for instant, silent boots and 100% serverless efficiency | `backend/lib/spurtStore.js`, `backend/routes/marketRoutes.js`, `backend/server.js` |
+| 2026-09-05 | Volume Spurt Off-Hours Empty State & Snapshot Protection: Protected `_snapshot` in `spurtStore.js` from being overwritten when BSE returns empty during off-market hours or temporary API glitches. Added informative empty state and market schedule indicators in `VolumeSpurtSection.jsx` | `backend/lib/spurtStore.js`, `frontend/src/components/VolumeSpurt/VolumeSpurtSection.jsx` |
 
 ---
 
