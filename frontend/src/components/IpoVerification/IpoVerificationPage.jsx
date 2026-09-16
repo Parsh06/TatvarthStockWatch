@@ -167,6 +167,21 @@ export default function IpoVerificationPage() {
     }
   }
 
+  // ── Dynamic Live ETA Countdown Timer ────────────────────────────────────────
+  useEffect(() => {
+    if (!bulkVerifying) return
+    const interval = setInterval(() => {
+      setStreamProgress(prev => {
+        if (!prev || prev.etaSeconds <= 0) return prev
+        return {
+          ...prev,
+          etaSeconds: Math.max(0, prev.etaSeconds - 1),
+        }
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [bulkVerifying])
+
   // ── 500+ Streaming Chunk Verification Pipeline ──────────────────────────────
   const CHUNK_SIZE = 8
   const CONCURRENT_CHUNKS = 2
@@ -182,13 +197,13 @@ export default function IpoVerificationPage() {
     const totalApplicants = applicants.length
     const startTime = Date.now()
 
-    // Initialize clean streaming state
+    // Initialize clean streaming state with realistic ETA baseline
     setStreamProgress({
       current: 0,
       total: totalApplicants,
       percentage: 0,
       startTime,
-      etaSeconds: Math.ceil((totalApplicants / 12) * 1.5),
+      etaSeconds: Math.max(4, Math.ceil(totalApplicants * 1.5)),
     })
 
     const initialResult = {
@@ -213,12 +228,19 @@ export default function IpoVerificationPage() {
       let completedCount = 0
       let chunkIdx = 0
 
-      // Worker pipeline for concurrent chunk dispatch
+      // Worker pipeline for concurrent chunk dispatch with per-chunk timeout
       async function chunkWorker() {
         while (chunkIdx < chunks.length) {
           if (controller.signal.aborted) break
 
           const currentChunk = chunks[chunkIdx++]
+          if (!currentChunk) break
+
+          const chunkController = new AbortController()
+          const timeoutId = setTimeout(() => chunkController.abort('Chunk timeout (20s)'), 20000)
+          const onParentAbort = () => chunkController.abort('Cancelled')
+          controller.signal.addEventListener('abort', onParentAbort)
+
           try {
             const data = await apiClient('/api/ipo/verify-bulk', {
               method: 'POST',
@@ -227,8 +249,11 @@ export default function IpoVerificationPage() {
                 applicantIds: currentChunk.map(a => a.id),
                 registrar: selectedSymbol.registrar || selectedSymbol.source || 'KFINTECH',
               }),
-              signal: controller.signal,
+              signal: chunkController.signal,
             })
+
+            clearTimeout(timeoutId)
+            controller.signal.removeEventListener('abort', onParentAbort)
 
             const chunkResults = Array.isArray(data.results) ? data.results : []
             completedCount += currentChunk.length
@@ -249,7 +274,7 @@ export default function IpoVerificationPage() {
               }
             })
 
-            // Update live progress & ETA
+            // Update live progress & ETA based on real velocity
             const elapsedMs = Date.now() - startTime
             const pct = Math.min(100, Math.round((completedCount / totalApplicants) * 100))
             const ratePerMs = completedCount / Math.max(elapsedMs, 100)
@@ -264,16 +289,18 @@ export default function IpoVerificationPage() {
               etaSeconds: etaSec,
             })
           } catch (chunkErr) {
+            clearTimeout(timeoutId)
+            controller.signal.removeEventListener('abort', onParentAbort)
             if (controller.signal.aborted) break
             console.error('[Bulk Chunk Error]', chunkErr)
             
-            // Mark entire chunk as needing retry
+            // Mark entire chunk with informative message
             const fallbackErrors = currentChunk.map(app => ({
               applicantId: app.id,
               name: app.name,
               maskedPan: app.maskedPan || app.panLast4 || 'XXXX',
               status: 'error',
-              error: chunkErr.message || 'Transient query timeout',
+              error: chunkErr.message || 'Transient query timeout (retry)',
               records: [],
             }))
 
@@ -322,6 +349,50 @@ export default function IpoVerificationPage() {
   function handleStopVerification() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
+      setBulkVerifying(false)
+    }
+  }
+
+  // ── Retry Failed Applicants ─────────────────────────────────────────────────
+  async function handleRetryFailedApplicants() {
+    if (!selectedSymbol || !bulkResult) return
+    const failedApplicantIds = (bulkResult.results || [])
+      .filter(r => r.status === 'error')
+      .map(r => r.applicantId)
+
+    if (failedApplicantIds.length === 0) return
+
+    setBulkVerifying(true)
+    try {
+      const data = await apiClient('/api/ipo/verify-bulk', {
+        method: 'POST',
+        body: JSON.stringify({
+          symbol: selectedSymbol.clientId || selectedSymbol.symbol,
+          applicantIds: failedApplicantIds,
+          registrar: selectedSymbol.registrar || selectedSymbol.source || 'KFINTECH',
+        }),
+      })
+
+      const retriedResults = Array.isArray(data.results) ? data.results : []
+      setBulkResult(prev => {
+        if (!prev) return prev
+        const retriedMap = new Map(retriedResults.map(r => [r.applicantId, r]))
+        const updated = (prev.results || []).map(r => retriedMap.get(r.applicantId) || r)
+        return {
+          ...prev,
+          results: updated,
+          summary: {
+            total: updated.length,
+            found: updated.filter(r => r.status === 'found').length,
+            notFound: updated.filter(r => r.status === 'not_found').length,
+            errors: updated.filter(r => r.status === 'error').length,
+          },
+        }
+      })
+      toast.success('Retried failed applicants successfully')
+    } catch (err) {
+      toast.error('Retry query encountered an issue. Please check connection.')
+    } finally {
       setBulkVerifying(false)
     }
   }
@@ -987,14 +1058,28 @@ export default function IpoVerificationPage() {
                       </p>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handleExportExcel}
-                      className="px-4 py-2.5 rounded-2xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 text-xs font-bold transition-all flex items-center gap-2 shrink-0 self-start sm:self-center"
-                    >
-                      <FileSpreadsheet className="w-4 h-4" />
-                      Export Excel Report (.xlsx)
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap self-start sm:self-center">
+                      {errorCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleRetryFailedApplicants}
+                          disabled={bulkVerifying}
+                          className="px-4 py-2.5 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20 hover:bg-amber-500/20 disabled:opacity-50 text-xs font-bold transition-all flex items-center gap-2 shrink-0"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${bulkVerifying ? 'animate-spin' : ''}`} />
+                          Retry Failed ({errorCount})
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleExportExcel}
+                        className="px-4 py-2.5 rounded-2xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 text-xs font-bold transition-all flex items-center gap-2 shrink-0"
+                      >
+                        <FileSpreadsheet className="w-4 h-4" />
+                        Export Excel Report (.xlsx)
+                      </button>
+                    </div>
                   </div>
 
                   {/* Metric Cards */}

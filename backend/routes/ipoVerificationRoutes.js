@@ -536,26 +536,32 @@ module.exports = function (verifyToken) {
           }
 
           try {
-            let normalized;
-            if (reg === 'MUFG' || reg === 'LINKINTIME' || reg === 'LINK_INTIME') {
-              const mufgXml = await queryMufg(symbol, app.pan);
-              normalized = await normalizeMufgResponse(mufgXml, app.pan);
-            } else if (reg === 'BIGSHARE' || reg === 'BIG_SHARE') {
-              const bigshareData = await queryBigshare(symbol, app.pan);
-              normalized = normalizeBigshareResponse(bigshareData, app.pan);
-            } else {
-              let kfinResponse;
-              try {
-                kfinResponse = await queryKfintech(symbol, app.pan);
-              } catch (err) {
-                if (err.response && err.response.status === 404 && err.response.data && err.response.data.error === 'Record Not Found') {
-                  kfinResponse = { data: [] };
-                } else {
-                  throw err;
+            const queryPromise = (async () => {
+              let normalized;
+              if (reg === 'MUFG' || reg === 'LINKINTIME' || reg === 'LINK_INTIME') {
+                const mufgXml = await queryMufg(symbol, app.pan);
+                normalized = await normalizeMufgResponse(mufgXml, app.pan);
+              } else if (reg === 'BIGSHARE' || reg === 'BIG_SHARE') {
+                const bigshareData = await queryBigshare(symbol, app.pan);
+                normalized = normalizeBigshareResponse(bigshareData, app.pan);
+              } else {
+                let kfinResponse;
+                try {
+                  kfinResponse = await queryKfintech(symbol, app.pan);
+                } catch (err) {
+                  if (err.response && err.response.status === 404 && err.response.data && err.response.data.error === 'Record Not Found') {
+                    kfinResponse = { data: [] };
+                  } else {
+                    throw err;
+                  }
                 }
+                normalized = normalizeKfinResponse(kfinResponse);
               }
-              normalized = normalizeKfinResponse(kfinResponse);
-            }
+              return normalized;
+            })();
+
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Registrar query timed out (8s limit)')), 8000));
+            const normalized = await Promise.race([queryPromise, timeoutPromise]);
 
             return {
               applicantId: app.id,
