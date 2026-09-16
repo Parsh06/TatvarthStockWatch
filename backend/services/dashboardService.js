@@ -70,7 +70,7 @@ async function fetchIndices() {
   const cached = fromCache(CACHE_KEY, 30_000);
   if (cached) return cached;
 
-  let raw = await bseGet('https://api.bseindia.com/RealTimeBseIndiaAPI/api/GetSensexDatanew/w', {}, 10_000);
+  let raw = await bseGet('https://api.bseindia.com/RealTimeBseIndiaAPI/api/GetSensexDatanew/w', {}, 4_000);
   if (typeof raw === 'string') {
     try { raw = JSON.parse(raw); } catch { raw = []; }
   }
@@ -90,21 +90,45 @@ async function fetchIndices() {
   return normalized;
 }
 
-/** 2. Announcement Statistics */
-async function fetchAnnouncementStats() {
-  const CACHE_KEY = 'dashboard:ann_stats';
+/** 2. Announcement Statistics & Top Categories (Optimized via MongoDB Aggregation) */
+async function fetchAnnouncementStatsAndCategories() {
+  const CACHE_KEY = 'dashboard:ann_stats_cats';
   const cached = fromCache(CACHE_KEY, 30_000);
   if (cached) return cached;
 
   const { getDb } = require('../lib/mongoClient');
   const mongoDb = await getDb();
   const col = mongoDb.collection('announcements');
-  const [total, bse, nse] = await Promise.all([
-    col.countDocuments(),
-    col.countDocuments({ exchange: 'BSE' }),
-    col.countDocuments({ exchange: 'NSE' }),
+
+  const [facetRes, catAgg] = await Promise.all([
+    col.aggregate([
+      {
+        $facet: {
+          total: [{ $count: 'count' }],
+          bse: [{ $match: { exchange: 'BSE' } }, { $count: 'count' }],
+          nse: [{ $match: { exchange: 'NSE' } }, { $count: 'count' }],
+        }
+      }
+    ]).toArray(),
+    col.aggregate([
+      { $project: { cat: { $arrayElemAt: [{ $split: ['$category', ' / '] }, 0] } } },
+      { $group: { _id: { $ifNull: ['$cat', 'Other'] }, count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 }
+    ]).toArray(),
   ]);
-  const result = { total, bse, nse };
+
+  const facet = facetRes[0] || {};
+  const total = facet.total?.[0]?.count || 0;
+  const bse = facet.bse?.[0]?.count || 0;
+  const nse = facet.nse?.[0]?.count || 0;
+
+  const categories = (catAgg || []).map(c => ({
+    name: c._id || 'Other',
+    count: c.count || 0,
+  }));
+
+  const result = { total, bse, nse, categories };
   toCache(CACHE_KEY, result, 30_000);
   return result;
 }
@@ -119,8 +143,8 @@ async function fetchMarketMovers() {
   const sessionHdr = cookies ? { Cookie: cookies } : {};
 
   const [gainersRes, losersRes] = await Promise.allSettled([
-    bseGet('/MktRGainerLoserDataeqto/w', { GLtype: 'gainer', IndxGrp: 'AllMkt', IndxGrpval: 'AllMkt', orderby: 'all' }, 15_000, sessionHdr),
-    bseGet('/MktRGainerLoserDataeqto/w', { GLtype: 'loser', IndxGrp: 'AllMkt', IndxGrpval: 'AllMkt', orderby: 'all' }, 15_000, sessionHdr),
+    bseGet('/MktRGainerLoserDataeqto/w', { GLtype: 'gainer', IndxGrp: 'AllMkt', IndxGrpval: 'AllMkt', orderby: 'all' }, 4_500, sessionHdr),
+    bseGet('/MktRGainerLoserDataeqto/w', { GLtype: 'loser', IndxGrp: 'AllMkt', IndxGrpval: 'AllMkt', orderby: 'all' }, 4_500, sessionHdr),
   ]);
 
   function parseMovers(res) {
@@ -225,7 +249,7 @@ async function fetchBoardMeetings() {
       ISUBGROUP_CODE: ' ',
       LnFlag: 'en'
     },
-    15_000,
+    4_500,
     sessionHdr
   );
 
@@ -267,7 +291,7 @@ async function fetchAgms() {
       IsCanRev: '',
       IsSubCode: ''
     },
-    15_000,
+    4_500,
     sessionHdr
   );
 
@@ -322,7 +346,7 @@ async function fetchDeals() {
   const raw = await bseGet(
     '/BulkDealData_ng/w',
     { DealType: 1, sc_code: '', FDate: dates.pastDDMMYYYY, TDate: dates.todayDDMMYYYY },
-    15_000,
+    4_500,
     sessionHdr
   );
 
@@ -349,34 +373,116 @@ async function fetchDeals() {
   return items;
 }
 
-/** 9. Watchlist Summary */
-async function buildWatchlistSummary(uid, allAnnouncements, boardMeetingItems, spurtItems) {
+// ── Shared Global Market Snapshot Engine with In-Flight Deduplication ──────────
+let _inFlightGlobalPromise = null;
+
+async function getGlobalMarketData() {
+  const GLOBAL_CACHE_KEY = 'dashboard:global_market';
+  const cached = fromCache(GLOBAL_CACHE_KEY, 45_000);
+  if (cached) return cached;
+
+  if (_inFlightGlobalPromise) {
+    return _inFlightGlobalPromise;
+  }
+
+  _inFlightGlobalPromise = (async () => {
+    try {
+      const [
+        indicesResult,
+        annStatsResult,
+        moversResult,
+        ipoResult,
+        boardResult,
+        agmResult,
+        spurtsResult,
+        dealsResult,
+      ] = await Promise.all([
+        safe('indices',          fetchIndices),
+        safe('announcementStats', fetchAnnouncementStatsAndCategories),
+        safe('marketMovers',     fetchMarketMovers),
+        safe('ipo',              fetchIpo),
+        safe('boardMeetings',    fetchBoardMeetings),
+        safe('agms',             fetchAgms),
+        safe('volumeSpurts',     fetchVolumeSpurts),
+        safe('deals',            fetchDeals),
+      ]);
+
+      const globalData = {
+        indicesResult,
+        annStatsResult,
+        moversResult,
+        ipoResult,
+        boardResult,
+        agmResult,
+        spurtsResult,
+        dealsResult,
+      };
+
+      toCache(GLOBAL_CACHE_KEY, globalData, 45_000);
+      return globalData;
+    } finally {
+      _inFlightGlobalPromise = null;
+    }
+  })();
+
+  return _inFlightGlobalPromise;
+}
+
+/** 9. Watchlist Summary (Ultra-Fast Lean Query) */
+async function buildWatchlistSummary(uid, boardMeetingItems = [], spurtItems = []) {
+  if (!uid) {
+    return {
+      scriptCount: 0,
+      announcementCount: 0,
+      boardMeetingCount: 0,
+      volumeSpurtCount: 0,
+      topCompanies: [],
+      groups: [],
+    };
+  }
+
   const watchlist = await getWatchlist(uid);
   const scriptCount = watchlist.length;
 
-  const watchlistCodes = new Set([
-    ...watchlist.map(s => s.ltdCode).filter(Boolean),
-    ...watchlist.map(s => s.symbol).filter(Boolean),
-  ]);
+  if (scriptCount === 0) {
+    return {
+      scriptCount: 0,
+      announcementCount: 0,
+      boardMeetingCount: 0,
+      volumeSpurtCount: 0,
+      topCompanies: [],
+      groups: [],
+    };
+  }
 
-  const announcementCount = allAnnouncements.filter(
-    a => watchlistCodes.has(a.scriptCode) || watchlistCodes.has(a.bseCode) || watchlistCodes.has(a.nseSymbol)
-  ).length;
+  const watchlistBseCodes = watchlist.map(s => s.ltdCode).filter(Boolean);
+  const watchlistNseSymbols = watchlist.map(s => s.symbol).filter(Boolean);
+  const watchlistCodesSet = new Set([...watchlistBseCodes, ...watchlistNseSymbols]);
 
-  const boardMeetingCount = boardMeetingItems.filter(
-    m => watchlistCodes.has(m.bseCode)
-  ).length;
+  const { getDb } = require('../lib/mongoClient');
+  const mongoDb = await getDb();
+  const col = mongoDb.collection('announcements');
 
-  const volumeSpurtCount = spurtItems.filter(
-    s => watchlistCodes.has(s.bseCode)
-  ).length;
+  const matchingAnnouncements = await col.find(
+    {
+      $or: [
+        { scriptCode: { $in: watchlistBseCodes } },
+        { bseCode: { $in: watchlistBseCodes } },
+        { nseSymbol: { $in: watchlistNseSymbols } }
+      ]
+    },
+    { projection: { scriptCode: 1, bseCode: 1, nseSymbol: 1, scriptName: 1, companyName: 1, exchange: 1 } }
+  ).limit(300).toArray();
+
+  const announcementCount = matchingAnnouncements.length;
+  const boardMeetingCount = boardMeetingItems.filter(m => watchlistCodesSet.has(m.bseCode)).length;
+  const volumeSpurtCount = spurtItems.filter(s => watchlistCodesSet.has(s.bseCode)).length;
 
   const companyMap = {};
-  for (const a of allAnnouncements) {
+  for (const a of matchingAnnouncements) {
     const code = a.scriptCode || a.bseCode || '';
     const sym  = a.nseSymbol  || '';
-    if (!watchlistCodes.has(code) && !watchlistCodes.has(sym)) continue;
-    const name = a.scriptName || a.companyName || code;
+    const name = a.scriptName || a.companyName || code || sym;
     if (!name) continue;
     if (!companyMap[name]) companyMap[name] = { name, bseCode: code, symbol: sym, total: 0, bse: 0, nse: 0 };
     companyMap[name].total++;
@@ -411,7 +517,21 @@ async function buildWatchlistSummary(uid, allAnnouncements, boardMeetingItems, s
 async function getDashboardOverview(uid) {
   const generatedAt = new Date().toISOString();
 
-  const [
+  // Run Global Market and User Watchlist in parallel
+  const [globalData, watchlistSummaryResult] = await Promise.all([
+    getGlobalMarketData(),
+    (async () => {
+      try {
+        const summary = await buildWatchlistSummary(uid);
+        return { status: 'success', data: summary };
+      } catch (err) {
+        console.warn('[DashboardService] Watchlist summary error:', err.message);
+        return { status: 'error', message: 'Could not load watchlist data' };
+      }
+    })(),
+  ]);
+
+  const {
     indicesResult,
     annStatsResult,
     moversResult,
@@ -420,41 +540,9 @@ async function getDashboardOverview(uid) {
     agmResult,
     spurtsResult,
     dealsResult,
-    announcementsRaw,
-  ] = await Promise.all([
-    safe('indices',          fetchIndices),
-    safe('announcementStats', fetchAnnouncementStats),
-    safe('marketMovers',     fetchMarketMovers),
-    safe('ipo',              fetchIpo),
-    safe('boardMeetings',    fetchBoardMeetings),
-    safe('agms',             fetchAgms),
-    safe('volumeSpurts',     fetchVolumeSpurts),
-    safe('deals',            fetchDeals),
-    safe('announcements',    () => getAnnouncements({ limitCount: 2000 })),
-  ]);
+  } = globalData;
 
-  const announcements = announcementsRaw.status === 'success' ? announcementsRaw.data : [];
-  const boardItems    = boardResult.status === 'success'    ? boardResult.data  : [];
-  const spurtItems    = spurtsResult.status === 'success'   ? spurtsResult.data : [];
-
-  let watchlistResult;
-  try {
-    const summary = await buildWatchlistSummary(uid, announcements, boardItems, spurtItems);
-    watchlistResult = { status: 'success', data: summary };
-  } catch (err) {
-    console.warn('[DashboardService] watchlist summary failed:', err.message);
-    watchlistResult = { status: 'error', message: 'Could not load watchlist data' };
-  }
-
-  const catMap = {};
-  for (const a of announcements) {
-    const cat = (a.category || 'Other').split(' / ')[0].trim();
-    catMap[cat] = (catMap[cat] || 0) + 1;
-  }
-  const announcementCategories = Object.entries(catMap)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+  const annData = annStatsResult.status === 'success' ? annStatsResult.data : null;
 
   return {
     success: true,
@@ -469,18 +557,18 @@ async function getDashboardOverview(uid) {
       agms:             { status: agmResult.status        },
       volumeSpurts:     { status: spurtsResult.status     },
       deals:            { status: dealsResult.status      },
-      watchlist:        { status: watchlistResult.status  },
+      watchlist:        { status: watchlistSummaryResult.status  },
     },
 
     indices:      indicesResult.status === 'success'    ? indicesResult.data    : null,
-    announcements: annStatsResult.status === 'success'  ? { ...annStatsResult.data, categories: announcementCategories } : null,
+    announcements: annData ? { total: annData.total, bse: annData.bse, nse: annData.nse, categories: annData.categories } : null,
     marketMovers: moversResult.status === 'success'     ? moversResult.data     : null,
     ipo:          ipoResult.status === 'success'        ? ipoResult.data        : null,
     boardMeetings: boardResult.status === 'success'     ? { items: boardResult.data }  : null,
     agms:         agmResult.status === 'success'        ? { items: agmResult.data }    : null,
     volumeSpurts: spurtsResult.status === 'success'     ? { items: spurtsResult.data } : null,
     deals:        dealsResult.status === 'success'      ? { items: dealsResult.data }  : null,
-    watchlist:    watchlistResult.status === 'success'  ? watchlistResult.data  : null,
+    watchlist:    watchlistSummaryResult.status === 'success'  ? watchlistSummaryResult.data  : null,
   };
 }
 

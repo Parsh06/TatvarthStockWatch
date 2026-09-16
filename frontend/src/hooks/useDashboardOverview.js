@@ -1,18 +1,30 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchDashboardOverview } from '../services/dashboardService'
 
+const DASHBOARD_CACHE_KEY = 'stockwatch:dashboard_overview'
+
 /**
  * useDashboardOverview
- * Fetches and manages the dashboard overview state.
- * - Initial load on mount
+ * Fetches and manages the dashboard overview state with instant SWR (Stale-While-Revalidate) caching.
+ * - Instant 0ms initial render from cache
+ * - Background revalidation on mount
  * - Manual refresh via returned `refresh()` function
  * - Tracks per-widget loading and error states from backend partial-failure model
  */
 export function useDashboardOverview() {
-  const [data, setData]         = useState(null)
-  const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState(null)
-  const [lastUpdated, setLastUpdated] = useState(null)
+  const [data, setData] = useState(() => {
+    try {
+      const cached = sessionStorage.getItem(DASHBOARD_CACHE_KEY) || localStorage.getItem(DASHBOARD_CACHE_KEY)
+      if (cached) return JSON.parse(cached)
+    } catch {
+      // ignore JSON parse error
+    }
+    return null
+  })
+
+  const [loading, setLoading]         = useState(() => !data)
+  const [error, setError]             = useState(null)
+  const [lastUpdated, setLastUpdated] = useState(() => data ? new Date() : null)
   const [refreshing, setRefreshing]   = useState(false)
   const isMounted = useRef(true)
 
@@ -22,8 +34,11 @@ export function useDashboardOverview() {
   }, [])
 
   const load = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true)
-    else setLoading(true)
+    if (isRefresh) {
+      setRefreshing(true)
+    } else if (!data) {
+      setLoading(true)
+    }
     setError(null)
 
     try {
@@ -31,6 +46,13 @@ export function useDashboardOverview() {
       if (!isMounted.current) return
       setData(overview)
       setLastUpdated(new Date())
+
+      // Update instant local caches
+      try {
+        const serialized = JSON.stringify(overview)
+        sessionStorage.setItem(DASHBOARD_CACHE_KEY, serialized)
+        localStorage.setItem(DASHBOARD_CACHE_KEY, serialized)
+      } catch {}
     } catch (err) {
       if (!isMounted.current) return
       setError(err.message || 'Failed to load dashboard')
@@ -39,7 +61,7 @@ export function useDashboardOverview() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [])
+  }, [data])
 
   useEffect(() => { load() }, [load])
 
@@ -61,3 +83,4 @@ export function useDashboardOverview() {
     sourceStatus,
   }
 }
+

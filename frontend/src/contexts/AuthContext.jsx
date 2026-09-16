@@ -36,14 +36,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const minLoadTime = 2200; // Minimum 2.2s so user enjoys the full preloader experience
-    const startTime = Date.now();
-
     const finishLoading = (user) => {
       setCurrentUser(user);
-      const elapsed = Date.now() - startTime;
-      const remaining = Math.max(0, minLoadTime - elapsed);
-      setTimeout(() => setLoading(false), remaining);
+      setLoading(false);
     };
 
     if (!FIREBASE_ENABLED) {

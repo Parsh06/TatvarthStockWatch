@@ -86,12 +86,11 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
         const json = await res.json()
         setAnnouncements(Array.isArray(json.data) ? json.data : [])
         setSource('proxy')
-      } else {
-        // Production mode: Default to Firestore for "today"
+        // Production mode: Default to Mongo DB for "today"
         const data = await getAnnouncementsFromDB({
           exchange:   opts.exchange,
           scripCode:  opts.scripCode,
-          limitCount: 5000, // Fetch all announcements stored in DB for today
+          limitCount: opts.limitCount || 300,
         })
         setAnnouncements(data)
         setSource('db')

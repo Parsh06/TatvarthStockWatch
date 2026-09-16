@@ -277,7 +277,7 @@ module.exports = function (verifyToken) {
       res.json({ success: true, symbols, source, count: symbols.length });
     } catch (err) {
       console.error('[IPO Symbols Error]', err.message);
-      res.status(400).json({ success: false, error: 'Unable to fetch IPO symbols. ' + err.message });
+      res.status(502).json({ success: false, error: 'Unable to fetch IPO symbols: ' + err.message, symbols: [] });
     }
   });
 
@@ -352,9 +352,9 @@ module.exports = function (verifyToken) {
       });
     } catch (err) {
       console.error('[IPO Verify Error]', err.message);
-      res.status(400).json({
+      res.status(502).json({
         success: false,
-        error: 'Unable to connect to verification service. Details: ' + err.message,
+        error: 'Unable to connect to verification service: ' + err.message,
       });
     }
   });
@@ -618,7 +618,7 @@ module.exports = function (verifyToken) {
       });
     } catch (err) {
       console.error('[IPO Bulk Verify Error]', err.message);
-      res.status(400).json({ success: false, error: 'Bulk verification failed: ' + err.message });
+      res.status(502).json({ success: false, error: 'Bulk verification failed: ' + err.message, results: [] });
     }
   });
 
