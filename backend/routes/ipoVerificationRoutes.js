@@ -560,7 +560,7 @@ module.exports = function (verifyToken) {
               return normalized;
             })();
 
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Registrar query timed out (8s limit)')), 8000));
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Registrar query timed out (22s limit)')), 22000));
             const normalized = await Promise.race([queryPromise, timeoutPromise]);
 
             return {

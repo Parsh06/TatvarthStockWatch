@@ -353,6 +353,51 @@ export default function IpoVerificationPage() {
     }
   }
 
+  // ── Retry Single Applicant ──────────────────────────────────────────────────
+  async function handleRetrySingleApplicant(applicantId) {
+    if (!selectedSymbol || !bulkResult || !applicantId) return
+
+    setBulkVerifying(true)
+    try {
+      const data = await apiClient('/api/ipo/verify-bulk', {
+        method: 'POST',
+        body: JSON.stringify({
+          symbol: selectedSymbol.clientId || selectedSymbol.symbol,
+          applicantIds: [applicantId],
+          registrar: selectedSymbol.registrar || selectedSymbol.source || 'KFINTECH',
+        }),
+      })
+
+      const retriedResults = Array.isArray(data.results) ? data.results : []
+      if (retriedResults.length > 0) {
+        const retried = retriedResults[0]
+        setBulkResult(prev => {
+          if (!prev) return prev
+          const updated = (prev.results || []).map(r => r.applicantId === applicantId ? retried : r)
+          return {
+            ...prev,
+            results: updated,
+            summary: {
+              total: updated.length,
+              found: updated.filter(r => r.status === 'found').length,
+              notFound: updated.filter(r => r.status === 'not_found').length,
+              errors: updated.filter(r => r.status === 'error').length,
+            },
+          }
+        })
+        if (retried.status !== 'error') {
+          toast.success(`Updated ${retried.name}!`)
+        } else {
+          toast.error(retried.error || 'Retry did not succeed. Please try again.')
+        }
+      }
+    } catch (err) {
+      toast.error('Retry query failed: ' + err.message)
+    } finally {
+      setBulkVerifying(false)
+    }
+  }
+
   // ── Retry Failed Applicants ─────────────────────────────────────────────────
   async function handleRetryFailedApplicants() {
     if (!selectedSymbol || !bulkResult) return
@@ -1267,9 +1312,20 @@ export default function IpoVerificationPage() {
                         </div>
 
                         {result.status === 'error' && (
-                          <div className="mt-3 pt-2.5 border-t border-border text-xs text-amber-500 flex items-center gap-1.5">
-                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                            <span>{result.error || 'Verification query timed out. Please retry.'}</span>
+                          <div className="mt-3 pt-2.5 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div className="text-xs text-amber-500 flex items-center gap-1.5 min-w-0">
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">{result.error || 'Verification query timed out. Please retry.'}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRetrySingleApplicant(result.applicantId)}
+                              disabled={bulkVerifying}
+                              className="px-3 py-1 rounded-xl bg-amber-500/15 text-amber-500 hover:bg-amber-500/25 border border-amber-500/30 text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 self-start sm:self-center"
+                            >
+                              <RefreshCw className={`w-3 h-3 ${bulkVerifying ? 'animate-spin' : ''}`} />
+                              Retry Applicant
+                            </button>
                           </div>
                         )}
 
