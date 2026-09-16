@@ -22,9 +22,9 @@ export default {
         'premium-hover': '0 20px 40px -10px rgba(99,102,241,0.15), 0 0 20px 0 rgba(99,102,241,0.05)',
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
-        display: ['Space Grotesk', 'sans-serif'],
+        sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'monospace'],
+        display: ['"Outfit"', '"Space Grotesk"', 'sans-serif'],
       },
       keyframes: {
         'fade-in-up': {

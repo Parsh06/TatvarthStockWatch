@@ -41,7 +41,7 @@
   }
 
   body {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     background-color: var(--bg-base);
     background-image:
       radial-gradient(circle at 10% 20%, rgba(14, 165, 233, 0.14) 0%, transparent 40%),
@@ -52,6 +52,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'tnum';
   }
 
   /* Dark mode keeps the same brand hues as light mode, just far dimmer — a quiet
