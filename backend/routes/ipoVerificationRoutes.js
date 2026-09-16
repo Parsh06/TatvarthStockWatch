@@ -26,8 +26,8 @@ const { scrapeBigshareCompanies, queryBigshare } = require('../lib/bigshareScrap
 // ── Per-user IPO Rate Limiter ─────────────────────────────────────────────────
 const _ipoRl = new Map();
 const IPO_RL_WINDOW = 60_000; // 1 minute
-const IPO_RL_MAX_VERIFY = 15;
-const IPO_RL_MAX_BULK   = 5;
+const IPO_RL_MAX_VERIFY = 60;
+const IPO_RL_MAX_BULK   = 150; // Supports up to 150 streaming chunks per minute (1,500+ PANs)
 
 function checkIpoRateLimit(uid, action) {
   const key = `${uid}:${action}`;
@@ -51,8 +51,8 @@ setInterval(() => {
 }, 5 * 60_000);
 
 // ── Bulk Concurrency Control ──────────────────────────────────────────────────
-const MAX_CONCURRENT_IPO = 2;
-const INTER_REQUEST_DELAY_MS = 400;
+const MAX_CONCURRENT_IPO = 3;
+const INTER_REQUEST_DELAY_MS = 150;
 
 async function runWithConcurrencyLimit(tasks, concurrency, delayMs) {
   const results = new Array(tasks.length);
@@ -80,17 +80,64 @@ async function runWithConcurrencyLimit(tasks, concurrency, delayMs) {
   return results;
 }
 
+// ── Auto Resolve Symbol & Registrar ───────────────────────────────────────────
+async function resolveSymbolAndRegistrar(inputSymbol, inputRegistrar) {
+  let sym = String(inputSymbol || '').trim();
+  let reg = String(inputRegistrar || '').toUpperCase();
+
+  // 1. Prefix-based auto-detection
+  if (/^BIGSHARE_/i.test(sym)) {
+    reg = 'BIGSHARE';
+    sym = sym.replace(/^BIGSHARE_/i, '');
+  } else if (/^MUFG_/i.test(sym)) {
+    reg = 'MUFG';
+    sym = sym.replace(/^MUFG_/i, '');
+  } else if (/^KFIN(TECH)?_/i.test(sym)) {
+    reg = 'KFINTECH';
+    sym = sym.replace(/^KFIN(TECH)?_/i, '');
+  }
+
+  // 2. Lookup in MongoDB iposymbols if registrar is ambiguous
+  if (!reg || reg === 'ALL' || reg === 'KFINTECH' || reg === 'UNKNOWN') {
+    try {
+      const { getDb } = require('../lib/mongoClient');
+      const db = await getDb();
+      if (db) {
+        const doc = await db.collection('iposymbols').findOne({
+          $or: [
+            { clientId: sym },
+            { _id: `BIGSHARE_${sym}` },
+            { _id: `MUFG_${sym}` },
+            { _id: `KFINTECH_${sym}` },
+            { symbol: sym }
+          ]
+        });
+        if (doc && doc.source) {
+          reg = doc.source.toUpperCase();
+          sym = doc.clientId || sym;
+        }
+      }
+    } catch {
+      // non-blocking fallback
+    }
+  }
+
+  if (!reg) reg = 'KFINTECH';
+  return { symbol: sym, registrar: reg };
+}
+
 // ── Helper: Query KFintech ────────────────────────────────────────────────────
 async function queryKfintech(clientId, pan) {
+  const cleanId = String(clientId || '').replace(/^KFIN(TECH)?_/i, '');
   const res = await axios.get(
     'https://0uz601ms56.execute-api.ap-south-1.amazonaws.com/prod/api/query?type=pan',
     {
       headers: {
         ...KFIN_HEADERS,
-        'client_id': clientId,
+        'client_id': cleanId,
         'reqparam': pan,
       },
-      timeout: 15000,
+      timeout: 10000,
     }
   );
   return res.data;
@@ -159,10 +206,11 @@ module.exports = function (verifyToken) {
     let unified = [];
     if (mongoDocs.length > 0) {
       unified = mongoDocs.map((doc, idx) => ({
-        clientId: doc.clientId || doc._id,
+        clientId: doc.clientId || doc._id?.replace(/^(BIGSHARE|MUFG|KFINTECH)_/i, '') || doc.symbol,
         symbol: doc.symbol,
         name: doc.name || doc.symbol,
         registrar: doc.source || 'KFINTECH',
+        source: doc.source || 'KFINTECH',
         isLatest: idx < 5,
         discoveredAt: doc.firstSeenAt ? new Date(doc.firstSeenAt).toISOString() : new Date().toISOString(),
       }));
@@ -188,17 +236,38 @@ module.exports = function (verifyToken) {
       if (registrar === 'MUFG' || registrar === 'LINKINTIME' || registrar === 'LINK_INTIME') {
         const { getActiveIpoSymbols } = require('../lib/ipoStore');
         const docs = await getActiveIpoSymbols('MUFG');
-        symbols = docs.length > 0 && !forceRefresh ? docs : await scrapeMufgCompanies();
+        const list = docs.length > 0 && !forceRefresh ? docs : await scrapeMufgCompanies();
+        symbols = list.map(d => ({
+          clientId: d.clientId || d._id?.replace(/^MUFG_/i, '') || d.symbol,
+          symbol: d.symbol || d.name,
+          name: d.name || d.symbol,
+          registrar: 'MUFG',
+          source: 'MUFG',
+        }));
         source = 'MUFG';
       } else if (registrar === 'BIGSHARE' || registrar === 'BIG_SHARE') {
         const { getActiveIpoSymbols } = require('../lib/ipoStore');
         const docs = await getActiveIpoSymbols('BIGSHARE');
-        symbols = docs.length > 0 && !forceRefresh ? docs : await scrapeBigshareCompanies();
+        const list = docs.length > 0 && !forceRefresh ? docs : await scrapeBigshareCompanies();
+        symbols = list.map(d => ({
+          clientId: d.clientId || d._id?.replace(/^BIGSHARE_/i, '') || d.symbol,
+          symbol: d.symbol || d.name,
+          name: d.name || d.symbol,
+          registrar: 'BIGSHARE',
+          source: 'BIGSHARE',
+        }));
         source = 'BIGSHARE';
       } else if (registrar === 'KFINTECH' || registrar === 'KFIN') {
         const { getActiveIpoSymbols } = require('../lib/ipoStore');
         const docs = await getActiveIpoSymbols('KFINTECH');
-        symbols = docs.length > 0 && !forceRefresh ? docs : await scrapeKfinCompanies();
+        const list = docs.length > 0 && !forceRefresh ? docs : await scrapeKfinCompanies();
+        symbols = list.map(d => ({
+          clientId: d.clientId || d._id?.replace(/^KFIN(TECH)?_/i, '') || d.symbol,
+          symbol: d.symbol || d.name,
+          name: d.name || d.symbol,
+          registrar: 'KFINTECH',
+          source: 'KFINTECH',
+        }));
         source = 'KFINTECH';
       } else {
         symbols = await fetchUnifiedSymbols(forceRefresh);
@@ -215,10 +284,9 @@ module.exports = function (verifyToken) {
   // ── POST /api/ipo/verify ────────────────────────────────────────────────────
   router.post('/verify', verifyToken, async (req, res) => {
     try {
-      const { symbol, verificationType, identifier, registrar = 'KFINTECH' } = req.body;
-      const reg = String(registrar).toUpperCase();
+      const { symbol: rawSymbol, verificationType, identifier, registrar: rawRegistrar = 'KFINTECH' } = req.body;
 
-      if (!symbol || typeof symbol !== 'string') {
+      if (!rawSymbol || typeof rawSymbol !== 'string') {
         return res.status(400).json({ success: false, error: 'Please select an IPO symbol' });
       }
       if (!verificationType || verificationType !== 'pan') {
@@ -238,6 +306,10 @@ module.exports = function (verifyToken) {
       if (!checkIpoRateLimit(req.uid, 'verify')) {
         return res.status(429).json({ success: false, error: 'Too many verification requests. Please wait a minute.' });
       }
+
+      // Resolve true registrar & symbol ID
+      const { symbol, registrar } = await resolveSymbolAndRegistrar(rawSymbol, rawRegistrar);
+      const reg = registrar.toUpperCase();
 
       const startMs = Date.now();
       let normalized;
@@ -405,10 +477,9 @@ module.exports = function (verifyToken) {
   // ── POST /api/ipo/verify-bulk ───────────────────────────────────────────────
   router.post('/verify-bulk', verifyToken, async (req, res) => {
     try {
-      const { symbol, applicantIds, registrar = 'KFINTECH' } = req.body;
-      const reg = String(registrar).toUpperCase();
+      const { symbol: rawSymbol, applicantIds, registrar: rawRegistrar = 'KFINTECH' } = req.body;
 
-      if (!symbol || typeof symbol !== 'string') {
+      if (!rawSymbol || typeof rawSymbol !== 'string') {
         return res.status(400).json({ success: false, error: 'Please select an IPO symbol' });
       }
       if (!Array.isArray(applicantIds) || applicantIds.length === 0) {
@@ -419,12 +490,18 @@ module.exports = function (verifyToken) {
         return res.status(429).json({ success: false, error: 'Too many bulk verification requests. Please wait a minute.' });
       }
 
+      // Resolve true registrar & symbol ID
+      const { symbol, registrar } = await resolveSymbolAndRegistrar(rawSymbol, rawRegistrar);
+      const reg = registrar.toUpperCase();
+
       const { db } = require('../lib/firebaseAdmin');
       const collRef = db.collection('users').doc(req.uid).collection('familyPans');
 
+      // Parallel Firestore fetch & decryption for fastest execution
+      const docSnapshots = await Promise.all(applicantIds.map(id => collRef.doc(id).get()));
       const applicants = [];
-      for (const id of applicantIds) {
-        const doc = await collRef.doc(id).get();
+
+      for (const doc of docSnapshots) {
         if (doc.exists) {
           const d = doc.data();
           try {

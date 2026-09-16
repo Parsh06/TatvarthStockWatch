@@ -99,34 +99,36 @@ async function getTessWorker() {
 }
 
 const GEMINI_VISION_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
+  'gemini-flash-lite-latest',
   'gemini-3.5-flash-lite',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
 ];
 
 /**
  * Solve BigShare 6-digit image captcha automatically
  * Priority 1: Fast local Tesseract OCR (<40ms, zero quota)
- * Priority 2: Multi-Model Gemini Vision Pool (fallback if OCR has heavy noise lines)
+ * Priority 2: Multi-Model Gemini Vision Pool (fallback if OCR has noise or gets rejected)
  */
-async function solveBigshareCaptcha(imageBase64) {
+async function solveBigshareCaptcha(imageBase64, preferVision = false) {
   const cleanB64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
   const buf = Buffer.from(cleanB64, 'base64');
 
-  // 1. Try local Tesseract OCR first (runs locally on CPU, 0 API quota)
-  try {
-    const worker = await getTessWorker();
-    const ocrRes = await worker.recognize(buf);
-    const digits = (ocrRes.data?.text || '').replace(/[^0-9]/g, '');
-    if (digits.length === 6) {
-      return digits;
+  // 1. Try local Tesseract OCR first if vision is not explicitly preferred
+  if (!preferVision) {
+    try {
+      const worker = await getTessWorker();
+      const ocrRes = await worker.recognize(buf);
+      const digits = (ocrRes.data?.text || '').replace(/[^0-9]/g, '');
+      if (digits.length === 6) {
+        return digits;
+      }
+    } catch (tessErr) {
+      // continue to vision fallback
     }
-  } catch (tessErr) {
-    // continue to vision fallback
   }
 
-  // 2. Fallback to Multi-Model Gemini Vision Pool
+  // 2. Fallback to Multi-Model Gemini Vision Pool (100% precision)
   const ai = getAiClient();
   if (ai) {
     for (const model of GEMINI_VISION_MODELS) {
@@ -149,9 +151,23 @@ async function solveBigshareCaptcha(imageBase64) {
           return digits;
         }
       } catch (err) {
-        // If 429 quota reached on this model, loop to next model in pool
+        // If quota or error on this model, loop to next model in pool
         continue;
       }
+    }
+  }
+
+  // If vision fallback was unavailable and we tried vision first, try tesseract as last resort
+  if (preferVision) {
+    try {
+      const worker = await getTessWorker();
+      const ocrRes = await worker.recognize(buf);
+      const digits = (ocrRes.data?.text || '').replace(/[^0-9]/g, '');
+      if (digits.length === 6) {
+        return digits;
+      }
+    } catch (tessErr) {
+      // ignore
     }
   }
 
@@ -172,7 +188,7 @@ async function getBigshareCaptcha(targetBaseUrl) {
           Origin: baseUrl,
           Referer: `${baseUrl}/ipo_status.html`,
         },
-        timeout: 10000,
+        timeout: 5000,
       });
 
       const token = res.data?.token || res.data?.Token;
@@ -184,7 +200,7 @@ async function getBigshareCaptcha(targetBaseUrl) {
     } catch (err) {
       lastErr = err;
       const retrySec = parseInt(err.response?.headers?.['retry-after'] || err.response?.data?.Retry || 0, 10);
-      if (retrySec > 0 && retrySec <= 5) {
+      if (retrySec > 0 && retrySec <= 3) {
         await new Promise(r => setTimeout(r, retrySec * 1000));
       }
     }
@@ -198,8 +214,8 @@ let _serverRoundRobin = 0;
  * Query IPO allotment status on BigShare for a given Company ID & PAN
  */
 async function queryBigshare(clientId, pan, retries = 3) {
-  const cleanPan = String(pan).trim().toUpperCase();
-  const cleanClientId = String(clientId).trim();
+  const cleanPan = String(pan || '').trim().toUpperCase();
+  const cleanClientId = String(clientId || '').trim().replace(/^BIGSHARE_/i, '');
 
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -209,8 +225,9 @@ async function queryBigshare(clientId, pan, retries = 3) {
         // 1. Fetch fresh captcha challenge from selected server
         const { token, image } = await getBigshareCaptcha(baseUrl);
 
-        // 2. Solve captcha via Hybrid OCR Engine
-        const solvedDigits = await solveBigshareCaptcha(image);
+        // 2. Solve captcha via Hybrid OCR Engine (use Vision directly if previous attempt had CAPTCHA error)
+        const preferVision = attempt > 0;
+        const solvedDigits = await solveBigshareCaptcha(image, preferVision);
 
         // 3. Post verification payload
         const payload = {
@@ -239,9 +256,9 @@ async function queryBigshare(clientId, pan, retries = 3) {
 
         const data = res.data?.d;
         if (data) {
-          // If captcha failed (rare misread), continue attempt
+          // If captcha was rejected by server, retry with Vision directly
           if (data.Status === 'CAPTCHA') {
-            await new Promise(r => setTimeout(r, 400));
+            await new Promise(r => setTimeout(r, 300));
             continue;
           }
           // Advance pool pointer
@@ -251,7 +268,7 @@ async function queryBigshare(clientId, pan, retries = 3) {
       } catch (err) {
         lastErr = err;
         const retrySec = parseInt(err.response?.headers?.['retry-after'] || err.response?.data?.Retry || 0, 10);
-        const waitMs = (retrySec > 0 && retrySec <= 5) ? retrySec * 1000 : 500;
+        const waitMs = (retrySec > 0 && retrySec <= 5) ? retrySec * 1000 : 400;
         await new Promise(r => setTimeout(r, waitMs));
       }
     }
@@ -266,3 +283,4 @@ module.exports = {
   getBigshareCaptcha,
   queryBigshare,
 };
+

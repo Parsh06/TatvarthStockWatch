@@ -1,10 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   ShieldCheck, RefreshCw, Search, Plus, Trash2, X, ChevronDown, 
   Users, CheckCircle2, XCircle, Clock, 
-  FileCheck2, Check, Copy, Sparkles, Building2, UserCheck, CreditCard
+  FileCheck2, Check, Copy, Sparkles, Building2, UserCheck, CreditCard,
+  Download, PauseCircle, PlayCircle, StopCircle, Filter, FileSpreadsheet,
+  AlertTriangle
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { apiClient } from '../../services/apiClient'
 import toast from 'react-hot-toast'
 import Loader, { Spinner } from '../Common/Loader'
@@ -33,16 +36,31 @@ export default function IpoVerificationPage() {
   const [addingApplicant, setAddingApplicant] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
 
+  // ── 500+ Streaming State ───────────────────────────────────────────────────
   const [bulkVerifying, setBulkVerifying] = useState(false)
   const [bulkResult, setBulkResult] = useState(null)
   const [copiedField, setCopiedField] = useState(null)
+
+  const [streamProgress, setStreamProgress] = useState({
+    current: 0,
+    total: 0,
+    percentage: 0,
+    startTime: null,
+    etaSeconds: null,
+  })
+  const [streamFilter, setStreamFilter] = useState('all') // 'all' | 'allotted' | 'not_allotted' | 'did_not_apply' | 'error'
+  const [streamSearch, setStreamSearch] = useState('')
+  const abortControllerRef = useRef(null)
 
   // ── Fetch Master Unified IPO Symbols ────────────────────────────────────────
   const fetchSymbols = useCallback(async () => {
     setSymbolsLoading(true)
     try {
       const data = await apiClient('/api/ipo/symbols?registrar=ALL')
-      const fetched = data.symbols || []
+      const fetched = (data.symbols || []).map(s => ({
+        ...s,
+        registrar: s.registrar || s.source || 'KFINTECH',
+      }))
       setSymbols(fetched)
       if (fetched.length > 0) {
         setSelectedSymbol(fetched[0])
@@ -133,44 +151,234 @@ export default function IpoVerificationPage() {
       const data = await apiClient('/api/ipo/verify', {
         method: 'POST',
         body: JSON.stringify({
-          symbol: selectedSymbol.clientId,
+          symbol: selectedSymbol.clientId || selectedSymbol.symbol,
           verificationType: 'pan',
           identifier: cleanId,
-          registrar: selectedSymbol.registrar || 'KFINTECH',
+          registrar: selectedSymbol.registrar || selectedSymbol.source || 'KFINTECH',
         }),
       })
       setVerifyResult(data)
     } catch (err) {
       const msg = err.message || 'Verification failed'
       if (msg.includes('429')) toast.error('Rate limit reached. Please wait a moment.')
-      else toast.error(err.error || 'Verification query failed. Please try again.')
+      else toast.error(err.error || msg.replace(/^API.*?failed \(\d+\): /i, '') || 'Verification query failed. Please try again.')
     } finally {
       setVerifying(false)
     }
   }
 
-  // ── Bulk Verification ───────────────────────────────────────────────────────
+  // ── 500+ Streaming Chunk Verification Pipeline ──────────────────────────────
+  const CHUNK_SIZE = 8
+  const CONCURRENT_CHUNKS = 2
+
   async function handleBulkVerify() {
     if (!selectedSymbol || applicants.length === 0) return
+
     setBulkVerifying(true)
-    setBulkResult(null)
     setVerifyResult(null)
+    setStreamFilter('all')
+    setStreamSearch('')
+
+    const totalApplicants = applicants.length
+    const startTime = Date.now()
+
+    // Initialize clean streaming state
+    setStreamProgress({
+      current: 0,
+      total: totalApplicants,
+      percentage: 0,
+      startTime,
+      etaSeconds: Math.ceil((totalApplicants / 12) * 1.5),
+    })
+
+    const initialResult = {
+      symbol: selectedSymbol.symbol,
+      provider: selectedSymbol.registrar || 'UNIFIED',
+      results: [],
+      verifiedAt: new Date().toISOString(),
+    }
+    setBulkResult(initialResult)
+
+    // Setup abort controller
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     try {
-      const data = await apiClient('/api/ipo/verify-bulk', {
-        method: 'POST',
-        body: JSON.stringify({
-          symbol: selectedSymbol.clientId,
-          applicantIds: applicants.map(a => a.id),
-          registrar: selectedSymbol.registrar || 'KFINTECH',
-        }),
-      })
-      setBulkResult(data)
+      // 1. Slice applicants into batches of 8
+      const chunks = []
+      for (let i = 0; i < applicants.length; i += CHUNK_SIZE) {
+        chunks.push(applicants.slice(i, i + CHUNK_SIZE))
+      }
+
+      let completedCount = 0
+      let chunkIdx = 0
+
+      // Worker pipeline for concurrent chunk dispatch
+      async function chunkWorker() {
+        while (chunkIdx < chunks.length) {
+          if (controller.signal.aborted) break
+
+          const currentChunk = chunks[chunkIdx++]
+          try {
+            const data = await apiClient('/api/ipo/verify-bulk', {
+              method: 'POST',
+              body: JSON.stringify({
+                symbol: selectedSymbol.clientId || selectedSymbol.symbol,
+                applicantIds: currentChunk.map(a => a.id),
+                registrar: selectedSymbol.registrar || selectedSymbol.source || 'KFINTECH',
+              }),
+              signal: controller.signal,
+            })
+
+            const chunkResults = Array.isArray(data.results) ? data.results : []
+            completedCount += currentChunk.length
+
+            // Incrementally stream results into state
+            setBulkResult(prev => {
+              const prevResults = prev?.results || []
+              const updated = [...prevResults, ...chunkResults]
+              return {
+                ...(prev || initialResult),
+                results: updated,
+                summary: {
+                  total: updated.length,
+                  found: updated.filter(r => r.status === 'found').length,
+                  notFound: updated.filter(r => r.status === 'not_found').length,
+                  errors: updated.filter(r => r.status === 'error').length,
+                },
+              }
+            })
+
+            // Update live progress & ETA
+            const elapsedMs = Date.now() - startTime
+            const pct = Math.min(100, Math.round((completedCount / totalApplicants) * 100))
+            const ratePerMs = completedCount / Math.max(elapsedMs, 100)
+            const remainingCount = totalApplicants - completedCount
+            const etaSec = ratePerMs > 0 ? Math.ceil((remainingCount / ratePerMs) / 1000) : 0
+
+            setStreamProgress({
+              current: Math.min(completedCount, totalApplicants),
+              total: totalApplicants,
+              percentage: pct,
+              startTime,
+              etaSeconds: etaSec,
+            })
+          } catch (chunkErr) {
+            if (controller.signal.aborted) break
+            console.error('[Bulk Chunk Error]', chunkErr)
+            
+            // Mark entire chunk as needing retry
+            const fallbackErrors = currentChunk.map(app => ({
+              applicantId: app.id,
+              name: app.name,
+              maskedPan: app.maskedPan || app.panLast4 || 'XXXX',
+              status: 'error',
+              error: chunkErr.message || 'Transient query timeout',
+              records: [],
+            }))
+
+            completedCount += currentChunk.length
+            setBulkResult(prev => {
+              const prevResults = prev?.results || []
+              const updated = [...prevResults, ...fallbackErrors]
+              return {
+                ...(prev || initialResult),
+                results: updated,
+                summary: {
+                  total: updated.length,
+                  found: updated.filter(r => r.status === 'found').length,
+                  notFound: updated.filter(r => r.status === 'not_found').length,
+                  errors: updated.filter(r => r.status === 'error').length,
+                },
+              }
+            })
+          }
+        }
+      }
+
+      // Launch 2 parallel chunk workers
+      const workers = []
+      for (let w = 0; w < Math.min(CONCURRENT_CHUNKS, chunks.length); w++) {
+        workers.push(chunkWorker())
+      }
+      await Promise.all(workers)
+
+      if (controller.signal.aborted) {
+        toast('Verification cancelled', { icon: '⏸️' })
+      } else {
+        toast.success(`Verification complete across ${totalApplicants} applicants!`)
+      }
     } catch (err) {
-      const msg = err.message || ''
-      if (msg.includes('429')) toast.error('Rate limit reached. Please wait a moment.')
-      else toast.error('Bulk verification query failed. Please try again.')
+      if (!controller.signal.aborted) {
+        toast.error('Bulk verification query encountered an issue. Please try again.')
+      }
     } finally {
       setBulkVerifying(false)
+      abortControllerRef.current = null
+    }
+  }
+
+  // ── Stop / Cancel Verification ──────────────────────────────────────────────
+  function handleStopVerification() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      setBulkVerifying(false)
+    }
+  }
+
+  // ── Export Results to Excel (.xlsx) ─────────────────────────────────────────
+  function handleExportExcel() {
+    if (!bulkResult?.results || bulkResult.results.length === 0) {
+      toast.error('No verification results to export')
+      return
+    }
+
+    try {
+      const rows = bulkResult.results.map((r, index) => {
+        const record = r.records?.[0] || {}
+        const isAllotted = r.records?.some(rec => rec.allottedShares > 0)
+        const isApplied = r.status === 'found'
+        
+        let statusLabel = 'NOT APPLIED'
+        if (isAllotted) statusLabel = 'ALLOTTED'
+        else if (isApplied) statusLabel = 'APPLIED (NOT ALLOTTED)'
+        else if (r.status === 'error') statusLabel = 'ERROR / RETRY NEEDED'
+
+        return {
+          'S.No': index + 1,
+          'IPO Symbol': selectedSymbol?.symbol || '—',
+          'Applicant Name': r.name || '—',
+          'Masked PAN': r.maskedPan || '—',
+          'Allotment Status': statusLabel,
+          'Applied Shares': record.appliedShares != null ? record.appliedShares : (isApplied ? 'Applied' : 0),
+          'Allotted Shares': record.allottedShares != null ? record.allottedShares : (isAllotted ? 'Allotted' : 0),
+          'Application Number': record.applicationNumber || '—',
+          'DP / Client ID': record.dpClientId || '—',
+          'Registrar': selectedSymbol?.registrar || '—',
+          'Verification Date': new Date().toLocaleString(),
+        }
+      })
+
+      const worksheet = XLSX.utils.json_to_sheet(rows)
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Allotment Results')
+
+      // Auto-size columns
+      const maxColWidths = rows.reduce((acc, row) => {
+        Object.keys(row).forEach((key, colIdx) => {
+          const valLen = String(row[key] || '').length
+          acc[colIdx] = Math.max(acc[colIdx] || key.length, valLen)
+        })
+        return acc
+      }, [])
+      worksheet['!cols'] = maxColWidths.map(w => ({ wch: Math.min(w + 3, 40) }))
+
+      const safeSym = (selectedSymbol?.symbol || 'IPO').replace(/[^a-zA-Z0-9]/g, '_')
+      XLSX.writeFile(workbook, `${safeSym}_Allotment_Report.xlsx`)
+      toast.success('Excel report downloaded successfully!')
+    } catch (err) {
+      console.error('[Excel Export Error]', err)
+      toast.error('Failed to export Excel report')
     }
   }
 
@@ -183,112 +391,110 @@ export default function IpoVerificationPage() {
     setTimeout(() => setCopiedField(null), 2000)
   }
 
-  // Filtered symbols
-  const filteredSymbols = symbols.filter(s =>
-    s.symbol.toLowerCase().includes(symbolSearch.toLowerCase())
-  )
+  // ── Derived Streaming Telemetry & Filtered Results ─────────────────────────
+  const rawResults = bulkResult?.results || []
+  const totalChecked = rawResults.length
+  const allottedCount = rawResults.filter(r => r.records?.some(rec => rec.allottedShares > 0)).length
+  const appliedCount = rawResults.filter(r => r.status === 'found').length
+  const appliedNotAllottedCount = Math.max(0, appliedCount - allottedCount)
+  const didNotApplyCount = rawResults.filter(r => r.status === 'not_found').length
+  const errorCount = rawResults.filter(r => r.status === 'error').length
 
-  // Validation flags
-  const isNameValid = newName.trim().length > 0
+  const filteredResults = useMemo(() => {
+    return rawResults.filter(r => {
+      // 1. Status Filter Tab
+      if (streamFilter === 'allotted') {
+        if (!r.records?.some(rec => rec.allottedShares > 0)) return false
+      } else if (streamFilter === 'not_allotted') {
+        if (r.status !== 'found' || r.records?.some(rec => rec.allottedShares > 0)) return false
+      } else if (streamFilter === 'did_not_apply') {
+        if (r.status !== 'not_found') return false
+      } else if (streamFilter === 'error') {
+        if (r.status !== 'error') return false
+      }
+
+      // 2. Search Query (Name or Masked PAN)
+      if (streamSearch.trim()) {
+        const q = streamSearch.trim().toLowerCase()
+        const nameMatch = (r.name || '').toLowerCase().includes(q)
+        const panMatch = (r.maskedPan || '').toLowerCase().includes(q)
+        if (!nameMatch && !panMatch) return false
+      }
+
+      return true
+    })
+  }, [rawResults, streamFilter, streamSearch])
+
+  const isNameValid = newName.trim().length >= 2
   const isPanValid = PAN_REGEX.test(newPan.trim().toUpperCase())
 
-  // Bulk stats calculations
-  const totalChecked = bulkResult?.results?.length || 0
-  const appliedCount = bulkResult?.results?.filter(r => r.status === 'found').length || 0
-  const allottedCount = bulkResult?.results?.filter(r => r.status === 'found' && r.records?.some(rec => rec.allottedShares > 0)).length || 0
-  const didNotApplyCount = bulkResult?.results?.filter(r => r.status === 'not_found').length || 0
-  const errorCount = bulkResult?.results?.filter(r => r.status === 'error').length || 0
+  const filteredSymbols = useMemo(() => {
+    if (!symbolSearch.trim()) return symbols
+    const q = symbolSearch.trim().toLowerCase()
+    return symbols.filter(s => (s.symbol || '').toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q))
+  }, [symbols, symbolSearch])
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto py-4">
-      
-      {/* ── HEADER BANNER ────────────────────────────────────────────────────── */}
-      <div className="bg-surface border border-border rounded-3xl p-6 sm:p-8 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-semibold">
-              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              Live Allotment Verification Engine
+    <div className="space-y-8 pb-12">
+      {/* ── HEADER ──────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+              <ShieldCheck className="w-5 h-5" />
             </div>
-            <h1 className="text-2xl sm:text-4xl font-extrabold text-textPrimary tracking-tight flex items-center gap-3">
-              IPO Allotment Tracker
-              <Sparkles className="w-6 h-6 text-amber-500 hidden sm:inline" />
-            </h1>
-            <p className="text-sm sm:text-base text-textMuted max-w-2xl">
-              Verify application status & allotment records for all family members across all active Indian IPOs in one click.
-            </p>
+            <div>
+              <h1 className="text-2xl font-black text-textPrimary tracking-tight">IPO Allotment Verification</h1>
+              <p className="text-xs text-textMuted mt-0.5">
+                Verify allotment status across BSE, NSE, KFintech, Link Intime & BigShare for 500+ family PANs
+              </p>
+            </div>
           </div>
-
-          {selectedSymbol && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-surfaceHover border border-border self-start md:self-auto">
-              <Building2 className="w-5 h-5 text-primary shrink-0" />
-              <div>
-                <p className="text-[10px] uppercase font-bold text-textMuted tracking-wider">
-                  Active IPO Offer
-                </p>
-                <p className="text-sm font-bold text-textPrimary truncate max-w-[240px]">{selectedSymbol.symbol}</p>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* ── MAIN CONTENT GRID ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
-        {/* LEFT PANEL: Family Applicants (4 Cols) */}
-        <div className="lg:col-span-4 space-y-6">
-          <div className="bg-surface rounded-3xl p-6 border border-border shadow-sm">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-textPrimary">Family Portfolio</h2>
-                  <p className="text-xs text-textMuted">{applicants.length} saved applicants</p>
-                </div>
+        {/* LEFT PANEL: Family PAN Manager (4 Cols) */}
+        <div className="lg:col-span-4 space-y-4">
+          <div className="bg-surface rounded-3xl p-6 border border-border shadow-sm space-y-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-primary" />
+                <h2 className="text-sm font-extrabold text-textPrimary uppercase tracking-wider">Family Portfolio</h2>
               </div>
-              
               <button
+                type="button"
                 onClick={() => setShowAddForm(!showAddForm)}
-                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
-                  showAddForm
-                    ? 'bg-danger/10 text-danger border border-danger/20'
-                    : 'bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20'
-                }`}
-                title={showAddForm ? 'Cancel' : 'Add Family Member'}
+                className="text-xs text-primary hover:text-primaryHover flex items-center gap-1 font-bold transition-all"
               >
-                {showAddForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                {showAddForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                {showAddForm ? 'Cancel' : 'Add Member'}
               </button>
             </div>
 
-            {/* Add Applicant Form */}
+            {/* Add Applicant Drawer Form */}
             <AnimatePresence>
               {showAddForm && (
                 <motion.form
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
                   onSubmit={handleAddApplicant}
-                  className="mb-5 p-4 rounded-2xl bg-surfaceHover border border-border overflow-hidden space-y-3"
+                  className="overflow-hidden"
                 >
-                  <p className="text-xs font-bold text-textPrimary">Add Family Member PAN</p>
-                  
-                  <div className="space-y-2">
+                  <div className="p-4 rounded-2xl bg-background border border-border space-y-3">
                     <input
                       type="text"
-                      placeholder="Applicant Name (e.g. Parsh Jain)"
+                      placeholder="Applicant Name (e.g., Jane Doe)"
                       value={newName}
                       onChange={e => setNewName(e.target.value)}
-                      maxLength={50}
                       className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-primary/50"
-                      autoFocus
                     />
 
                     <input
                       type="text"
-                      placeholder="10-digit PAN (e.g. ABCDE1234F)"
+                      placeholder="PAN Number (e.g., ABCDE1234F)"
                       value={newPan}
                       onChange={e => setNewPan(e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10))}
                       className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono text-textPrimary placeholder:font-sans placeholder:text-textMuted focus:outline-none focus:border-primary/50 uppercase"
@@ -355,16 +561,16 @@ export default function IpoVerificationPage() {
 
             {/* Bulk Verification Trigger */}
             {applicants.length > 0 && selectedSymbol && (
-              <div className="mt-6 pt-4 border-t border-border">
+              <div className="mt-6 pt-4 border-t border-border space-y-2">
                 <button
                   onClick={handleBulkVerify}
                   disabled={bulkVerifying}
-                  className="w-full py-3.5 px-4 rounded-2xl font-bold text-sm bg-primary text-white hover:bg-primaryHover disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                  className="w-full py-3.5 px-4 rounded-2xl font-bold text-sm bg-primary text-white hover:bg-primaryHover disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-sm"
                 >
                   {bulkVerifying ? (
                     <>
                       <Spinner size="sm" className="scale-75" />
-                      Querying {applicants.length} Bids...
+                      Checking {streamProgress.current} / {applicants.length}...
                     </>
                   ) : (
                     <>
@@ -373,6 +579,17 @@ export default function IpoVerificationPage() {
                     </>
                   )}
                 </button>
+
+                {bulkVerifying && (
+                  <button
+                    type="button"
+                    onClick={handleStopVerification}
+                    className="w-full py-2.5 px-3 rounded-xl text-xs font-bold text-danger border border-danger/20 hover:bg-danger/10 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <StopCircle className="w-3.5 h-3.5" />
+                    Stop / Cancel Stream
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -497,7 +714,7 @@ export default function IpoVerificationPage() {
               <div className="sm:col-span-12 space-y-2">
                 <label className="text-xs font-extrabold text-textMuted uppercase tracking-wider flex items-center gap-1.5">
                   <CreditCard className="w-3.5 h-3.5 text-primary" />
-                  PAN Number *
+                  PAN Number (Single Check) *
                 </label>
                 <div className="relative">
                   <input
@@ -533,15 +750,15 @@ export default function IpoVerificationPage() {
               ) : (
                 <>
                   <ShieldCheck className="w-5 h-5" />
-                  Check Allotment Status
+                  Check Individual PAN Allotment
                 </>
               )}
             </button>
           </form>
 
-          {/* ── LOADER VIEW ───────────────────────────────────────────────────── */}
+          {/* ── SINGLE LOADER VIEW ────────────────────────────────────────────── */}
           <AnimatePresence mode="wait">
-            {(verifying || bulkVerifying) && (
+            {verifying && (
               <motion.div
                 key="loading"
                 initial={{ opacity: 0, y: 15 }}
@@ -550,6 +767,59 @@ export default function IpoVerificationPage() {
                 className="bg-surface rounded-3xl border border-border shadow-sm min-h-[300px] flex items-center justify-center"
               >
                 <Loader />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ── 500+ LIVE STREAMING PROGRESS HUD ──────────────────────────────── */}
+          <AnimatePresence>
+            {bulkVerifying && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="bg-surface rounded-3xl p-6 border border-primary/30 shadow-lg space-y-4 relative overflow-hidden"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-black text-textPrimary flex items-center gap-2">
+                      <span className="relative flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+                      </span>
+                      Streaming Bulk Allotment Check
+                    </h3>
+                    <p className="text-xs text-textMuted mt-0.5">
+                      {streamProgress.current} of {streamProgress.total} applicants verified ({streamProgress.percentage}%) • {selectedSymbol?.symbol}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {streamProgress.etaSeconds != null && (
+                      <span className="px-3 py-1.5 rounded-xl bg-background border border-border text-xs font-mono font-bold text-textPrimary">
+                        ETA: ~{streamProgress.etaSeconds}s
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleStopVerification}
+                      className="px-3 py-1.5 rounded-xl bg-danger/10 text-danger border border-danger/20 text-xs font-bold hover:bg-danger/20 transition-all flex items-center gap-1"
+                    >
+                      <StopCircle className="w-3.5 h-3.5" />
+                      Stop Stream
+                    </button>
+                  </div>
+                </div>
+
+                {/* Animated Glowing Progress Bar */}
+                <div className="w-full bg-background rounded-full h-3.5 overflow-hidden border border-border p-0.5">
+                  <motion.div
+                    className="h-full rounded-full bg-gradient-to-r from-primary via-emerald-400 to-teal-300"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${streamProgress.percentage}%` }}
+                    transition={{ ease: 'easeOut', duration: 0.3 }}
+                  />
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -697,9 +967,9 @@ export default function IpoVerificationPage() {
             )}
           </AnimatePresence>
 
-          {/* ── BULK FAMILY VERIFICATION RESULT STREAM ─────────────────────────── */}
+          {/* ── BULK FAMILY VERIFICATION RESULT STREAM (500+ HIGH CAPACITY) ─────── */}
           <AnimatePresence mode="wait">
-            {bulkResult && !verifying && !bulkVerifying && (
+            {bulkResult && rawResults.length > 0 && !verifying && (
               <motion.div
                 key="bulk-result"
                 initial={{ opacity: 0, y: 15 }}
@@ -713,9 +983,18 @@ export default function IpoVerificationPage() {
                     <div>
                       <h3 className="text-lg font-bold text-textPrimary">{selectedSymbol?.symbol} — Family Allotment Summary</h3>
                       <p className="text-xs text-textMuted">
-                        {totalChecked} applicant bids verified
+                        {totalChecked} applicant bids verified across portfolio
                       </p>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={handleExportExcel}
+                      className="px-4 py-2.5 rounded-2xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 text-xs font-bold transition-all flex items-center gap-2 shrink-0 self-start sm:self-center"
+                    >
+                      <FileSpreadsheet className="w-4 h-4" />
+                      Export Excel Report (.xlsx)
+                    </button>
                   </div>
 
                   {/* Metric Cards */}
@@ -725,14 +1004,14 @@ export default function IpoVerificationPage() {
                       <p className="text-[10px] font-extrabold text-textMuted uppercase tracking-wider mt-1">Total Checked</p>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 text-center">
-                      <p className="text-2xl font-black text-primary">{appliedCount}</p>
-                      <p className="text-[10px] font-extrabold text-primary uppercase tracking-wider mt-1">Applied</p>
+                    <div className="p-4 rounded-2xl bg-success/5 border border-success/15 text-center">
+                      <p className="text-2xl font-black text-success">{allottedCount}</p>
+                      <p className="text-[10px] font-extrabold text-success uppercase tracking-wider mt-1">Allotted 🎉</p>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-success/5 border border-success/10 text-center">
-                      <p className="text-2xl font-black text-success">{allottedCount}</p>
-                      <p className="text-[10px] font-extrabold text-success uppercase tracking-wider mt-1">Allotted</p>
+                    <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 text-center">
+                      <p className="text-2xl font-black text-primary">{appliedNotAllottedCount}</p>
+                      <p className="text-[10px] font-extrabold text-primary uppercase tracking-wider mt-1">Not Allotted</p>
                     </div>
 
                     <div className="p-4 rounded-2xl bg-danger/5 border border-danger/10 text-center">
@@ -747,109 +1026,210 @@ export default function IpoVerificationPage() {
                       </div>
                     )}
                   </div>
-                </div>
 
-                {/* Family Applicant Cards Stream */}
-                <div className="space-y-3.5">
-                  {bulkResult.results?.map(result => (
-                    <div
-                      key={result.applicantId}
-                      className={`bg-surface rounded-2xl p-5 border shadow-sm transition-all ${
-                        result.status === 'found'
-                          ? result.records?.some(r => r.allottedShares > 0)
-                            ? 'border-success/40'
-                            : 'border-border'
-                          : 'border-danger/20 bg-surfaceHover/50'
-                      }`}
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3.5 min-w-0">
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${
-                            result.status === 'found'
-                              ? result.records?.some(r => r.allottedShares > 0)
-                                ? 'bg-success/10 text-success border border-success/20'
-                                : 'bg-primary/10 text-primary border border-primary/20'
-                              : 'bg-danger/10 text-danger border border-danger/20'
-                          }`}>
-                            {result.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-bold text-textPrimary truncate">{result.name}</p>
-                            <p className="text-xs text-textMuted font-mono tracking-wider">{result.maskedPan}</p>
-                          </div>
-                        </div>
+                  {/* Search & Filter Toolbar */}
+                  <div className="pt-2 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    
+                    {/* Status Filter Tabs */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-hide text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setStreamFilter('all')}
+                        className={`px-3 py-1.5 rounded-xl transition-all ${
+                          streamFilter === 'all'
+                            ? 'bg-primary text-white'
+                            : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                        }`}
+                      >
+                        All ({totalChecked})
+                      </button>
 
-                        {/* Status Tag */}
-                        <div className="flex-shrink-0 self-start sm:self-center w-full sm:w-auto">
-                          {result.status === 'found' ? (
-                            result.records?.some(r => r.allottedShares > 0) ? (
-                              <div className="px-3 py-1.5 rounded-xl bg-success/10 text-success border border-success/20 text-xs font-black tracking-wide text-center">
-                                ALLOTTED
-                              </div>
-                            ) : (
-                              <div className="px-3 py-1.5 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-bold tracking-wide text-center">
-                                APPLIED (NOT ALLOTTED)
-                              </div>
-                            )
-                          ) : result.status === 'error' ? (
-                            <div className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 text-xs font-bold tracking-wide text-center">
-                              RETRY NEEDED
-                            </div>
-                          ) : (
-                            <div className="px-3 py-1.5 rounded-xl bg-danger/10 text-danger border border-danger/20 text-xs font-bold tracking-wide text-center">
-                              IPO NOT APPLIED
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setStreamFilter('allotted')}
+                        className={`px-3 py-1.5 rounded-xl transition-all ${
+                          streamFilter === 'allotted'
+                            ? 'bg-success text-white'
+                            : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                        }`}
+                      >
+                        Allotted ({allottedCount})
+                      </button>
 
-                      {result.status === 'error' && (
-                        <div className="mt-3 pt-2.5 border-t border-border text-xs text-amber-500">
-                          {result.error || 'Verification query timed out. Please retry.'}
-                        </div>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => setStreamFilter('not_allotted')}
+                        className={`px-3 py-1.5 rounded-xl transition-all ${
+                          streamFilter === 'not_allotted'
+                            ? 'bg-primary text-white'
+                            : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                        }`}
+                      >
+                        Not Allotted ({appliedNotAllottedCount})
+                      </button>
 
-                      {/* Detail Breakdown for Found Bids */}
-                      {result.status === 'found' && result.records?.length > 0 && (
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-4 pt-3.5 border-t border-border">
-                          {result.records.map((rec, i) => (
-                            <div key={i} className="contents">
-                              <div className="p-2.5 rounded-xl bg-background border border-border">
-                                <p className="text-[10px] uppercase font-bold text-textMuted">Applied</p>
-                                <p className="text-xs font-bold text-textPrimary mt-0.5">{rec.appliedShares != null ? `${rec.appliedShares.toLocaleString()} Shs` : '—'}</p>
-                              </div>
+                      <button
+                        type="button"
+                        onClick={() => setStreamFilter('did_not_apply')}
+                        className={`px-3 py-1.5 rounded-xl transition-all ${
+                          streamFilter === 'did_not_apply'
+                            ? 'bg-danger text-white'
+                            : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                        }`}
+                      >
+                        Not Applied ({didNotApplyCount})
+                      </button>
 
-                              <div className={`p-2.5 rounded-xl border ${rec.allottedShares > 0 ? 'bg-success/5 border-success/20' : 'bg-background border-border'}`}>
-                                <p className="text-[10px] uppercase font-bold text-textMuted">Allotted</p>
-                                <p className={`text-xs font-bold mt-0.5 ${rec.allottedShares > 0 ? 'text-success' : 'text-textPrimary'}`}>
-                                  {rec.allottedShares != null ? `${rec.allottedShares.toLocaleString()} Shs` : '—'}
-                                </p>
-                              </div>
-
-                              <div className="p-2.5 rounded-xl bg-background border border-border">
-                                <p className="text-[10px] uppercase font-bold text-textMuted">App No</p>
-                                <p className="text-xs font-bold font-mono text-textPrimary mt-0.5 truncate">{rec.applicationNumber || '—'}</p>
-                              </div>
-
-                              <div className="p-2.5 rounded-xl bg-background border border-border">
-                                <p className="text-[10px] uppercase font-bold text-textMuted">Demat ID</p>
-                                <p className="text-xs font-bold font-mono text-textPrimary mt-0.5 truncate">
-                                  {rec.dpClientId ? (rec.dpClientId.length > 4 ? `************${rec.dpClientId.slice(-4)}` : rec.dpClientId) : '—'}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {result.status === 'not_found' && (
-                        <p className="text-xs text-textMuted mt-3 pt-2.5 border-t border-border">
-                          No active application bid was recorded for this applicant under {selectedSymbol?.symbol}.
-                        </p>
+                      {errorCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setStreamFilter('error')}
+                          className={`px-3 py-1.5 rounded-xl transition-all ${
+                            streamFilter === 'error'
+                              ? 'bg-amber-500 text-white'
+                              : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                          }`}
+                        >
+                          Errors ({errorCount})
+                        </button>
                       )}
                     </div>
-                  ))}
+
+                    {/* Search Field */}
+                    <div className="relative min-w-[200px]">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-textMuted" />
+                      <input
+                        type="text"
+                        value={streamSearch}
+                        onChange={e => setStreamSearch(e.target.value)}
+                        placeholder="Search Name / PAN..."
+                        className="w-full pl-8 pr-3 py-1.5 bg-background border border-border rounded-xl text-xs text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-primary/50"
+                      />
+                      {streamSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setStreamSearch('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-textMuted hover:text-textPrimary"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
+
+                {/* Streamed Results Cards List */}
+                {filteredResults.length === 0 ? (
+                  <div className="text-center py-10 bg-surface rounded-3xl border border-dashed border-border p-6 text-sm text-textMuted">
+                    No results match your active filter / search query.
+                  </div>
+                ) : (
+                  <div className="space-y-3.5">
+                    {filteredResults.map(result => (
+                      <div
+                        key={result.applicantId}
+                        className={`bg-surface rounded-2xl p-5 border shadow-sm transition-all ${
+                          result.status === 'found'
+                            ? result.records?.some(r => r.allottedShares > 0)
+                              ? 'border-success/40'
+                              : 'border-border'
+                            : result.status === 'error'
+                              ? 'border-amber-500/30 bg-amber-500/5'
+                              : 'border-danger/20 bg-surfaceHover/50'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex items-center gap-3.5 min-w-0">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${
+                              result.status === 'found'
+                                ? result.records?.some(r => r.allottedShares > 0)
+                                  ? 'bg-success/10 text-success border border-success/20'
+                                  : 'bg-primary/10 text-primary border border-primary/20'
+                                : result.status === 'error'
+                                  ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                                  : 'bg-danger/10 text-danger border border-danger/20'
+                            }`}>
+                              {result.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-textPrimary truncate">{result.name}</p>
+                              <p className="text-xs text-textMuted font-mono tracking-wider">{result.maskedPan}</p>
+                            </div>
+                          </div>
+
+                          {/* Status Tag */}
+                          <div className="flex-shrink-0 self-start sm:self-center w-full sm:w-auto">
+                            {result.status === 'found' ? (
+                              result.records?.some(r => r.allottedShares > 0) ? (
+                                <div className="px-3 py-1.5 rounded-xl bg-success/10 text-success border border-success/20 text-xs font-black tracking-wide text-center">
+                                  ALLOTTED 🎉
+                                </div>
+                              ) : (
+                                <div className="px-3 py-1.5 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-bold tracking-wide text-center">
+                                  APPLIED (NOT ALLOTTED)
+                                </div>
+                              )
+                            ) : result.status === 'error' ? (
+                              <div className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 text-xs font-bold tracking-wide text-center">
+                                RETRY NEEDED
+                              </div>
+                            ) : (
+                              <div className="px-3 py-1.5 rounded-xl bg-danger/10 text-danger border border-danger/20 text-xs font-bold tracking-wide text-center">
+                                IPO NOT APPLIED
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {result.status === 'error' && (
+                          <div className="mt-3 pt-2.5 border-t border-border text-xs text-amber-500 flex items-center gap-1.5">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                            <span>{result.error || 'Verification query timed out. Please retry.'}</span>
+                          </div>
+                        )}
+
+                        {/* Detail Breakdown for Found Bids */}
+                        {result.status === 'found' && result.records?.length > 0 && (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-4 pt-3.5 border-t border-border">
+                            {result.records.map((rec, i) => (
+                              <div key={i} className="contents">
+                                <div className="p-2.5 rounded-xl bg-background border border-border">
+                                  <p className="text-[10px] uppercase font-bold text-textMuted">Applied</p>
+                                  <p className="text-xs font-bold text-textPrimary mt-0.5">{rec.appliedShares != null ? `${rec.appliedShares.toLocaleString()} Shs` : '—'}</p>
+                                </div>
+
+                                <div className={`p-2.5 rounded-xl border ${rec.allottedShares > 0 ? 'bg-success/5 border-success/20' : 'bg-background border-border'}`}>
+                                  <p className="text-[10px] uppercase font-bold text-textMuted">Allotted</p>
+                                  <p className={`text-xs font-bold mt-0.5 ${rec.allottedShares > 0 ? 'text-success' : 'text-textPrimary'}`}>
+                                    {rec.allottedShares != null ? `${rec.allottedShares.toLocaleString()} Shs` : '—'}
+                                  </p>
+                                </div>
+
+                                <div className="p-2.5 rounded-xl bg-background border border-border">
+                                  <p className="text-[10px] uppercase font-bold text-textMuted">App No</p>
+                                  <p className="text-xs font-bold font-mono text-textPrimary mt-0.5 truncate">{rec.applicationNumber || '—'}</p>
+                                </div>
+
+                                <div className="p-2.5 rounded-xl bg-background border border-border">
+                                  <p className="text-[10px] uppercase font-bold text-textMuted">Demat ID</p>
+                                  <p className="text-xs font-bold font-mono text-textPrimary mt-0.5 truncate">
+                                    {rec.dpClientId ? (rec.dpClientId.length > 4 ? `************${rec.dpClientId.slice(-4)}` : rec.dpClientId) : '—'}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {result.status === 'not_found' && (
+                          <p className="text-xs text-textMuted mt-3 pt-2.5 border-t border-border">
+                            No active application bid was recorded for this applicant under {selectedSymbol?.symbol}.
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
