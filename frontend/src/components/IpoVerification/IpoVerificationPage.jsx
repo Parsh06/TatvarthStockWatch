@@ -183,7 +183,7 @@ export default function IpoVerificationPage() {
   }, [bulkVerifying])
 
   // ── 500+ Streaming Chunk Verification Pipeline ──────────────────────────────
-  const CHUNK_SIZE = 8
+  const CHUNK_SIZE = 5
   const CONCURRENT_CHUNKS = 2
 
   async function handleBulkVerify() {
@@ -219,7 +219,7 @@ export default function IpoVerificationPage() {
     abortControllerRef.current = controller
 
     try {
-      // 1. Slice applicants into batches of 8
+      // 1. Slice applicants into batches of 5
       const chunks = []
       for (let i = 0; i < applicants.length; i += CHUNK_SIZE) {
         chunks.push(applicants.slice(i, i + CHUNK_SIZE))
@@ -228,7 +228,7 @@ export default function IpoVerificationPage() {
       let completedCount = 0
       let chunkIdx = 0
 
-      // Worker pipeline for concurrent chunk dispatch with per-chunk timeout
+      // Worker pipeline for concurrent chunk dispatch with per-chunk timeout & auto-retry
       async function chunkWorker() {
         while (chunkIdx < chunks.length) {
           if (controller.signal.aborted) break
@@ -236,71 +236,87 @@ export default function IpoVerificationPage() {
           const currentChunk = chunks[chunkIdx++]
           if (!currentChunk) break
 
-          const chunkController = new AbortController()
-          const timeoutId = setTimeout(() => chunkController.abort('Chunk timeout (20s)'), 20000)
-          const onParentAbort = () => chunkController.abort('Cancelled')
-          controller.signal.addEventListener('abort', onParentAbort)
+          let chunkSuccess = false
+          let lastChunkErr = null
 
-          try {
-            const data = await apiClient('/api/ipo/verify-bulk', {
-              method: 'POST',
-              body: JSON.stringify({
-                symbol: selectedSymbol.clientId || selectedSymbol.symbol,
-                applicantIds: currentChunk.map(a => a.id),
-                registrar: selectedSymbol.registrar || selectedSymbol.source || 'KFINTECH',
-              }),
-              signal: chunkController.signal,
-            })
-
-            clearTimeout(timeoutId)
-            controller.signal.removeEventListener('abort', onParentAbort)
-
-            const chunkResults = Array.isArray(data.results) ? data.results : []
-            completedCount += currentChunk.length
-
-            // Incrementally stream results into state
-            setBulkResult(prev => {
-              const prevResults = prev?.results || []
-              const updated = [...prevResults, ...chunkResults]
-              return {
-                ...(prev || initialResult),
-                results: updated,
-                summary: {
-                  total: updated.length,
-                  found: updated.filter(r => r.status === 'found').length,
-                  notFound: updated.filter(r => r.status === 'not_found').length,
-                  errors: updated.filter(r => r.status === 'error').length,
-                },
-              }
-            })
-
-            // Update live progress & ETA based on real velocity
-            const elapsedMs = Date.now() - startTime
-            const pct = Math.min(100, Math.round((completedCount / totalApplicants) * 100))
-            const ratePerMs = completedCount / Math.max(elapsedMs, 100)
-            const remainingCount = totalApplicants - completedCount
-            const etaSec = ratePerMs > 0 ? Math.ceil((remainingCount / ratePerMs) / 1000) : 0
-
-            setStreamProgress({
-              current: Math.min(completedCount, totalApplicants),
-              total: totalApplicants,
-              percentage: pct,
-              startTime,
-              etaSeconds: etaSec,
-            })
-          } catch (chunkErr) {
-            clearTimeout(timeoutId)
-            controller.signal.removeEventListener('abort', onParentAbort)
+          // Try up to 2 times for each chunk
+          for (let attempt = 0; attempt < 2; attempt++) {
             if (controller.signal.aborted) break
-            console.error('[Bulk Chunk Error]', chunkErr)
-            
-            // Mark entire chunk with informative message
+
+            const chunkController = new AbortController()
+            const timeoutId = setTimeout(() => chunkController.abort('Chunk timeout (35s)'), 35000)
+            const onParentAbort = () => chunkController.abort('Cancelled')
+            controller.signal.addEventListener('abort', onParentAbort)
+
+            try {
+              const data = await apiClient('/api/ipo/verify-bulk', {
+                method: 'POST',
+                body: JSON.stringify({
+                  symbol: selectedSymbol.clientId || selectedSymbol.symbol,
+                  applicantIds: currentChunk.map(a => a.id),
+                  registrar: selectedSymbol.registrar || selectedSymbol.source || 'KFINTECH',
+                }),
+                signal: chunkController.signal,
+              })
+
+              clearTimeout(timeoutId)
+              controller.signal.removeEventListener('abort', onParentAbort)
+
+              const chunkResults = Array.isArray(data.results) ? data.results : []
+              completedCount += currentChunk.length
+
+              // Incrementally stream results into state
+              setBulkResult(prev => {
+                const prevResults = prev?.results || []
+                const updated = [...prevResults, ...chunkResults]
+                return {
+                  ...(prev || initialResult),
+                  results: updated,
+                  summary: {
+                    total: updated.length,
+                    found: updated.filter(r => r.status === 'found').length,
+                    notFound: updated.filter(r => r.status === 'not_found').length,
+                    errors: updated.filter(r => r.status === 'error').length,
+                  },
+                }
+              })
+
+              // Update live progress & ETA based on real velocity
+              const elapsedMs = Date.now() - startTime
+              const pct = Math.min(100, Math.round((completedCount / totalApplicants) * 100))
+              const ratePerMs = completedCount / Math.max(elapsedMs, 100)
+              const remainingCount = totalApplicants - completedCount
+              const etaSec = ratePerMs > 0 ? Math.ceil((remainingCount / ratePerMs) / 1000) : 0
+
+              setStreamProgress({
+                current: Math.min(completedCount, totalApplicants),
+                total: totalApplicants,
+                percentage: pct,
+                startTime,
+                etaSeconds: etaSec,
+              })
+
+              chunkSuccess = true
+              break
+            } catch (err) {
+              clearTimeout(timeoutId)
+              controller.signal.removeEventListener('abort', onParentAbort)
+              lastChunkErr = err
+              if (controller.signal.aborted) break
+              // Small backoff before chunk retry
+              await new Promise(r => setTimeout(r, 600))
+            }
+          }
+
+          // If chunk failed after retries
+          if (!chunkSuccess && !controller.signal.aborted) {
+            console.error('[Bulk Chunk Failed After Retries]', lastChunkErr)
             const fallbackErrors = currentChunk.map(app => ({
               applicantId: app.id,
               name: app.name,
               maskedPan: app.maskedPan || app.panLast4 || 'XXXX',
               status: 'error',
-              error: chunkErr.message || 'Transient query timeout (retry)',
+              error: lastChunkErr?.message || 'Server timeout. Click Retry.',
               records: [],
             }))
 

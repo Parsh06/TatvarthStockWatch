@@ -210,58 +210,56 @@ async function queryBigshare(clientId, pan, retries = 3) {
 
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
-    for (let s = 0; s < BIGSHARE_BASE_URLS.length; s++) {
-      const baseUrl = BIGSHARE_BASE_URLS[(_serverRoundRobin + s) % BIGSHARE_BASE_URLS.length];
-      try {
-        // 1. Fetch fresh captcha challenge from selected server
-        const { token, image } = await getBigshareCaptcha(baseUrl);
+    // Pick base URL from mirror pool with round-robin distribution
+    const serverIdx = (_serverRoundRobin++) % BIGSHARE_BASE_URLS.length;
+    const baseUrl = BIGSHARE_BASE_URLS[(serverIdx + attempt) % BIGSHARE_BASE_URLS.length];
 
-        // 2. Solve captcha via Hybrid OCR Engine (use Vision directly if previous attempt had CAPTCHA error)
-        const preferVision = attempt > 0;
-        const solvedDigits = await solveBigshareCaptcha(image, preferVision);
+    try {
+      // 1. Fetch fresh captcha challenge from selected mirror server
+      const { token, image } = await getBigshareCaptcha(baseUrl);
 
-        // 3. Post verification payload
-        const payload = {
-          Applicationno: '',
-          Company: cleanClientId,
-          SelectionType: 'PN',
-          PanNo: cleanPan,
-          txtcsdl: '',
-          txtDPID: '',
-          txtClId: '',
-          ddlType: '0',
-          lang: 'en',
-          CaptchaToken: token,
-          CaptchaAnswer: solvedDigits,
-          ResultToken: '',
-        };
+      // 2. Solve captcha via Ultra-Fast Gemini Flash Vision
+      const solvedDigits = await solveBigshareCaptcha(image);
 
-        const res = await axios.post(`${baseUrl}/Data.aspx/FetchIpodetails`, payload, {
-          headers: {
-            ...BIGSHARE_HEADERS,
-            Origin: baseUrl,
-            Referer: `${baseUrl}/ipo_status.html`,
-          },
-          timeout: 15000,
-        });
+      // 3. Post verification payload
+      const payload = {
+        Applicationno: '',
+        Company: cleanClientId,
+        SelectionType: 'PN',
+        PanNo: cleanPan,
+        txtcsdl: '',
+        txtDPID: '',
+        txtClId: '',
+        ddlType: '0',
+        lang: 'en',
+        CaptchaToken: token,
+        CaptchaAnswer: solvedDigits,
+        ResultToken: '',
+      };
 
-        const data = res.data?.d;
-        if (data) {
-          // If captcha was rejected by server, retry with Vision directly
-          if (data.Status === 'CAPTCHA') {
-            await new Promise(r => setTimeout(r, 300));
-            continue;
-          }
-          // Advance pool pointer
-          _serverRoundRobin = (_serverRoundRobin + 1) % BIGSHARE_BASE_URLS.length;
-          return data;
+      const res = await axios.post(`${baseUrl}/Data.aspx/FetchIpodetails`, payload, {
+        headers: {
+          ...BIGSHARE_HEADERS,
+          Origin: baseUrl,
+          Referer: `${baseUrl}/ipo_status.html`,
+        },
+        timeout: 10000,
+      });
+
+      const data = res.data?.d;
+      if (data) {
+        // If captcha was rejected by server (rare misread), retry with next mirror
+        if (data.Status === 'CAPTCHA') {
+          await new Promise(r => setTimeout(r, 200));
+          continue;
         }
-      } catch (err) {
-        lastErr = err;
-        const retrySec = parseInt(err.response?.headers?.['retry-after'] || err.response?.data?.Retry || 0, 10);
-        const waitMs = (retrySec > 0 && retrySec <= 5) ? retrySec * 1000 : 400;
-        await new Promise(r => setTimeout(r, waitMs));
+        return data;
       }
+    } catch (err) {
+      lastErr = err;
+      const retrySec = parseInt(err.response?.headers?.['retry-after'] || err.response?.data?.Retry || 0, 10);
+      const waitMs = (retrySec > 0 && retrySec <= 3) ? retrySec * 1000 : 300;
+      await new Promise(r => setTimeout(r, waitMs));
     }
   }
 
