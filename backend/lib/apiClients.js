@@ -11,17 +11,17 @@ const axios = require('axios');
 const zlib = require('zlib');
 
 const _bseHeaders = {
-  'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+  'User-Agent':      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
   'Accept':          'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Language': 'en-US,en;q=0.9,en-IN;q=0.8',
   'Referer':         `${BSE_BASE_URL}/`,
   'Origin':          BSE_BASE_URL,
   'Sec-Fetch-Dest':  'empty',
   'Sec-Fetch-Mode':  'cors',
   'Sec-Fetch-Site':  'same-site',
-  'sec-ch-ua':       '"Microsoft Edge";v="133", "Not_A Brand";v="8", "Chromium";v="133"',
-  'sec-ch-ua-mobile': '?0',
-  'sec-ch-ua-platform': '"Windows"',
+  'sec-ch-ua':       '"Microsoft Edge";v="153", "Not_A Brand";v="8", "Chromium";v="153"',
+  'sec-ch-ua-mobile': '?1',
+  'sec-ch-ua-platform': '"iOS"',
 };
 
 let _bseCookieStr = '';
