@@ -15,7 +15,7 @@ const NAV_TOP = [
   { to: '/all-announcements',  icon: Globe,           label: 'All Announcements' },
   { to: '/board-meetings',     icon: Presentation,    label: 'Board Meeting Updates' },
   { to: '/agm-updates',        icon: Users,           label: 'AGM Updates' },
-  { to: '/result-calendar',    icon: CalendarCheck,   label: 'Result Calendar' },
+  { to: '/result-calendar',    icon: CalendarCheck,   label: 'Financial Results' },
   { to: '/ipo-gmp',            icon: Rocket,          label: 'IPO GMP Tracker' },
   { to: '/ipo-check',           icon: FileCheck2,      label: 'IPO Check' },
   { to: '/ofs',                icon: Building2,       label: 'OFS Tracker' },

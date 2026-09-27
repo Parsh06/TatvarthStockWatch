@@ -15,8 +15,14 @@ import {
   X,
   ArrowUpDown,
   Filter,
+  FileText,
+  Building2,
+  CheckCircle2,
+  Layers,
   Sparkles,
-  Building2
+  ChevronRight,
+  TrendingUp,
+  FileCode2
 } from 'lucide-react'
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
@@ -44,7 +50,6 @@ function parseMeetingDate(dateStr) {
   const parsed = Date.parse(dateStr)
   if (!isNaN(parsed)) return parsed
 
-  // Fallback for "DD Mon YYYY"
   const parts = dateStr.trim().split(/\s+/)
   if (parts.length === 3) {
     const months = {
@@ -61,20 +66,18 @@ function parseMeetingDate(dateStr) {
   return 0
 }
 
-// Get relative day indicator
+// Helper for relative day badge in calendar view
 function getDayBadge(dateStr) {
   const ts = parseMeetingDate(dateStr)
   if (!ts) return null
 
   const targetDate = new Date(ts)
   const now = new Date()
-  // Reset hours to compare calendar days
   targetDate.setHours(0, 0, 0, 0)
   const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
   const diffTime = targetDate.getTime() - todayZero.getTime()
   const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24))
-
   const dayOfWeek = targetDate.toLocaleDateString('en-US', { weekday: 'short' })
 
   if (diffDays === 0) {
@@ -93,6 +96,26 @@ function getDayBadge(dateStr) {
     return { text: `${Math.abs(diffDays)}d ago`, color: 'bg-white/5 text-textMuted border-white/10' }
   }
   return { text: dayOfWeek, color: 'bg-white/5 text-textMuted border-white/10' }
+}
+
+// Helper to format Quarter Code (e.g. JQ2026-2027 -> Q1 FY27, MQ2025-2026 -> Q4 FY26)
+function formatQuarterCode(code) {
+  if (!code) return '—'
+  const c = code.toUpperCase()
+  let qtr = ''
+  if (c.startsWith('JQ')) qtr = 'Q1'
+  else if (c.startsWith('SQ')) qtr = 'Q2'
+  else if (c.startsWith('DQ')) qtr = 'Q3'
+  else if (c.startsWith('MQ')) qtr = 'Q4'
+  else if (c.startsWith('SH') || c.startsWith('FH')) qtr = 'H1'
+  else if (c.startsWith('MH') || c.startsWith('LH')) qtr = 'H2'
+  else if (c.startsWith('MC')) qtr = 'Annual'
+
+  const yrMatch = c.match(/(\d{4})-(\d{4})/)
+  if (yrMatch && qtr) {
+    return `${qtr} FY${yrMatch[2].slice(-2)}`
+  }
+  return code
 }
 
 function StatCard({ label, value, sub, color = 'text-textPrimary', icon: Icon, iconColor, onClick, active }) {
@@ -121,19 +144,31 @@ function StatCard({ label, value, sub, color = 'text-textPrimary', icon: Icon, i
 }
 
 export default function ResultCalendarPage() {
-  // Filters
+  // Main active view mode: 'calendar' (Forthcoming result meetings) vs 'declared' (Declared financial results)
+  const [activeTab, setActiveTab] = useState('calendar') // 'calendar' | 'declared'
+
+  // ── Calendar View Filters ──────────────────────────────────────────────────
   const [datePreset, setDatePreset] = useState('all') // 'all' | 'today' | 'week' | 'month' | 'custom'
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [showWatchlistOnly, setShowWatchlistOnly] = useState(false)
-  const [sortBy, setSortBy] = useState('date-asc') // 'date-asc' | 'date-desc' | 'name-asc' | 'code-asc'
+  const [sortBy, setSortBy] = useState('date-asc')
+
+  // ── Declared Financial Results Filters ─────────────────────────────────────
+  const [declaredAuditFilter, setDeclaredAuditFilter] = useState('all') // 'all' | 'Audited' | 'Unaudited'
+  const [declaredNatureFilter, setDeclaredNatureFilter] = useState('all') // 'all' | 'Standalone' | 'Consolidated'
+  const [declaredIndustryFilter, setDeclaredIndustryFilter] = useState('all')
 
   const { scripts: watchlistScripts } = useWatchlist()
 
-  const [results, setResults] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  // State
+  const [calendarResults, setCalendarResults] = useState([])
+  const [declaredResults, setDeclaredResults] = useState([])
+  const [loadingCalendar, setLoadingCalendar] = useState(false)
+  const [loadingDeclared, setLoadingDeclared] = useState(false)
+  const [calendarError, setCalendarError] = useState(null)
+  const [declaredError, setDeclaredError] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
 
   // Watchlist lookup set
@@ -146,10 +181,10 @@ export default function ResultCalendarPage() {
     return set
   }, [watchlistScripts])
 
-  // Fetch results from backend proxy
-  const fetchData = useCallback(async (isRefresh = false) => {
-    setLoading(true)
-    setError(null)
+  // 1. Fetch Forthcoming Results Calendar
+  const fetchCalendarData = useCallback(async (isRefresh = false) => {
+    setLoadingCalendar(true)
+    setCalendarError(null)
     try {
       let url = '/api/bse/results-calendar'
       const params = []
@@ -172,22 +207,59 @@ export default function ResultCalendarPage() {
         url: item.url || item.URL || (item.scripCode || item.scrip_Code ? `https://www.bseindia.com/stock-share-price/-/-/${item.scripCode || item.scrip_Code}/` : '')
       })).filter(i => i.scripCode || i.companyName)
 
-      setResults(list)
+      setCalendarResults(list)
       setLastUpdated(new Date())
     } catch (err) {
       console.error('[ResultCalendar fetch error]', err)
-      setError(err.message || 'Failed to fetch result calendar from BSE.')
+      setCalendarError(err.message || 'Failed to fetch result calendar from BSE.')
     } finally {
-      setLoading(false)
+      setLoadingCalendar(false)
     }
   }, [fromDate, toDate])
 
-  // Fetch whenever fromDate or toDate changes
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  // 2. Fetch Declared Financial Results
+  const fetchDeclaredData = useCallback(async (isRefresh = false) => {
+    setLoadingDeclared(true)
+    setDeclaredError(null)
+    try {
+      let url = '/api/bse/financial-results?segment=C&FlagDur=1'
+      if (isRefresh) url += '&refresh=true'
 
-  // Handle Preset changes
+      const res = await apiClient(url)
+      const rawList = res?.results || res?.data || (Array.isArray(res) ? res : [])
+      const list = rawList.map(item => ({
+        scripCode: String(item.scripCode || item.Scrip_cd || item.SCRIP_CODE || '').trim(),
+        companyName: (item.companyName || item.company_name || item.scrip_name || '').trim(),
+        shortName: (item.shortName || item.scrip_name || item.short_name || '').trim(),
+        quarterCode: (item.quarterCode || item.quarter_code || '').trim(),
+        audited: (item.audited || 'Unaudited').trim(),
+        dtTm: (item.dtTm || item.DT_TM || '').trim(),
+        createDate: item.createDate || item.Fld_CreateDate || '',
+        industryName: (item.industryName || item.Industry_name || 'General').trim(),
+        natureOfReport: (item.natureOfReport || item.Fld_NatureOfReport || 'Standalone').trim(),
+        xmlName: item.xmlName || item.XMLName || '',
+        consolXmlName: item.consolXmlName || item.Consol_XMLName || '',
+        resultPageUrl: item.resultPageUrl || item.Resultpageurl || '',
+        url: item.url || item.URL || (item.scripCode || item.Scrip_cd ? `https://www.bseindia.com/stock-share-price/-/-/${item.scripCode || item.Scrip_cd}/` : '')
+      })).filter(i => i.scripCode || i.companyName)
+
+      setDeclaredResults(list)
+      setLastUpdated(new Date())
+    } catch (err) {
+      console.error('[FinancialResults fetch error]', err)
+      setDeclaredError(err.message || 'Failed to fetch declared financial results.')
+    } finally {
+      setLoadingDeclared(false)
+    }
+  }, [])
+
+  // Initial load
+  useEffect(() => {
+    fetchCalendarData()
+    fetchDeclaredData()
+  }, [fetchCalendarData, fetchDeclaredData])
+
+  // Handle Preset changes for Calendar
   const applyPreset = (preset) => {
     setDatePreset(preset)
     if (preset === 'all') {
@@ -206,34 +278,32 @@ export default function ResultCalendarPage() {
     }
   }
 
-  // Count this week results
+  // ── Calendar Computed Stats ───────────────────────────────────────────────
   const thisWeekCount = useMemo(() => {
     const now = new Date()
     now.setHours(0, 0, 0, 0)
     const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
 
-    return results.filter(item => {
+    return calendarResults.filter(item => {
       const ts = parseMeetingDate(item.meetingDate)
       if (!ts) return false
       const d = new Date(ts)
       d.setHours(0, 0, 0, 0)
       return d >= now && d <= sevenDaysLater
     }).length
-  }, [results])
+  }, [calendarResults])
 
-  // Count watchlist results
-  const watchlistResultsCount = useMemo(() => {
-    return results.filter(item => {
+  const watchlistCalendarCount = useMemo(() => {
+    return calendarResults.filter(item => {
       return watchlistCodes.has(String(item.scripCode).trim()) ||
              watchlistCodes.has(String(item.shortName).trim().toUpperCase())
     }).length
-  }, [results, watchlistCodes])
+  }, [calendarResults, watchlistCodes])
 
-  // Filter & Sort
-  const filteredResults = useMemo(() => {
-    let list = results
+  // Filtered Calendar Results
+  const filteredCalendarResults = useMemo(() => {
+    let list = calendarResults
 
-    // Watchlist filter
     if (showWatchlistOnly) {
       list = list.filter(item => 
         watchlistCodes.has(String(item.scripCode).trim()) ||
@@ -241,7 +311,6 @@ export default function ResultCalendarPage() {
       )
     }
 
-    // Search query filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim()
       list = list.filter(item =>
@@ -252,7 +321,6 @@ export default function ResultCalendarPage() {
       )
     }
 
-    // Sorting
     return [...list].sort((a, b) => {
       if (sortBy === 'date-asc') {
         const tA = parseMeetingDate(a.meetingDate)
@@ -274,63 +342,150 @@ export default function ResultCalendarPage() {
       }
       return 0
     })
-  }, [results, showWatchlistOnly, searchQuery, sortBy, watchlistCodes])
+  }, [calendarResults, showWatchlistOnly, searchQuery, sortBy, watchlistCodes])
+
+  // ── Declared Results Computed Stats & Filters ──────────────────────────────
+  const declaredIndustries = useMemo(() => {
+    const set = new Set()
+    for (const item of declaredResults) {
+      if (item.industryName) set.add(item.industryName)
+    }
+    return Array.from(set).sort()
+  }, [declaredResults])
+
+  const declaredAuditedCount = useMemo(() => {
+    return declaredResults.filter(item => (item.audited || '').toLowerCase() === 'audited').length
+  }, [declaredResults])
+
+  const declaredWatchlistCount = useMemo(() => {
+    return declaredResults.filter(item => {
+      return watchlistCodes.has(String(item.scripCode).trim()) ||
+             watchlistCodes.has(String(item.shortName).trim().toUpperCase())
+    }).length
+  }, [declaredResults, watchlistCodes])
+
+  const filteredDeclaredResults = useMemo(() => {
+    let list = declaredResults
+
+    if (showWatchlistOnly) {
+      list = list.filter(item => 
+        watchlistCodes.has(String(item.scripCode).trim()) ||
+        watchlistCodes.has(String(item.shortName).trim().toUpperCase())
+      )
+    }
+
+    if (declaredAuditFilter !== 'all') {
+      list = list.filter(item => (item.audited || '').toLowerCase() === declaredAuditFilter.toLowerCase())
+    }
+
+    if (declaredNatureFilter !== 'all') {
+      list = list.filter(item => (item.natureOfReport || '').toLowerCase() === declaredNatureFilter.toLowerCase())
+    }
+
+    if (declaredIndustryFilter !== 'all') {
+      list = list.filter(item => item.industryName === declaredIndustryFilter)
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      list = list.filter(item =>
+        (item.companyName || '').toLowerCase().includes(q) ||
+        (item.scripCode || '').toLowerCase().includes(q) ||
+        (item.shortName || '').toLowerCase().includes(q) ||
+        (item.industryName || '').toLowerCase().includes(q) ||
+        (item.quarterCode || '').toLowerCase().includes(q)
+      )
+    }
+
+    return [...list].sort((a, b) => {
+      // Sort newest first by createDate or dtTm
+      const tA = a.createDate ? Date.parse(a.createDate) : 0
+      const tB = b.createDate ? Date.parse(b.createDate) : 0
+      if (tA && tB) return tB - tA
+      return (b.dtTm || '').localeCompare(a.dtTm || '')
+    })
+  }, [declaredResults, showWatchlistOnly, declaredAuditFilter, declaredNatureFilter, declaredIndustryFilter, searchQuery, watchlistCodes])
 
   // Export to Excel
   const handleExport = () => {
-    if (!filteredResults.length) return
-    const exportData = filteredResults.map(item => ({
-      'BSE Code': item.scripCode,
-      'Short Name': item.shortName,
-      'Company Name': item.companyName,
-      'Result / Meeting Date': item.meetingDate,
-      'In Watchlist': (watchlistCodes.has(String(item.scripCode).trim()) || watchlistCodes.has(String(item.shortName).trim().toUpperCase())) ? 'Yes' : 'No',
-      'BSE URL': item.url
-    }))
-    const fileName = fromDate && toDate
-      ? `BSE_Result_Calendar_${fromDate}_to_${toDate}`
-      : `BSE_Forthcoming_Result_Calendar_${todayStr()}`
-    exportToXLSX(exportData, fileName)
+    if (activeTab === 'calendar') {
+      if (!filteredCalendarResults.length) return
+      const exportData = filteredCalendarResults.map(item => ({
+        'BSE Code': item.scripCode,
+        'Short Name': item.shortName,
+        'Company Name': item.companyName,
+        'Result / Meeting Date': item.meetingDate,
+        'In Watchlist': (watchlistCodes.has(String(item.scripCode).trim()) || watchlistCodes.has(String(item.shortName).trim().toUpperCase())) ? 'Yes' : 'No',
+        'BSE URL': item.url
+      }))
+      const fileName = fromDate && toDate
+        ? `BSE_Result_Calendar_${fromDate}_to_${toDate}`
+        : `BSE_Forthcoming_Result_Calendar_${todayStr()}`
+      exportToXLSX(exportData, fileName)
+    } else {
+      if (!filteredDeclaredResults.length) return
+      const exportData = filteredDeclaredResults.map(item => ({
+        'BSE Code': item.scripCode,
+        'Company Name': item.companyName,
+        'Industry': item.industryName,
+        'Quarter': formatQuarterCode(item.quarterCode),
+        'Quarter Code': item.quarterCode,
+        'Audit Status': item.audited,
+        'Nature of Report': item.natureOfReport,
+        'Announced On': item.dtTm,
+        'In Watchlist': (watchlistCodes.has(String(item.scripCode).trim()) || watchlistCodes.has(String(item.shortName).trim().toUpperCase())) ? 'Yes' : 'No',
+        'BSE URL': item.url
+      }))
+      exportToXLSX(exportData, `BSE_Declared_Financial_Results_${todayStr()}`)
+    }
   }
+
+  const isLoading = activeTab === 'calendar' ? loadingCalendar : loadingDeclared
+  const activeError = activeTab === 'calendar' ? calendarError : declaredError
 
   return (
     <PageTransition className="space-y-6">
       
-      {/* Header */}
+      {/* Top Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-              <CalendarCheck className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-sm">
+              {activeTab === 'calendar' ? <CalendarCheck className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-textPrimary flex items-center gap-2">
-                Result Calendar
+                {activeTab === 'calendar' ? 'Financial Results Calendar' : 'Declared Financial Results'}
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                   BSE
                 </span>
               </h1>
               <p className="text-xs md:text-sm text-textMuted mt-0.5">
-                Track scheduled quarterly and annual financial result board meetings across listed companies.
+                {activeTab === 'calendar'
+                  ? 'Track scheduled forthcoming quarterly and annual financial result meetings.'
+                  : 'Real-time feed of newly declared quarterly & annual financial results.'}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
+        {/* Global Action Buttons */}
         <div className="flex items-center gap-2.5 w-full md:w-auto">
           <button
-            onClick={() => fetchData(true)}
-            disabled={loading}
-            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs md:text-sm font-medium transition-all shadow-sm active:scale-95 disabled:opacity-50"
+            onClick={() => {
+              if (activeTab === 'calendar') fetchCalendarData(true)
+              else fetchDeclaredData(true)
+            }}
+            disabled={isLoading}
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs md:text-sm font-medium transition-all shadow-sm active:scale-95 disabled:opacity-50 text-textPrimary"
             title="Refresh from BSE"
           >
-            <RefreshCw className={clsx("w-4 h-4 text-textMuted", loading && "animate-spin text-primary")} />
+            <RefreshCw className={clsx("w-4 h-4 text-textMuted", isLoading && "animate-spin text-primary")} />
             <span>Refresh</span>
           </button>
           <button
             onClick={handleExport}
-            disabled={!filteredResults.length}
+            disabled={activeTab === 'calendar' ? !filteredCalendarResults.length : !filteredDeclaredResults.length}
             className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-primary/15 hover:bg-primary/25 border border-primary/25 text-primary rounded-xl text-xs md:text-sm font-semibold transition-all shadow-sm active:scale-95 disabled:opacity-40"
           >
             <Download className="w-4 h-4" />
@@ -339,42 +494,115 @@ export default function ResultCalendarPage() {
         </div>
       </div>
 
-      {/* Preset Filter Chips */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        <span className="text-xs font-medium text-textMuted mr-1 flex items-center gap-1.5 flex-shrink-0">
-          <Clock className="w-3.5 h-3.5" /> Presets:
-        </span>
-        {[
-          { key: 'all', label: 'All Forthcoming' },
-          { key: 'today', label: 'Today' },
-          { key: 'week', label: 'Next 7 Days' },
-          { key: 'month', label: 'Next 30 Days' },
-        ].map(p => (
-          <button
-            key={p.key}
-            onClick={() => applyPreset(p.key)}
-            className={clsx(
-              "px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex-shrink-0 border",
-              datePreset === p.key
-                ? "bg-primary text-white border-primary shadow-sm shadow-primary/20"
-                : "bg-white/5 hover:bg-white/10 text-textMuted hover:text-textPrimary border-white/10"
+      {/* Primary Mode Switch Bar (Presets + Mode Switch Button) */}
+      <div className="glass-panel rounded-2xl p-2 md:p-2.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 border border-white/10 shadow-sm">
+        
+        {/* Left Side: Preset Chips (in calendar mode) or Filters Summary (in declared mode) */}
+        {activeTab === 'calendar' ? (
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide px-1">
+            <span className="text-xs font-semibold text-textMuted mr-1 flex items-center gap-1.5 flex-shrink-0 uppercase tracking-wider text-[10px]">
+              <Clock className="w-3.5 h-3.5 text-primary" /> Presets:
+            </span>
+            {[
+              { key: 'all', label: 'All Forthcoming' },
+              { key: 'today', label: 'Today' },
+              { key: 'week', label: 'Next 7 Days' },
+              { key: 'month', label: 'Next 30 Days' },
+            ].map(p => (
+              <button
+                key={p.key}
+                onClick={() => applyPreset(p.key)}
+                className={clsx(
+                  "px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex-shrink-0 border",
+                  datePreset === p.key
+                    ? "bg-primary text-white border-primary shadow-sm shadow-primary/20 font-semibold"
+                    : "bg-white/5 hover:bg-white/10 text-textMuted hover:text-textPrimary border-white/10"
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+            {(fromDate || toDate) && (
+              <button
+                onClick={() => applyPreset('all')}
+                className="px-2.5 py-1.5 rounded-xl text-xs font-medium text-textMuted hover:text-danger hover:bg-danger/10 border border-dashed border-white/10 transition-all flex items-center gap-1 flex-shrink-0"
+              >
+                <X className="w-3 h-3" /> Reset
+              </button>
             )}
-          >
-            {p.label}
-          </button>
-        ))}
-        {(fromDate || toDate) && (
-          <button
-            onClick={() => applyPreset('all')}
-            className="px-2.5 py-1.5 rounded-xl text-xs font-medium text-textMuted hover:text-danger hover:bg-danger/10 border border-dashed border-white/10 transition-all flex items-center gap-1 flex-shrink-0"
-          >
-            <X className="w-3 h-3" /> Reset Dates
-          </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide px-1">
+            <span className="text-xs font-semibold text-textMuted mr-1 flex items-center gap-1.5 flex-shrink-0 uppercase tracking-wider text-[10px]">
+              <Layers className="w-3.5 h-3.5 text-emerald-400" /> Filter:
+            </span>
+            {[
+              { key: 'all', label: 'All Reports' },
+              { key: 'Audited', label: 'Audited Only' },
+              { key: 'Unaudited', label: 'Unaudited' },
+            ].map(p => (
+              <button
+                key={p.key}
+                onClick={() => setDeclaredAuditFilter(p.key)}
+                className={clsx(
+                  "px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex-shrink-0 border",
+                  declaredAuditFilter === p.key
+                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-semibold shadow-sm"
+                    : "bg-white/5 hover:bg-white/10 text-textMuted hover:text-textPrimary border-white/10"
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+            <div className="h-4 w-px bg-white/10 mx-1 flex-shrink-0" />
+            {[
+              { key: 'all', label: 'All Nature' },
+              { key: 'Standalone', label: 'Standalone' },
+              { key: 'Consolidated', label: 'Consolidated' },
+            ].map(n => (
+              <button
+                key={n.key}
+                onClick={() => setDeclaredNatureFilter(n.key)}
+                className={clsx(
+                  "px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex-shrink-0 border",
+                  declaredNatureFilter === n.key
+                    ? "bg-purple-500/20 text-purple-300 border-purple-500/40 font-semibold shadow-sm"
+                    : "bg-white/5 hover:bg-white/10 text-textMuted hover:text-textPrimary border-white/10"
+                )}
+              >
+                {n.label}
+              </button>
+            ))}
+          </div>
         )}
+
+        {/* Right Side: High-Visibility View Switcher Button */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {activeTab === 'calendar' ? (
+            <button
+              onClick={() => setActiveTab('declared')}
+              className="w-full md:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs md:text-sm font-semibold transition-all shadow-sm active:scale-95 group"
+            >
+              <FileText className="w-4 h-4 transition-transform group-hover:scale-110" />
+              <span>See Financial Results</span>
+              <ChevronRight className="w-3.5 h-3.5 opacity-70 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          ) : (
+            <button
+              onClick={() => setActiveTab('calendar')}
+              className="w-full md:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary rounded-xl text-xs md:text-sm font-semibold transition-all shadow-sm active:scale-95 group"
+            >
+              <CalendarCheck className="w-4 h-4 transition-transform group-hover:scale-110" />
+              <span>Show Result Calendar</span>
+              <ChevronRight className="w-3.5 h-3.5 opacity-70 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filter Control Box */}
       <div className="glass-panel rounded-2xl p-4 md:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3.5 md:gap-4 items-end">
+        
         {/* Search */}
         <div className="sm:col-span-2 lg:col-span-4 space-y-1.5">
           <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">Search</label>
@@ -382,7 +610,7 @@ export default function ResultCalendarPage() {
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted" />
             <input
               type="text"
-              placeholder="Company name, code, symbol..."
+              placeholder={activeTab === 'calendar' ? "Company, code, symbol..." : "Company, industry, quarter, code..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl pl-10 pr-9 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all placeholder:text-textMuted/50 text-textPrimary"
@@ -398,54 +626,85 @@ export default function ResultCalendarPage() {
           </div>
         </div>
 
-        {/* From Date */}
-        <div className="lg:col-span-2 space-y-1.5">
-          <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">From Date</label>
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => {
-              setFromDate(e.target.value)
-              setDatePreset('custom')
-            }}
-            className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer"
-          />
-        </div>
+        {/* View-Specific Filters */}
+        {activeTab === 'calendar' ? (
+          <>
+            {/* From Date */}
+            <div className="lg:col-span-2 space-y-1.5">
+              <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">From Date</label>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => {
+                  setFromDate(e.target.value)
+                  setDatePreset('custom')
+                }}
+                className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer"
+              />
+            </div>
 
-        {/* To Date */}
-        <div className="lg:col-span-2 space-y-1.5">
-          <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">To Date</label>
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => {
-              setToDate(e.target.value)
-              setDatePreset('custom')
-            }}
-            className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer"
-          />
-        </div>
+            {/* To Date */}
+            <div className="lg:col-span-2 space-y-1.5">
+              <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">To Date</label>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => {
+                  setToDate(e.target.value)
+                  setDatePreset('custom')
+                }}
+                className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer"
+              />
+            </div>
 
-        {/* Sort */}
-        <div className="lg:col-span-2 space-y-1.5">
-          <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">Sort By</label>
-          <div className="relative">
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer appearance-none pr-8"
-            >
-              <option value="date-asc" className="bg-surface text-textPrimary">Date (Nearest first)</option>
-              <option value="date-desc" className="bg-surface text-textPrimary">Date (Furthest first)</option>
-              <option value="name-asc" className="bg-surface text-textPrimary">Company Name (A-Z)</option>
-              <option value="code-asc" className="bg-surface text-textPrimary">BSE Code (0-9)</option>
-            </select>
-            <ArrowUpDown className="w-3.5 h-3.5 text-textMuted absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
-        </div>
+            {/* Sort */}
+            <div className="lg:col-span-2 space-y-1.5">
+              <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">Sort By</label>
+              <div className="relative">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer appearance-none pr-8"
+                >
+                  <option value="date-asc" className="bg-surface text-textPrimary">Date (Nearest first)</option>
+                  <option value="date-desc" className="bg-surface text-textPrimary">Date (Furthest first)</option>
+                  <option value="name-asc" className="bg-surface text-textPrimary">Company Name (A-Z)</option>
+                  <option value="code-asc" className="bg-surface text-textPrimary">BSE Code (0-9)</option>
+                </select>
+                <ArrowUpDown className="w-3.5 h-3.5 text-textMuted absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Industry Filter */}
+            <div className="lg:col-span-3 space-y-1.5">
+              <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">Industry</label>
+              <select
+                value={declaredIndustryFilter}
+                onChange={(e) => setDeclaredIndustryFilter(e.target.value)}
+                className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer truncate"
+              >
+                <option value="all" className="bg-surface text-textPrimary">All Industries ({declaredIndustries.length})</option>
+                {declaredIndustries.map(ind => (
+                  <option key={ind} value={ind} className="bg-surface text-textPrimary">{ind}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Quick Status View */}
+            <div className="lg:col-span-3 space-y-1.5">
+              <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">Report Segment</label>
+              <div className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-textMuted flex items-center justify-between">
+                <span>Segment C (Equities)</span>
+                <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-textPrimary">Live BSE</span>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Watchlist Toggle */}
-        <div className="lg:col-span-2 space-y-1.5">
+        <div className={clsx("space-y-1.5", activeTab === 'calendar' ? 'lg:col-span-2' : 'lg:col-span-2')}>
           <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider block opacity-0 pointer-events-none">Filter</label>
           <button
             onClick={() => setShowWatchlistOnly(!showWatchlistOnly)}
@@ -462,51 +721,94 @@ export default function ResultCalendarPage() {
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 md:gap-4">
-        <StatCard
-          label="Forthcoming Results"
-          value={results.length}
-          sub={fromDate || toDate ? "In selected range" : "All upcoming from BSE"}
-          icon={CalendarCheck}
-          iconColor="bg-primary/10 text-primary"
-        />
-        <StatCard
-          label="Filtered Results"
-          value={filteredResults.length}
-          sub={searchQuery ? `Matching "${searchQuery}"` : "Active view"}
-          icon={Filter}
-          color={filteredResults.length > 0 ? "text-primary" : "text-textMuted"}
-          iconColor="bg-emerald-500/10 text-emerald-400"
-        />
-        <StatCard
-          label="This Week"
-          value={thisWeekCount}
-          sub="Next 7 days"
-          icon={CalendarDays}
-          color="text-amber-400"
-          iconColor="bg-amber-500/10 text-amber-400"
-          onClick={() => applyPreset('week')}
-          active={datePreset === 'week'}
-        />
-        <StatCard
-          label="In Watchlist"
-          value={watchlistResultsCount}
-          sub="Monitored scripts"
-          icon={Star}
-          color="text-purple-400"
-          iconColor="bg-purple-500/10 text-purple-400"
-          onClick={() => setShowWatchlistOnly(!showWatchlistOnly)}
-          active={showWatchlistOnly}
-        />
-      </div>
+      {/* KPI Stat Cards */}
+      {activeTab === 'calendar' ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 md:gap-4">
+          <StatCard
+            label="Forthcoming Results"
+            value={calendarResults.length}
+            sub={fromDate || toDate ? "In selected range" : "All upcoming from BSE"}
+            icon={CalendarCheck}
+            iconColor="bg-primary/10 text-primary"
+          />
+          <StatCard
+            label="Filtered Results"
+            value={filteredCalendarResults.length}
+            sub={searchQuery ? `Matching "${searchQuery}"` : "Active view"}
+            icon={Filter}
+            color={filteredCalendarResults.length > 0 ? "text-primary" : "text-textMuted"}
+            iconColor="bg-emerald-500/10 text-emerald-400"
+          />
+          <StatCard
+            label="This Week"
+            value={thisWeekCount}
+            sub="Next 7 days"
+            icon={CalendarDays}
+            color="text-amber-400"
+            iconColor="bg-amber-500/10 text-amber-400"
+            onClick={() => applyPreset('week')}
+            active={datePreset === 'week'}
+          />
+          <StatCard
+            label="In Watchlist"
+            value={watchlistCalendarCount}
+            sub="Monitored scripts"
+            icon={Star}
+            color="text-purple-400"
+            iconColor="bg-purple-500/10 text-purple-400"
+            onClick={() => setShowWatchlistOnly(!showWatchlistOnly)}
+            active={showWatchlistOnly}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 md:gap-4">
+          <StatCard
+            label="Total Declared"
+            value={declaredResults.length}
+            sub="Recent filings"
+            icon={FileText}
+            iconColor="bg-emerald-500/10 text-emerald-400"
+          />
+          <StatCard
+            label="Filtered Results"
+            value={filteredDeclaredResults.length}
+            sub={searchQuery ? `Matching "${searchQuery}"` : "Active view"}
+            icon={Filter}
+            color={filteredDeclaredResults.length > 0 ? "text-primary" : "text-textMuted"}
+            iconColor="bg-primary/10 text-primary"
+          />
+          <StatCard
+            label="Audited Reports"
+            value={declaredAuditedCount}
+            sub="Verified financials"
+            icon={CheckCircle2}
+            color="text-emerald-400"
+            iconColor="bg-emerald-500/10 text-emerald-400"
+            onClick={() => setDeclaredAuditFilter(prev => prev === 'Audited' ? 'all' : 'Audited')}
+            active={declaredAuditFilter === 'Audited'}
+          />
+          <StatCard
+            label="In Watchlist"
+            value={declaredWatchlistCount}
+            sub="Monitored scripts"
+            icon={Star}
+            color="text-purple-400"
+            iconColor="bg-purple-500/10 text-purple-400"
+            onClick={() => setShowWatchlistOnly(!showWatchlistOnly)}
+            active={showWatchlistOnly}
+          />
+        </div>
+      )}
 
       {/* Error state */}
-      {error && (
+      {activeError && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl p-4 text-sm flex items-start justify-between gap-3">
-          <p>{error}</p>
+          <p>{activeError}</p>
           <button
-            onClick={() => fetchData(true)}
+            onClick={() => {
+              if (activeTab === 'calendar') fetchCalendarData(true)
+              else fetchDeclaredData(true)
+            }}
             className="text-xs bg-red-500/20 hover:bg-red-500/30 px-3 py-1 rounded-lg text-red-300 transition-colors"
           >
             Retry
@@ -514,162 +816,310 @@ export default function ResultCalendarPage() {
         </div>
       )}
 
-      {/* Main Results Table & List */}
+      {/* Main Content Area */}
       <div className="glass-panel rounded-2xl overflow-hidden flex flex-col min-h-[420px] shadow-sm">
-        {loading ? (
+        {isLoading ? (
           <div className="flex flex-col items-center justify-center py-24 flex-1">
-            <Loader text="Fetching scheduled results from BSE..." />
+            <Loader text={activeTab === 'calendar' ? "Fetching forthcoming results..." : "Fetching declared financial results..."} />
           </div>
         ) : (
           <>
-            {/* Desktop Table View */}
-            <div className="overflow-x-auto flex-1 scrollbar-hide">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-black/20 dark:bg-black/40 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
-                  <tr>
-                    <th className="px-4 py-3.5 font-semibold">BSE Code</th>
-                    <th className="px-4 py-3.5 font-semibold">Company Name</th>
-                    <th className="px-4 py-3.5 font-semibold">Short Name</th>
-                    <th className="px-4 py-3.5 font-semibold">Result / Meeting Date</th>
-                    <th className="px-4 py-3.5 font-semibold text-center">Status</th>
-                    <th className="px-4 py-3.5 font-semibold text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {filteredResults.length === 0 ? (
+            {/* VIEW 1: Forthcoming Results Calendar Table */}
+            {activeTab === 'calendar' && (
+              <div className="overflow-x-auto flex-1 scrollbar-hide">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-black/20 dark:bg-black/40 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
                     <tr>
-                      <td colSpan="6" className="px-4 py-20 text-center text-textMuted">
-                        <div className="max-w-md mx-auto flex flex-col items-center">
-                          <Calendar className="w-10 h-10 text-textMuted/40 mb-3 stroke-1" />
-                          <p className="text-base font-semibold text-textPrimary">No result meetings found</p>
-                          <p className="text-xs text-textMuted mt-1">
-                            {showWatchlistOnly
-                              ? "None of your watchlist companies have scheduled results for this period."
-                              : "No quarterly results scheduled for the selected date range or search query."}
-                          </p>
-                          {(searchQuery || showWatchlistOnly || fromDate || toDate) && (
-                            <button
-                              onClick={() => {
-                                setSearchQuery('')
-                                setShowWatchlistOnly(false)
-                                applyPreset('all')
-                              }}
-                              className="mt-4 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-xl text-xs font-medium transition-colors"
-                            >
-                              Clear All Filters
-                            </button>
-                          )}
-                        </div>
-                      </td>
+                      <th className="px-4 py-3.5 font-semibold">BSE Code</th>
+                      <th className="px-4 py-3.5 font-semibold">Company Name</th>
+                      <th className="px-4 py-3.5 font-semibold">Short Name</th>
+                      <th className="px-4 py-3.5 font-semibold">Result / Meeting Date</th>
+                      <th className="px-4 py-3.5 font-semibold text-center">Status</th>
+                      <th className="px-4 py-3.5 font-semibold text-right">Actions</th>
                     </tr>
-                  ) : (
-                    filteredResults.map((item, idx) => {
-                      const isWatchlisted = watchlistCodes.has(String(item.scripCode).trim()) ||
-                                            watchlistCodes.has(String(item.shortName).trim().toUpperCase())
-                      const badge = getDayBadge(item.meetingDate)
-                      const bseLink = item.url || `https://www.bseindia.com/stock-share-price/-/${encodeURIComponent(item.shortName || 'stock')}/${item.scripCode}/`
-
-                      return (
-                        <tr
-                          key={`${item.scripCode}-${idx}`}
-                          className="hover:bg-white/[0.04] transition-colors group"
-                        >
-                          {/* Scrip Code */}
-                          <td className="px-4 py-3.5 font-mono text-xs font-semibold text-textMuted group-hover:text-primary transition-colors">
-                            <span className="px-2 py-0.5 rounded bg-black/20 dark:bg-white/5 border border-white/5">
-                              {item.scripCode}
-                            </span>
-                          </td>
-
-                          {/* Company Name */}
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-2">
-                              <Link
-                                to={`/company-data?code=${item.scripCode}`}
-                                className="font-semibold text-textPrimary hover:text-primary transition-colors flex items-center gap-1.5"
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {filteredCalendarResults.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="px-4 py-20 text-center text-textMuted">
+                          <div className="max-w-md mx-auto flex flex-col items-center">
+                            <Calendar className="w-10 h-10 text-textMuted/40 mb-3 stroke-1" />
+                            <p className="text-base font-semibold text-textPrimary">No result meetings found</p>
+                            <p className="text-xs text-textMuted mt-1">
+                              {showWatchlistOnly
+                                ? "None of your watchlist companies have scheduled results for this period."
+                                : "No quarterly results scheduled for the selected date range or search query."}
+                            </p>
+                            {(searchQuery || showWatchlistOnly || fromDate || toDate) && (
+                              <button
+                                onClick={() => {
+                                  setSearchQuery('')
+                                  setShowWatchlistOnly(false)
+                                  applyPreset('all')
+                                }}
+                                className="mt-4 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-xl text-xs font-medium transition-colors"
                               >
-                                {item.companyName}
-                              </Link>
-                              {isWatchlisted && (
-                                <span className="flex-shrink-0" title="In your Watchlist">
-                                  <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                                </span>
-                              )}
-                            </div>
-                          </td>
-
-                          {/* Short Name / Symbol */}
-                          <td className="px-4 py-3.5">
-                            <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-white/5 text-textPrimary border border-white/5">
-                              {item.shortName || '—'}
-                            </span>
-                          </td>
-
-                          {/* Meeting Date */}
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-2 text-sm font-semibold text-textPrimary">
-                              <Calendar className="w-3.5 h-3.5 text-textMuted" />
-                              <span>{item.meetingDate}</span>
-                            </div>
-                          </td>
-
-                          {/* Status Badge */}
-                          <td className="px-4 py-3.5 text-center">
-                            {badge ? (
-                              <span className={clsx(
-                                "inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium border",
-                                badge.color
-                              )}>
-                                {badge.text}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-textMuted">—</span>
+                                Clear All Filters
+                              </button>
                             )}
-                          </td>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredCalendarResults.map((item, idx) => {
+                        const isWatchlisted = watchlistCodes.has(String(item.scripCode).trim()) ||
+                                              watchlistCodes.has(String(item.shortName).trim().toUpperCase())
+                        const badge = getDayBadge(item.meetingDate)
+                        const bseLink = item.url || `https://www.bseindia.com/stock-share-price/-/${encodeURIComponent(item.shortName || 'stock')}/${item.scripCode}/`
 
-                          {/* Actions */}
-                          <td className="px-4 py-3.5 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <Link
-                                to={`/company-data?code=${item.scripCode}`}
-                                className="p-1.5 rounded-lg text-textMuted hover:text-primary hover:bg-primary/10 transition-colors"
-                                title="View Company Data & Fundamentals"
-                              >
-                                <BarChart2 className="w-4 h-4" />
-                              </Link>
-                              <a
-                                href={bseLink}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-1.5 rounded-lg text-textMuted hover:text-primary hover:bg-primary/10 transition-colors"
-                                title="Open BSE Quote Page"
-                              >
-                                <ExternalLink className="w-4 h-4" />
-                              </a>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                        return (
+                          <tr
+                            key={`${item.scripCode}-${idx}`}
+                            className="hover:bg-white/[0.04] transition-colors group"
+                          >
+                            <td className="px-4 py-3.5 font-mono text-xs font-semibold text-textMuted group-hover:text-primary transition-colors">
+                              <span className="px-2 py-0.5 rounded bg-black/20 dark:bg-white/5 border border-white/5">
+                                {item.scripCode}
+                              </span>
+                            </td>
 
-            {/* Table Footer */}
-            {filteredResults.length > 0 && (
-              <div className="px-4 py-3 border-t border-white/5 bg-black/10 flex flex-col sm:flex-row items-center justify-between text-xs text-textMuted gap-2">
-                <span>
-                  Showing <strong className="text-textPrimary">{filteredResults.length}</strong> of{' '}
-                  <strong className="text-textPrimary">{results.length}</strong> scheduled result meetings
-                </span>
-                {lastUpdated && (
-                  <span className="text-[11px]">
-                    Last updated: {lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  </span>
-                )}
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2">
+                                <Link
+                                  to={`/company-data?code=${item.scripCode}`}
+                                  className="font-semibold text-textPrimary hover:text-primary transition-colors flex items-center gap-1.5"
+                                >
+                                  {item.companyName}
+                                </Link>
+                                {isWatchlisted && (
+                                  <span className="flex-shrink-0" title="In your Watchlist">
+                                    <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-white/5 text-textPrimary border border-white/5">
+                                {item.shortName || '—'}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2 text-sm font-semibold text-textPrimary">
+                                <Calendar className="w-3.5 h-3.5 text-textMuted" />
+                                <span>{item.meetingDate}</span>
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3.5 text-center">
+                              {badge ? (
+                                <span className={clsx(
+                                  "inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium border",
+                                  badge.color
+                                )}>
+                                  {badge.text}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-textMuted">—</span>
+                              )}
+                            </td>
+
+                            <td className="px-4 py-3.5 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Link
+                                  to={`/company-data?code=${item.scripCode}`}
+                                  className="p-1.5 rounded-lg text-textMuted hover:text-primary hover:bg-primary/10 transition-colors"
+                                  title="View Company Data & Fundamentals"
+                                >
+                                  <BarChart2 className="w-4 h-4" />
+                                </Link>
+                                <a
+                                  href={bseLink}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="p-1.5 rounded-lg text-textMuted hover:text-primary hover:bg-primary/10 transition-colors"
+                                  title="Open BSE Quote Page"
+                                >
+                                  <ExternalLink className="w-4 h-4" />
+                                </a>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
             )}
+
+            {/* VIEW 2: Declared Financial Results Table */}
+            {activeTab === 'declared' && (
+              <div className="overflow-x-auto flex-1 scrollbar-hide">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-black/20 dark:bg-black/40 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
+                    <tr>
+                      <th className="px-4 py-3.5 font-semibold">BSE Code</th>
+                      <th className="px-4 py-3.5 font-semibold">Company Name</th>
+                      <th className="px-4 py-3.5 font-semibold">Industry</th>
+                      <th className="px-4 py-3.5 font-semibold">Quarter / Period</th>
+                      <th className="px-4 py-3.5 font-semibold text-center">Status & Nature</th>
+                      <th className="px-4 py-3.5 font-semibold">Announced At</th>
+                      <th className="px-4 py-3.5 font-semibold text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {filteredDeclaredResults.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="px-4 py-20 text-center text-textMuted">
+                          <div className="max-w-md mx-auto flex flex-col items-center">
+                            <FileText className="w-10 h-10 text-textMuted/40 mb-3 stroke-1" />
+                            <p className="text-base font-semibold text-textPrimary">No financial results found</p>
+                            <p className="text-xs text-textMuted mt-1">
+                              {showWatchlistOnly
+                                ? "None of your watchlist stocks have declared results matching your active filters."
+                                : "No declared results matching the current filters or search query."}
+                            </p>
+                            {(searchQuery || showWatchlistOnly || declaredAuditFilter !== 'all' || declaredNatureFilter !== 'all' || declaredIndustryFilter !== 'all') && (
+                              <button
+                                onClick={() => {
+                                  setSearchQuery('')
+                                  setShowWatchlistOnly(false)
+                                  setDeclaredAuditFilter('all')
+                                  setDeclaredNatureFilter('all')
+                                  setDeclaredIndustryFilter('all')
+                                }}
+                                className="mt-4 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-xl text-xs font-medium transition-colors"
+                              >
+                                Clear All Filters
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredDeclaredResults.map((item, idx) => {
+                        const isWatchlisted = watchlistCodes.has(String(item.scripCode).trim()) ||
+                                              watchlistCodes.has(String(item.shortName).trim().toUpperCase())
+                        const isAudited = (item.audited || '').toLowerCase() === 'audited'
+                        const isConsol = (item.natureOfReport || '').toLowerCase() === 'consolidated'
+                        const bseLink = item.url || `https://www.bseindia.com/stock-share-price/-/${encodeURIComponent(item.shortName || 'stock')}/${item.scripCode}/`
+
+                        return (
+                          <tr
+                            key={`${item.scripCode}-${item.quarterCode}-${idx}`}
+                            className="hover:bg-white/[0.04] transition-colors group"
+                          >
+                            <td className="px-4 py-3.5 font-mono text-xs font-semibold text-textMuted group-hover:text-primary transition-colors">
+                              <span className="px-2 py-0.5 rounded bg-black/20 dark:bg-white/5 border border-white/5">
+                                {item.scripCode}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2">
+                                <Link
+                                  to={`/company-data?code=${item.scripCode}`}
+                                  className="font-semibold text-textPrimary hover:text-primary transition-colors flex items-center gap-1.5"
+                                >
+                                  {item.companyName}
+                                </Link>
+                                {isWatchlisted && (
+                                  <span className="flex-shrink-0" title="In your Watchlist">
+                                    <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <span className="text-xs text-textMuted">
+                                {item.industryName || '—'}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-textPrimary font-mono text-xs px-2 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary">
+                                  {formatQuarterCode(item.quarterCode)}
+                                </span>
+                                <span className="text-[11px] text-textMuted font-mono">
+                                  ({item.quarterCode})
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3.5 text-center">
+                              <div className="inline-flex items-center gap-1.5">
+                                <span className={clsx(
+                                  "px-2 py-0.5 rounded-full text-[11px] font-semibold border",
+                                  isAudited
+                                    ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/25"
+                                    : "bg-amber-500/15 text-amber-400 border-amber-500/25"
+                                )}>
+                                  {item.audited || 'Unaudited'}
+                                </span>
+                                <span className={clsx(
+                                  "px-2 py-0.5 rounded-full text-[11px] font-medium border",
+                                  isConsol
+                                    ? "bg-purple-500/15 text-purple-400 border-purple-500/25"
+                                    : "bg-white/5 text-textMuted border-white/10"
+                                )}>
+                                  {item.natureOfReport || 'Standalone'}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3.5 text-xs text-textMuted font-mono">
+                              {item.dtTm || '—'}
+                            </td>
+
+                            <td className="px-4 py-3.5 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Link
+                                  to={`/company-data?code=${item.scripCode}`}
+                                  className="p-1.5 rounded-lg text-textMuted hover:text-primary hover:bg-primary/10 transition-colors"
+                                  title="View Company Data & Financials"
+                                >
+                                  <BarChart2 className="w-4 h-4" />
+                                </Link>
+                                <a
+                                  href={bseLink}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="p-1.5 rounded-lg text-textMuted hover:text-primary hover:bg-primary/10 transition-colors"
+                                  title="Open BSE Page"
+                                >
+                                  <ExternalLink className="w-4 h-4" />
+                                </a>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Table Footer */}
+            <div className="px-4 py-3 border-t border-white/5 bg-black/10 flex flex-col sm:flex-row items-center justify-between text-xs text-textMuted gap-2">
+              <span>
+                Showing <strong className="text-textPrimary">
+                  {activeTab === 'calendar' ? filteredCalendarResults.length : filteredDeclaredResults.length}
+                </strong> of{' '}
+                <strong className="text-textPrimary">
+                  {activeTab === 'calendar' ? calendarResults.length : declaredResults.length}
+                </strong> {activeTab === 'calendar' ? 'scheduled result meetings' : 'declared result filings'}
+              </span>
+              {lastUpdated && (
+                <span className="text-[11px]">
+                  Last updated: {lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+              )}
+            </div>
           </>
         )}
       </div>

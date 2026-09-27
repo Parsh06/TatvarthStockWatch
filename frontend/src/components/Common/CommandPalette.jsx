@@ -8,7 +8,7 @@ import { searchBSEScripts } from '../../services/announcementService'
 const QUICK_LINKS = [
   { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
   { label: 'Watchlist', to: '/watchlist', icon: Activity },
-  { label: 'Result Calendar', to: '/result-calendar', icon: CalendarCheck },
+  { label: 'Financial Results', to: '/result-calendar', icon: CalendarCheck },
   { label: 'Gainers & Losers', to: '/gainers-losers', icon: TrendingUp },
   { label: 'Corporate Calendar', to: '/calendar', icon: Calendar },
 ]

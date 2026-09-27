@@ -1915,5 +1915,81 @@ router.get('/results-calendar', async (req, res) => {
   }
 });
 
+// ── OPEN: BSE Declared Financial Results ────────────────────────────────────────
+const _financialResultsCache = new Map();
+const FIN_RESULTS_TTL = 10 * 60 * 1000; // 10 min
+
+router.get('/financial-results', async (req, res) => {
+  const { scripCode, flagDur, hfq, subGroupCode, segment, refresh } = req.query;
+  const cacheKey = `${scripCode || ''}_${flagDur || '1'}_${hfq || ''}_${subGroupCode || ''}_${segment || 'C'}`;
+
+  if (refresh !== 'true') {
+    const cached = _financialResultsCache.get(cacheKey);
+    if (cached && Date.now() < cached.exp) {
+      return res.json({ success: true, total: cached.data.length, results: cached.data, data: cached.data, cached: true });
+    }
+  }
+
+  try {
+    const raw = await bseGet('/Corp_FinanceResult_ng_new/w', {
+      SCRIP_CD: scripCode || '',
+      FlagDur: flagDur || '1',
+      HFQ: hfq || '',
+      ISUBGROUP_CODE: subGroupCode || '',
+      segment: segment || 'C',
+    });
+
+    const list = Array.isArray(raw?.Table) ? raw.Table : (Array.isArray(raw) ? raw : (raw?.data || []));
+
+    const normalized = list.map(item => {
+      const scripCode = String(item.Scrip_cd || item.scripCode || item.SCRIP_CODE || '').trim();
+      const companyName = (item.company_name || item.scrip_name || '').trim();
+      const shortName = (item.scrip_name || item.short_name || '').trim();
+      const quarterCode = (item.quarter_code || item.quarterCode || '').trim();
+      const audited = (item.audited || '').trim();
+      const dtTm = (item.DT_TM || '').trim();
+      const createDate = item.Fld_CreateDate || '';
+      const industryName = (item.Industry_name || '').trim();
+      const natureOfReport = (item.Fld_NatureOfReport || 'Standalone').trim();
+      const xmlName = item.XMLName || '';
+      const consolXmlName = item.Consol_XMLName || '';
+      const resultPageUrl = item.Resultpageurl || '';
+      const url = item.URL || (scripCode ? `https://www.bseindia.com/stock-share-price/-/-/${scripCode}/` : '');
+
+      return {
+        scripCode,
+        companyName,
+        shortName,
+        quarterCode,
+        audited,
+        dtTm,
+        createDate,
+        industryName,
+        natureOfReport,
+        xmlName,
+        consolXmlName,
+        resultPageUrl,
+        url
+      };
+    }).filter(i => i.scripCode || i.companyName);
+
+    _financialResultsCache.set(cacheKey, { data: normalized, exp: Date.now() + FIN_RESULTS_TTL });
+
+    res.json({
+      success: true,
+      total: normalized.length,
+      results: normalized,
+      data: normalized
+    });
+  } catch (err) {
+    console.error('[BSE Financial Results error]', err.message);
+    const fallback = _financialResultsCache.get(cacheKey);
+    if (fallback) {
+      return res.json({ success: true, total: fallback.data.length, results: fallback.data, data: fallback.data, cached: true, fallback: true });
+    }
+    res.status(500).json({ success: false, error: err.message, results: [], data: [], total: 0 });
+  }
+});
+
   return router;
 };
