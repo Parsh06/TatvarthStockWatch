@@ -13,6 +13,48 @@ const QUOTE_TTL   = 5 * 60 * 1000;
 let   _moversCache    = null;
 let   _moversCacheExp = 0;
 const MOVERS_TTL  = 5 * 60 * 1000;  // 5 min
+let   _insiderCache    = null;
+let   _insiderCacheExp = 0;
+const INSIDER_TTL = 10 * 60 * 1000; // 10 min
+
+async function searchMoneyControl(q) {
+  try {
+    const res = await axios.get(`https://www.moneycontrol.com/mccode/common/autosuggestion_solr.php?query=${encodeURIComponent(q)}&type=1&format=json`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+      },
+      timeout: 6000
+    });
+    
+    return (res.data || []).map(item => {
+      const rawSpan = (item.pdt_dis_nm || '').match(/<span>(.*?)<\/span>/i);
+      const spanParts = rawSpan ? rawSpan[1].split(',').map(s => s.trim()) : [];
+      let isin = '';
+      let symbol = '';
+      let bseCode = '';
+      for (const part of spanParts) {
+        if (/^INE[A-Z0-9]{9}$/i.test(part)) {
+          isin = part;
+        } else if (/^\d{6}$/.test(part)) {
+          bseCode = part;
+        } else if (part && part !== '0') {
+          symbol = part;
+        }
+      }
+      return {
+        bseCode: bseCode || item.sc_id || '',
+        symbol: symbol || item.stock_name || item.name || '',
+        scripName: item.name || item.stock_name || '',
+        isin: isin || '',
+        type: item.sc_sector || 'Equity',
+        url: item.link_src || ''
+      };
+    }).filter(i => i.scripName);
+  } catch (err) {
+    console.warn('[MoneyControl AutoSuggest Fallback Error]', err.message);
+    return [];
+  }
+}
 
 async function scrapeBseBoardMeetingsAspx() {
   try {
@@ -193,7 +235,7 @@ router.get('/search', async (req, res) => {
     try {
       items = await bseGet(
         '/GetQuoteAllSearchDatabeta/w',
-        { searchString: q }, 10000
+        { searchString: q }, 6000
       );
     } catch {
       items = null;
@@ -203,25 +245,40 @@ router.get('/search', async (req, res) => {
       try {
         items = await bseGet(
           'https://api.bseindia.com/MSource/1D/GetQuoteAllSearchDatabeta.aspx',
-          { searchString: q }, 10000
+          { searchString: q }, 6000
         );
       } catch {
         items = [];
       }
     }
 
-    if (!Array.isArray(items)) return res.json([]);
-    res.json(items.map((i) => ({
-      bseCode:   (i.strSricpCode || '').trim(),
-      symbol:    (i.shortName    || '').trim(),
-      scripName: (i.scripName    || '').trim(),
-      isin:      (i.Isin         || '').trim(),
-      type:      (i.Type         || '').trim(),
-      url:       (i.SEOUrl       || '').trim(),
-    })));
+    if (Array.isArray(items) && items.length > 0) {
+      return res.json(items.map((i) => ({
+        bseCode:   (i.strSricpCode || '').trim(),
+        symbol:    (i.shortName    || '').trim(),
+        scripName: (i.scripName    || '').trim(),
+        isin:      (i.Isin         || '').trim(),
+        type:      (i.Type         || '').trim(),
+        url:       (i.SEOUrl       || '').trim(),
+      })));
+    }
+
+    // Fallback: Use MoneyControl autosuggest API (robust, instant, no 403 blocks)
+    const mcResults = await searchMoneyControl(q);
+    if (mcResults.length > 0) {
+      return res.json(mcResults);
+    }
+
+    res.json([]);
   } catch (e) {
     console.error('[BSE Search]', e.message);
-    res.status(500).json({ error: e.message });
+    // Even on error, fallback to MoneyControl search before failing
+    try {
+      const mcResults = await searchMoneyControl(q);
+      return res.json(mcResults);
+    } catch {
+      res.json([]);
+    }
   }
 });
 
@@ -998,7 +1055,7 @@ router.get('/agm-updates', verifyToken, async (req, res) => {
     
     let table = data?.Table || (Array.isArray(data) ? data : []);
 
-    // Fallback if empty: Try Corp_Fetch_BoardMeeting_With_Filter_ng/w
+    // Fallback 1 if empty: Try Corp_Fetch_BoardMeeting_With_Filter_ng/w
     if (table.length === 0) {
       try {
         const toDDMMYYYY = (dStr) => {
@@ -1038,10 +1095,31 @@ router.get('/agm-updates', verifyToken, async (req, res) => {
       }
     }
 
+    // Fallback 2: Direct ASPX Scraper
+    if (table.length === 0) {
+      try {
+        const aspxRows = await scrapeBseBoardMeetingsAspx();
+        if (aspxRows.length > 0) {
+          table = aspxRows.map(r => ({
+            scrip_code: r.scrip_code || '',
+            Short_name: r.SHORT_NAME || '',
+            Long_Name: r.Long_Name || r.SHORT_NAME || '',
+            Industry_name: r.Industry_name || '',
+            PURPOSE_NAME: r.PURPOSE_NAME || '',
+            MEETING_DATE: r.MEETING_DATE || '',
+            URL: r.URL || '',
+            DT_TM: ''
+          }));
+        }
+      } catch (err) {
+        console.warn('[BSE AGMUpdates ASPX Fallback error]', err.message);
+      }
+    }
+
     res.json({ Table: table });
   } catch (e) {
     console.error(`[BSE AGMUpdates]`, e.message);
-    res.status(500).json({ error: e.message });
+    res.json({ Table: [] });
   }
 });
 
@@ -1365,6 +1443,32 @@ router.get('/calendar', async (req, res) => {
       });
     }
 
+    // Fallback: If 0 events found, scrape forthcoming meetings from BSE ASPX
+    if (events.length === 0) {
+      try {
+        const aspxRows = await scrapeBseBoardMeetingsAspx();
+        for (const r of aspxRows) {
+          const bseCode  = String(r.scrip_code || '').trim();
+          const company  = (r.Long_Name  || r.SHORT_NAME || '').trim();
+          const purpose  = (r.PURPOSE_NAME || '').trim();
+          const exDate   = parseDate(r.MEETING_DATE || '');
+          const category = getCategory(purpose);
+          const key = `ASPX|${bseCode}|${exDate}|${purpose.slice(0,25)}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          events.push({
+            bseCode, company, category, purpose, exDate,
+            recDate: '', bcStart: '', bcEnd: '',
+            bseUrl: r.URL || null,
+            industry: r.Industry_name || '',
+            source: 'board',
+          });
+        }
+      } catch (err) {
+        console.warn('[BSE Calendar ASPX fallback error]', err.message);
+      }
+    }
+
     events.sort((a, b) => (a.exDate || '9999').localeCompare(b.exDate || '9999'));
 
     const data = { from: fromDate, to: toDate, events, total: events.length };
@@ -1373,7 +1477,7 @@ router.get('/calendar', async (req, res) => {
     res.json(data);
   } catch (e) {
     console.error('[BSE Calendar]', e.message);
-    res.status(500).json({ error: e.message });
+    res.json({ from: fromDate, to: toDate, events: [], total: 0 });
   }
 });
 
@@ -1395,25 +1499,34 @@ router.get('/insider/download', async (req, res) => {
     const sessionHdr = cookies ? { Cookie: cookies } : {};
     const isDefaultParam = (from || to || code) ? 2 : 1;
 
-    let csvData = await bseGet('/Corp_Regulation_DownloadCSV_ng/w', {
-      scripCode: code,
-      Regulation: '',
-      fromDT: toDDMMYYYY(from),
-      ToDate: toDDMMYYYY(to),
-      Isdefault: isDefaultParam,
-    }, 20000, sessionHdr);
+    let csvData = null;
+    try {
+      csvData = await bseGet('/Corp_Regulation_DownloadCSV_ng/w', {
+        scripCode: code,
+        Regulation: '',
+        fromDT: toDDMMYYYY(from),
+        ToDate: toDDMMYYYY(to),
+        Isdefault: isDefaultParam,
+      }, 15000, sessionHdr);
+    } catch (err) {
+      console.warn('[BSE Insider CSV primary error]', err.message);
+    }
 
     // Fallback: If filtered request returns empty or header-only CSV, try default latest
     if (isDefaultParam === 2 && (!csvData || typeof csvData !== 'string' || csvData.trim().split('\n').length <= 1)) {
-      const fallbackCsv = await bseGet('/Corp_Regulation_DownloadCSV_ng/w', {
-        scripCode: '',
-        Regulation: '',
-        fromDT: '',
-        ToDate: '',
-        Isdefault: 1,
-      }, 20000, sessionHdr);
-      if (fallbackCsv && typeof fallbackCsv === 'string' && fallbackCsv.trim().split('\n').length > 1) {
-        csvData = fallbackCsv;
+      try {
+        const fallbackCsv = await bseGet('/Corp_Regulation_DownloadCSV_ng/w', {
+          scripCode: '',
+          Regulation: '',
+          fromDT: '',
+          ToDate: '',
+          Isdefault: 1,
+        }, 15000, sessionHdr);
+        if (fallbackCsv && typeof fallbackCsv === 'string' && fallbackCsv.trim().split('\n').length > 1) {
+          csvData = fallbackCsv;
+        }
+      } catch (err) {
+        console.warn('[BSE Insider CSV fallback error]', err.message);
       }
     }
 
@@ -1422,10 +1535,12 @@ router.get('/insider/download', async (req, res) => {
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
-    return res.send(csvData);
+    return res.send(csvData || 'Scrip Code,Company Name,Promoter Name,Category,Transaction Type,Mode,Security Type,Quantity,Value,Pre Shareholding,Post Shareholding,Intimation Date,From Date,To Date\n');
   } catch (e) {
     console.error('[BSE Insider CSV Download Error]', e.message);
-    res.status(500).json({ error: e.message });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="Tatvarth_Insider_Trading.csv"');
+    res.send('Scrip Code,Company Name,Promoter Name,Category,Transaction Type,Mode,Security Type,Quantity,Value,Pre Shareholding,Post Shareholding,Intimation Date,From Date,To Date\n');
   }
 });
 
@@ -1450,29 +1565,21 @@ router.get('/insider', async (req, res) => {
     const isDefaultParam = (from || to || code) ? 2 : 1;
     let fallbackApplied = false;
 
-    let raw = await bseGet('/getCorp_Regulation_ng/w', {
-      scripCode: code,
-      Regulation: '',
-      fromDT: toDDMMYYYY(from),
-      ToDate: toDDMMYYYY(to),
-      Isdefault: isDefaultParam,
-    }, 15000, sessionHdr);
+    let raw = null;
+    try {
+      raw = await bseGet('/getCorp_Regulation_ng/w', {
+        scripCode: code,
+        Regulation: '',
+        fromDT: toDDMMYYYY(from),
+        ToDate: toDDMMYYYY(to),
+        Isdefault: isDefaultParam,
+      }, 15000, sessionHdr);
+    } catch (err) {
+      console.warn('[BSE Insider primary error]', err.message);
+    }
     
     if (typeof raw === 'string') {
       try { raw = JSON.parse(raw); } catch {}
-    }
-
-    const looksLikeUpstreamFailure =
-      typeof raw === 'string' && (raw.includes('<html') || raw.trim() === '');
-
-    if (looksLikeUpstreamFailure) {
-      console.error('[BSE Insider] Upstream returned non-JSON — likely blocked/captcha:', raw.slice(0, 200));
-      return res.status(502).json({
-        error: 'BSE did not return valid data (possibly blocked or rate-limited)',
-        total: 0,
-        insiderTrades: [],
-        upstreamFailure: true,
-      });
     }
 
     let rows = (raw && Array.isArray(raw.Table)) ? raw.Table
@@ -1482,30 +1589,34 @@ router.get('/insider', async (req, res) => {
     
     // Fallback: If filtered request returned 0 items, fetch default latest items with flag
     if (rows.length === 0 && isDefaultParam === 2) {
-      let fallbackRaw = await bseGet('/getCorp_Regulation_ng/w', {
-        scripCode: '',
-        Regulation: '',
-        fromDT: '',
-        ToDate: '',
-        Isdefault: 1,
-      }, 15000, sessionHdr);
-      
-      if (typeof fallbackRaw === 'string') {
-        try { fallbackRaw = JSON.parse(fallbackRaw); } catch {}
-      }
-      
-      const fallbackRows = (fallbackRaw && Array.isArray(fallbackRaw.Table)) ? fallbackRaw.Table
-        : (fallbackRaw && Array.isArray(fallbackRaw.data)) ? fallbackRaw.data
-        : (fallbackRaw && Array.isArray(fallbackRaw.Table1)) ? fallbackRaw.Table1
-        : (Array.isArray(fallbackRaw) ? fallbackRaw : []);
-      
-      if (fallbackRows.length > 0) {
-        rows = fallbackRows;
-        fallbackApplied = true;
+      try {
+        let fallbackRaw = await bseGet('/getCorp_Regulation_ng/w', {
+          scripCode: '',
+          Regulation: '',
+          fromDT: '',
+          ToDate: '',
+          Isdefault: 1,
+        }, 15000, sessionHdr);
+        
+        if (typeof fallbackRaw === 'string') {
+          try { fallbackRaw = JSON.parse(fallbackRaw); } catch {}
+        }
+        
+        const fallbackRows = (fallbackRaw && Array.isArray(fallbackRaw.Table)) ? fallbackRaw.Table
+          : (fallbackRaw && Array.isArray(fallbackRaw.data)) ? fallbackRaw.data
+          : (fallbackRaw && Array.isArray(fallbackRaw.Table1)) ? fallbackRaw.Table1
+          : (Array.isArray(fallbackRaw) ? fallbackRaw : []);
+        
+        if (fallbackRows.length > 0) {
+          rows = fallbackRows;
+          fallbackApplied = true;
+        }
+      } catch (err) {
+        console.warn('[BSE Insider fallback error]', err.message);
       }
     }
 
-    const normalized = rows.map(r => ({
+    let normalized = rows.map(r => ({
       bseCode: String(r.Fld_ScripCode || ''),
       companyName: (r.Companyname || '').trim(),
       promoterName: (r.Fld_PromoterName || '').trim(),
@@ -1522,11 +1633,20 @@ router.get('/insider', async (req, res) => {
       toDate: (r.Fld_ToDate || '').slice(0, 10),
       xbrlUrl: r.xbrlurl ? `https://www.bseindia.com${r.xbrlurl}` : null,
     }));
+
+    if (normalized.length > 0) {
+      _insiderCache = normalized;
+      _insiderCacheExp = Date.now() + INSIDER_TTL;
+    } else if (_insiderCache && Date.now() < _insiderCacheExp) {
+      normalized = _insiderCache;
+      fallbackApplied = true;
+    }
     
     res.json({ from, to, code, total: normalized.length, insiderTrades: normalized, fallbackApplied });
   } catch (e) {
     console.error('[BSE Insider]', e.message);
-    res.status(500).json({ error: e.message });
+    const cachedTrades = (_insiderCache && Date.now() < _insiderCacheExp) ? _insiderCache : [];
+    res.json({ from, to, code, total: cachedTrades.length, insiderTrades: cachedTrades, fallbackApplied: true });
   }
 });
 
