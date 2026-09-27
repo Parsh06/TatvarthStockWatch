@@ -198,10 +198,18 @@ async function getYahooFundamentals(nseSymbol, bseCode) {
 
   for (const ticker of tickers) {
     try {
-      const [quote, meta] = await Promise.all([_yahooQuote(ticker), _yahooChart(ticker)]);
+      const [quote, meta] = await Promise.all([
+        _yahooQuote(ticker).catch(() => null),
+        _yahooChart(ticker).catch(() => null)
+      ]);
       if (!quote && !meta) continue;
 
       const result = {
+        ltp:        _y(meta?.regularMarketPrice || quote?.regularMarketPrice),
+        prevClose:  _y(meta?.chartPreviousClose || meta?.previousClose || quote?.regularMarketPreviousClose),
+        high:       _y(meta?.regularMarketDayHigh || quote?.regularMarketDayHigh),
+        low:        _y(meta?.regularMarketDayLow  || quote?.regularMarketDayLow),
+        volume:     _y(meta?.regularMarketVolume  || quote?.regularMarketVolume),
         week52High: _y(quote?.fiftyTwoWeekHigh || meta?.fiftyTwoWeekHigh),
         week52Low:  _y(quote?.fiftyTwoWeekLow  || meta?.fiftyTwoWeekLow),
         pe:         _y(quote?.trailingPE        || quote?.forwardPE),
@@ -211,8 +219,9 @@ async function getYahooFundamentals(nseSymbol, bseCode) {
         marketCap:  (quote?.marketCap || meta?.marketCap)
                       ? `₹${((quote?.marketCap || meta.marketCap) / 1e7).toFixed(0)} Cr`
                       : null,
+        companyName: meta?.longName || meta?.shortName || quote?.longName || null,
       };
-      if (result.week52High || result.week52Low || result.pe || result.eps) return result;
+      if (result.week52High || result.week52Low || result.ltp || result.pe || result.eps) return result;
     } catch (e) {
       console.error(`[Yahoo ${ticker}] error:`, e.message);
     }

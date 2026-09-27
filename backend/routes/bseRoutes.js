@@ -452,75 +452,75 @@ router.get('/company', async (req, res) => {
     const _f = (v) => { const n = parseFloat(String(v ?? '').replace(/,/g, '')); return isNaN(n) || n === 0 ? null : n; };
 
     // ── Live quote from getScripHeaderData ──────────────────────────────────
-    let quote = null;
-    if (quoteR.status === 'fulfilled') {
-      const d = quoteR.value;
-      const h = (d && typeof d === 'object')
-        ? (d.Header
-          || (Array.isArray(d.ScripHeaderData) && d.ScripHeaderData[0])
-          || (Array.isArray(d.Table) && d.Table[0])
-          || (Array.isArray(d) && d[0])
-          || d)
-        : {};
-      quote = {
-        ltp:        _f(h.LTP        || h.CurrRate  || h.CURRENT_VALUE),
-        prevClose:  _f(h.PrevClose  || h.Prevclose || h.PREV_CLOSE),
-        open:       _f(h.Open       || h.OPEN),
-        high:       _f(h.High       || h.HIGH),
-        low:        _f(h.Low        || h.LOW),
-        volume:     _f(h.TotalTradedQuantity || h.Volume || h.VOLUME),
-        week52High: _f(h.Wk52High   || h['52WH']      || h['52WeekHigh']  || h.WEEK52HIGH
-                    || h.High52     || h.YearHigh     || h.wkhi52         || h['52H']
-                    || h.FiftyTwoWeekHigh || h['52WHigh'] || h['52high']   || h.Hi52wk),
-        week52Low:  _f(h.Wk52Low    || h['52WL']      || h['52WeekLow']   || h.WEEK52LOW
-                    || h.Low52      || h.YearLow      || h.wklo52         || h['52L']
-                    || h.FiftyTwoWeekLow  || h['52WLow']  || h['52low']    || h.Lo52wk),
-        pe:         _f(h.PE         || h.PeRatio     || h.PERATIO         || h.TTM_PE     || h.pe),
-        eps:        _f(h.EPS        || h.Eps         || h.EPS_TTM         || h.eps),
-        faceValue:  _f(h.FaceValue  || h.FV          || h.FACE_VALUE      || h.Facevalue  || h.facevalue),
-        bookValue:  _f(h.BookValue  || h.BV          || h.BOOK_VALUE      || h.bv),
-        dividend:   _f(h.DividendYield || h.DivYield || h.DIV_YIELD       || h.divYield),
-        marketCap:  String(h.Mktcap || h.MktCap || h.MKTCAP || h.MarketCap || h.mktcap || '').replace(/,/g, '') || null,
-        sector:     h.Industry      || h.INDUSTRY    || h.Sector          || h.sector    || null,
-        companyName: h.CompanyName  || h.LongName    || h.scripname       || h.COMPANY   || null,
-      };
-    }
+    const d = (quoteR.status === 'fulfilled') ? quoteR.value : {};
+    const h = (d && typeof d === 'object')
+      ? (d.Header
+        || (Array.isArray(d.ScripHeaderData) && d.ScripHeaderData[0])
+        || (Array.isArray(d.Table) && d.Table[0])
+        || (Array.isArray(d) && d[0])
+        || d)
+      : {};
+    const curr = (d && typeof d === 'object') ? (d.CurrRate || {}) : {};
+    const cmp = (d && typeof d === 'object') ? (d.Cmpname || {}) : {};
+
+    let quote = {
+      ltp:        _f(curr.LTP || h.LTP || h.CurrRate || h.CURRENT_VALUE),
+      prevClose:  _f(h.PrevClose || h.Prevclose || h.PREV_CLOSE),
+      open:       _f(h.Open || h.OPEN),
+      high:       _f(h.High || h.HIGH),
+      low:        _f(h.Low || h.LOW),
+      volume:     _f(h.TotalTradedQuantity || h.Volume || h.VOLUME),
+      week52High: _f(h.Wk52High || h['52WH'] || h['52WeekHigh'] || h.WEEK52HIGH
+                  || h.High52 || h.YearHigh || h.wkhi52 || h['52H']
+                  || h.FiftyTwoWeekHigh || h['52WHigh'] || h['52high'] || h.Hi52wk),
+      week52Low:  _f(h.Wk52Low || h['52WL'] || h['52WeekLow'] || h.WEEK52LOW
+                  || h.Low52 || h.YearLow || h.wklo52 || h['52L']
+                  || h.FiftyTwoWeekLow || h['52WLow'] || h['52low'] || h.Lo52wk),
+      pe:         _f(h.PE || h.PeRatio || h.PERATIO || h.TTM_PE || h.pe),
+      eps:        _f(h.EPS || h.Eps || h.EPS_TTM || h.eps),
+      faceValue:  _f(h.FaceValue || h.FV || h.FACE_VALUE || h.Facevalue || h.facevalue),
+      bookValue:  _f(h.BookValue || h.BV || h.BOOK_VALUE || h.bv),
+      dividend:   _f(h.DividendYield || h.DivYield || h.DIV_YIELD || h.divYield),
+      marketCap:  String(h.Mktcap || h.MktCap || h.MKTCAP || h.MarketCap || h.mktcap || '').replace(/,/g, '') || null,
+      sector:     h.Industry || h.INDUSTRY || h.Sector || h.sector || null,
+      companyName: cmp.FullN || cmp.SeriesN || h.CompanyName || h.LongName || h.scripname || h.COMPANY || null,
+    };
 
     if (infoR.status === 'fulfilled') {
-      const d = infoR.value;
+      const id = infoR.value;
       let row = {};
-      if (Array.isArray(d) && d.length)                       row = d[0];
-      else if (d && Array.isArray(d.Table)  && d.Table.length)  row = d.Table[0];
-      else if (d && Array.isArray(d.Data)   && d.Data.length)   row = d.Data[0];
-      else if (d && typeof d === 'object' && !Array.isArray(d) && d.status !== 'fail') row = d;
+      if (Array.isArray(id) && id.length) row = id[0];
+      else if (id && Array.isArray(id.Table) && id.Table.length) row = id.Table[0];
+      else if (id && Array.isArray(id.Data) && id.Data.length) row = id.Data[0];
+      else if (id && typeof id === 'object' && !Array.isArray(id) && id.status !== 'fail') row = id;
       if (typeof row === 'string') { try { row = JSON.parse(row); } catch { row = {}; } }
       const rowKeys = Object.keys(row || {});
       if (rowKeys.length > 1) {
         const ficel = {
-          pe:         _f(row.PE         || row.PeRatio    || row.PERATIO   || row.PE_TTM  || row.pe),
-          eps:        _f(row.EPS        || row.Eps        || row.EPS_TTM   || row.eps),
-          faceValue:  _f(row.FaceValue  || row.FACE_VALUE || row.Facevalue || row.FV      || row.facevalue),
-          week52High: _f(row['52WH']    || row['52WeekHigh'] || row.WEEK52HIGH || row.High52 || row.YearHigh || row['52wkH'] || row.wkhi52 || row.Wk52High),
-          week52Low:  _f(row['52WL']    || row['52WeekLow']  || row.WEEK52LOW  || row.Low52  || row.YearLow  || row['52wkL'] || row.wklo52 || row.Wk52Low),
+          pe:         _f(row.PE || row.PeRatio || row.PERATIO || row.PE_TTM || row.pe),
+          eps:        _f(row.EPS || row.Eps || row.EPS_TTM || row.eps),
+          faceValue:  _f(row.FaceValue || row.FACE_VALUE || row.Facevalue || row.FV || row.facevalue),
+          week52High: _f(row['52WH'] || row['52WeekHigh'] || row.WEEK52HIGH || row.High52 || row.YearHigh || row['52wkH'] || row.wkhi52 || row.Wk52High),
+          week52Low:  _f(row['52WL'] || row['52WeekLow'] || row.WEEK52LOW || row.Low52 || row.YearLow || row['52wkL'] || row.wklo52 || row.Wk52Low),
           marketCap:  String(row.Mktcap || row.MktCap || row.MKTCAP || row.MarketCap || '').replace(/,/g, '') || null,
-          sector:     row.Industry      || row.INDUSTRY   || row.Sector    || row.sector  || null,
-          companyName: row.CompanyName  || row.COMPANY    || row.scripname || row.LongName || null,
-          bookValue:  _f(row.BookValue  || row.BOOK_VALUE || row.BV        || row.bv),
+          sector:     row.Industry || row.INDUSTRY || row.Sector || row.sector || null,
+          companyName: row.CompanyName || row.COMPANY || row.scripname || row.LongName || null,
+          bookValue:  _f(row.BookValue || row.BOOK_VALUE || row.BV || row.bv),
           dividend:   _f(row.DividendYield || row.DIVYIELD || row.DIV_YIELD || row.divYield),
         };
-        if (quote) {
-          Object.entries(ficel).forEach(([k, v]) => { if (v != null && v !== '') quote[k] = v; });
-        } else {
-          quote = ficel;
-        }
+        Object.entries(ficel).forEach(([k, v]) => { if (v != null && v !== '') quote[k] = v; });
       }
     }
 
+    let selfEquity = null;
+    let selfFaceValue = null;
     if (peerR.status === 'fulfilled') {
       const pd = peerR.value;
       const rows = pd?.Table || (Array.isArray(pd) ? pd : []);
       const self = rows.find((r) => String(r.scrip_cd) === String(code)) || rows[0];
       if (self) {
+        selfEquity = _f(self.Equity);
+        selfFaceValue = _f(self.FACE_VALUE);
         const peerFund = {
           pe:        _f(self.PE),
           eps:       _f(self.EPS),
@@ -547,26 +547,28 @@ router.get('/company', async (req, res) => {
           pat:     _f(r.PAT),
           faceValue: _f(r.FACE_VALUE),
         }));
-        if (quote) {
-          Object.entries(peerFund).forEach(([k, v]) => { if (v != null) quote[k] = v; });
-          quote.peers = peers;
-        } else {
-          quote = { ...peerFund, peers };
-        }
+        Object.entries(peerFund).forEach(([k, v]) => { if (v != null) quote[k] = v; });
+        quote.peers = peers;
       }
     }
 
     try {
       const yData = await getYahooFundamentals(symbol, code);
       if (yData) {
-        if (quote) {
-          Object.entries(yData).forEach(([k, v]) => { if (v != null) quote[k] = v; });
-        } else {
-          quote = yData;
-        }
+        Object.entries(yData).forEach(([k, v]) => {
+          if (v != null && (quote[k] == null || quote[k] === '')) {
+            quote[k] = v;
+          }
+        });
       }
     } catch (e) {
       console.error(`[Yahoo ${symbol || code}] error:`, e.message);
+    }
+
+    // Auto calculate Market Cap if not provided
+    if (!quote.marketCap && quote.ltp && selfEquity && selfFaceValue) {
+      const mCapCr = (selfEquity / selfFaceValue) * quote.ltp;
+      quote.marketCap = `₹${Math.round(mCapCr).toLocaleString('en-IN')} Cr`;
     }
 
     let financials = [];
@@ -574,13 +576,31 @@ router.get('/company', async (req, res) => {
       try {
         let raw = finR.value;
         if (typeof raw === 'string') raw = JSON.parse(raw);
-        const tab = raw?.TabResults_PAR || raw?.Table || [];
-        financials = (Array.isArray(tab) ? tab : []).map((r) => ({
-          quarter: r.PERIOD_TEXT || r.QUARTER || r.quarter || '',
-          revenue: _f(r.SALES    || r.REVENUE || r.revenue),
-          profit:  _f(r.NP       || r.PROFIT  || r.profit),
-          eps:     _f(r.EPS      || r.eps),
-        })).filter((r) => r.quarter);
+        
+        if (raw?.resultinCr && Array.isArray(raw.resultinCr)) {
+          const revRow = raw.resultinCr.find(r => /revenue|sales/i.test(r.title));
+          const patRow = raw.resultinCr.find(r => /net profit|pat/i.test(r.title));
+          const epsRow = raw.resultinCr.find(r => /^eps/i.test(r.title));
+          const quarters = [raw.col2, raw.col3, raw.col4].filter(Boolean);
+          
+          quarters.forEach((q, idx) => {
+            const vKey = `v${idx + 1}`;
+            financials.push({
+              quarter: q,
+              revenue: revRow ? _f(revRow[vKey]) : null,
+              profit:  patRow ? _f(patRow[vKey]) : null,
+              eps:     epsRow ? _f(epsRow[vKey]) : null,
+            });
+          });
+        } else {
+          const tab = raw?.TabResults_PAR || raw?.Table || [];
+          financials = (Array.isArray(tab) ? tab : []).map((r) => ({
+            quarter: r.PERIOD_TEXT || r.QUARTER || r.quarter || '',
+            revenue: _f(r.SALES    || r.REVENUE || r.revenue),
+            profit:  _f(r.NP       || r.PROFIT  || r.profit),
+            eps:     _f(r.EPS      || r.eps),
+          })).filter((r) => r.quarter);
+        }
       } catch (e) { console.error(`[BSE Financials ${code}]`, e.message); }
     }
 
