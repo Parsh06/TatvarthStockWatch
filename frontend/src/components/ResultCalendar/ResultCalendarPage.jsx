@@ -163,7 +163,15 @@ export default function ResultCalendarPage() {
       }
 
       const res = await apiClient(url)
-      const list = res?.data || (Array.isArray(res) ? res : [])
+      const rawList = res?.results || res?.data || (Array.isArray(res) ? res : [])
+      const list = rawList.map(item => ({
+        scripCode: String(item.scripCode || item.scrip_Code || item.SCRIP_CODE || '').trim(),
+        shortName: (item.shortName || item.short_name || item.SHORT_NAME || '').trim(),
+        companyName: (item.companyName || item.longName || item.Long_Name || item.short_name || item.shortName || '').trim(),
+        meetingDate: (item.meetingDate || item.meeting_date || item.MEETING_DATE || '').trim(),
+        url: item.url || item.URL || (item.scripCode || item.scrip_Code ? `https://www.bseindia.com/stock-share-price/-/-/${item.scripCode || item.scrip_Code}/` : '')
+      })).filter(i => i.scripCode || i.companyName)
+
       setResults(list)
       setLastUpdated(new Date())
     } catch (err) {

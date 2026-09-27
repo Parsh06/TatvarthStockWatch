@@ -1877,14 +1877,22 @@ router.get('/results-calendar', async (req, res) => {
       try { raw = JSON.parse(raw); } catch {}
     }
 
-    const list = Array.isArray(raw) ? raw : (raw?.Table || raw?.data || []);
-    const normalized = list.map(item => ({
-      scripCode: String(item.scrip_Code || item.scripCode || item.SCRIP_CODE || '').trim(),
-      shortName: (item.short_name || item.shortName || item.SHORT_NAME || '').trim(),
-      companyName: (item.Long_Name || item.longName || item.LONG_NAME || item.short_name || '').trim(),
-      meetingDate: (item.meeting_date || item.meetingDate || item.MEETING_DATE || '').trim(),
-      url: item.URL || item.url || (item.scrip_Code ? `https://www.bseindia.com/stock-share-price/-/-/${item.scrip_Code}/` : '')
-    })).filter(i => i.scripCode || i.companyName);
+    const list = Array.isArray(raw) ? raw : (raw?.Table || raw?.data || raw?.results || []);
+    const normalized = list.map(item => {
+      const scripCode = String(item.scrip_Code || item.scripCode || item.SCRIP_CODE || '').trim();
+      const shortName = (item.short_name || item.shortName || item.SHORT_NAME || '').trim();
+      const companyName = (item.Long_Name || item.longName || item.LONG_NAME || item.companyName || item.short_name || item.shortName || '').trim();
+      const meetingDate = (item.meeting_date || item.meetingDate || item.MEETING_DATE || '').trim();
+      const url = item.URL || item.url || (scripCode ? `https://www.bseindia.com/stock-share-price/-/-/${scripCode}/` : '');
+      return {
+        scripCode,
+        shortName,
+        companyName,
+        longName: companyName,
+        meetingDate,
+        url
+      };
+    }).filter(i => i.scripCode || i.companyName);
 
     _resultsCache.set(cacheKey, { data: normalized, exp: Date.now() + RESULTS_TTL });
 
@@ -1894,15 +1902,16 @@ router.get('/results-calendar', async (req, res) => {
       todate: todate || null,
       scripcode: scripcode || null,
       total: normalized.length,
+      results: normalized,
       data: normalized
     });
   } catch (err) {
     console.error('[BSE Results Calendar error]', err.message);
     const fallback = _resultsCache.get(cacheKey);
     if (fallback) {
-      return res.json({ success: true, total: fallback.data.length, data: fallback.data, cached: true, fallback: true });
+      return res.json({ success: true, total: fallback.data.length, results: fallback.data, data: fallback.data, cached: true, fallback: true });
     }
-    res.status(500).json({ success: false, error: err.message, data: [], total: 0 });
+    res.status(500).json({ success: false, error: err.message, data: [], results: [], total: 0 });
   }
 });
 
