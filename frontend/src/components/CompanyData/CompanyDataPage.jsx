@@ -4,7 +4,8 @@ import {
   Search, RefreshCw, AlertCircle, TrendingUp, TrendingDown,
   BarChart2, Users, Activity, Layers, Info, ChevronDown, ChevronUp,
   Star, Bell, CheckCircle2, Target, PieChart, Calendar, Percent,
-  ThumbsUp, ThumbsDown, Minus, Package, Briefcase,
+  ThumbsUp, ThumbsDown, Minus, Package, Briefcase, Newspaper, FileText,
+  ArrowUpRight, ArrowDownRight,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
@@ -347,6 +348,9 @@ export default function CompanyDataPage() {
   const hasCorpActions     = (companyData?.corporateActions?.length  ?? 0) > 0
   const hasAnalystTargets  = (companyData?.analystTargets?.length    ?? 0) > 0
   const hasQuoteData       = companyData?.quoteData != null
+  const hasPerformance     = (companyData?.performance?.rows?.length ?? 0) > 0
+  const hasCompanyNews     = (companyData?.companyNews?.length       ?? 0) > 0
+  const hasMarketDepth     = (companyData?.marketDepth?.bids?.length ?? 0) > 0 || (companyData?.marketDepth?.asks?.length ?? 0) > 0
 
   // Check if the currently-viewed company is already in the watchlist
   const inWatchlist = useMemo(() => {
@@ -1019,6 +1023,106 @@ export default function CompanyDataPage() {
             </Section>
           )}
 
+          {/* ── Price Performance vs Benchmark ── */}
+          {hasPerformance && (
+            <Section title={`Price Performance vs ${companyData.performance.benchmark || 'Sensex'}`} icon={TrendingUp} defaultOpen={true}>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap">Period</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap">Stock Return (%)</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap">Stock Chg (₹)</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap">Sensex Return (%)</th>
+                      {companyData.performance.rows.some(r => r.indexPct != null) && (
+                        <th className="text-right px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap">
+                          {companyData.performance.benchmark || 'Sector Index'} (%)
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {companyData.performance.rows.map((row, i) => {
+                      const stockUp = row.stockPct >= 0
+                      const sensexUp = row.sensexPct >= 0
+                      const indexUp = row.indexPct >= 0
+                      return (
+                        <tr key={i} className="border-b border-border/40 hover:bg-white/3 transition">
+                          <td className="px-3 py-2.5 text-textPrimary font-medium whitespace-nowrap">{row.duration}</td>
+                          <td className={clsx('px-3 py-2.5 text-right font-bold tabular-nums', stockUp ? 'text-emerald-400' : 'text-red-400')}>
+                            {row.stockPct != null ? `${stockUp ? '+' : ''}${fmt(row.stockPct)}%` : '—'}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-textMuted">
+                            {row.stockChange != null ? `₹${fmt(row.stockChange)}` : '—'}
+                          </td>
+                          <td className={clsx('px-3 py-2.5 text-right font-medium tabular-nums', sensexUp ? 'text-emerald-400/80' : 'text-red-400/80')}>
+                            {row.sensexPct != null ? `${sensexUp ? '+' : ''}${fmt(row.sensexPct)}%` : '—'}
+                          </td>
+                          {companyData.performance.rows.some(r => r.indexPct != null) && (
+                            <td className={clsx('px-3 py-2.5 text-right font-medium tabular-nums', indexUp ? 'text-blue-400' : 'text-amber-400')}>
+                              {row.indexPct != null ? `${indexUp ? '+' : ''}${fmt(row.indexPct)}%` : '—'}
+                            </td>
+                          )}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+          )}
+
+          {/* ── Market Depth (Order Book) ── */}
+          {hasMarketDepth && (
+            <Section title="Market Depth (Top 5 Bids &amp; Asks)" icon={Activity} defaultOpen={false}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Bids */}
+                <div className="bg-background border border-border/60 rounded-xl p-4">
+                  <div className="flex justify-between text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2 border-b border-border/50 pb-2">
+                    <span>Buy Quantity</span>
+                    <span>Bid Price (₹)</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {companyData.marketDepth.bids.map((b, i) => (
+                      <div key={i} className="flex justify-between items-center text-xs py-1 px-1.5 rounded hover:bg-emerald-500/5">
+                        <span className="text-textMuted font-mono">{b.qty != null ? Number(b.qty).toLocaleString('en-IN') : '—'}</span>
+                        <span className="font-bold text-emerald-400 font-mono">₹{fmt(b.price)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {companyData.marketDepth.totalBuyQty != null && (
+                    <div className="flex justify-between border-t border-border/50 pt-2 mt-2 text-xs font-semibold text-textPrimary">
+                      <span>Total Buy Quantity:</span>
+                      <span className="text-emerald-400 font-mono">{Number(companyData.marketDepth.totalBuyQty).toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Asks */}
+                <div className="bg-background border border-border/60 rounded-xl p-4">
+                  <div className="flex justify-between text-xs font-bold text-red-400 uppercase tracking-wider mb-2 border-b border-border/50 pb-2">
+                    <span>Ask Price (₹)</span>
+                    <span>Sell Quantity</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {companyData.marketDepth.asks.map((a, i) => (
+                      <div key={i} className="flex justify-between items-center text-xs py-1 px-1.5 rounded hover:bg-red-500/5">
+                        <span className="font-bold text-red-400 font-mono">₹{fmt(a.price)}</span>
+                        <span className="text-textMuted font-mono">{a.qty != null ? Number(a.qty).toLocaleString('en-IN') : '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {companyData.marketDepth.totalSellQty != null && (
+                    <div className="flex justify-between border-t border-border/50 pt-2 mt-2 text-xs font-semibold text-textPrimary">
+                      <span>Total Sell Quantity:</span>
+                      <span className="text-red-400 font-mono">{Number(companyData.marketDepth.totalSellQty).toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Section>
+          )}
+
           {/* ── Corporate Actions ── */}
           {hasCorpActions && (
             <Section title="Corporate Actions" icon={Calendar} defaultOpen={false}>
@@ -1029,10 +1133,12 @@ export default function CompanyDataPage() {
                   const isBonus    = purpose.includes('bonus')
                   const isSplit    = purpose.includes('split')
                   const isRights   = purpose.includes('right')
+                  const isBuyback  = purpose.includes('buy back') || purpose.includes('buyback')
                   const badgeColor = isDividend ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
                                    : isBonus    ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
                                    : isSplit    ? 'text-blue-400 bg-blue-500/10 border-blue-500/20'
                                    : isRights   ? 'text-violet-400 bg-violet-500/10 border-violet-500/20'
+                                   : isBuyback  ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20'
                                    :              'text-textMuted bg-white/5 border-border'
                   return (
                     <div key={i} className="flex items-center justify-between gap-3 px-3 py-2.5 bg-background border border-border/50 rounded-xl hover:border-border transition">
@@ -1052,12 +1158,45 @@ export default function CompanyDataPage() {
                           </span>
                         )}
                         <span className={clsx('text-[10px] font-semibold px-2 py-0.5 rounded-full border uppercase', badgeColor)}>
-                          {isDividend ? 'Dividend' : isBonus ? 'Bonus' : isSplit ? 'Split' : isRights ? 'Rights' : 'Action'}
+                          {isDividend ? 'Dividend' : isBonus ? 'Bonus' : isSplit ? 'Split' : isRights ? 'Rights' : isBuyback ? 'Buyback' : 'Action'}
                         </span>
                       </div>
                     </div>
                   )
                 })}
+              </div>
+            </Section>
+          )}
+
+          {/* ── Recent Announcements & Corporate News ── */}
+          {hasCompanyNews && (
+            <Section title="Recent Corporate Announcements &amp; News" icon={Newspaper} defaultOpen={true}>
+              <div className="space-y-2.5">
+                {companyData.companyNews.slice(0, 10).map((n, i) => (
+                  <div key={i} className="flex items-start justify-between gap-3 p-3.5 bg-background border border-border/50 rounded-xl hover:border-primary/40 transition">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <FileText className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-textPrimary leading-snug">{n.subject}</p>
+                        {n.date && (
+                          <p className="text-xs text-textMuted mt-1 flex items-center gap-1">
+                            <Calendar className="w-3 h-3" /> {n.date}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {n.id && (
+                      <a
+                        href={`https://www.bseindia.com/corporates/anndet_new.aspx?newsid=${n.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-primary font-semibold hover:underline flex-shrink-0 px-2.5 py-1 bg-primary/10 rounded-lg"
+                      >
+                        BSE Link <ArrowUpRight className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                ))}
               </div>
             </Section>
           )}

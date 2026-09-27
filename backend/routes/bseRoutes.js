@@ -287,11 +287,20 @@ router.get('/intradaychart', async (req, res) => {
   const code = sanitizeCode(req.query.code);
   if (!code) return res.status(400).json({ error: 'code required' });
   try {
-    const raw = await bseGet(
-      '/StockReachGraph/w',
-      { scripcode: code, flag: '0', fromdate: '', todate: '', seriesid: '' },
-      15000
-    );
+    let raw = null;
+    try {
+      raw = await bseGet(
+        '/StockReachGraphCas/w',
+        { scripcode: code, flag: '0', fromdate: '', todate: '', seriesid: '' },
+        12000
+      );
+    } catch {
+      raw = await bseGet(
+        '/StockReachGraph/w',
+        { scripcode: code, flag: '0', fromdate: '', todate: '', seriesid: '' },
+        12000
+      );
+    }
     if (!raw) return res.status(502).json({ error: 'no data' });
     let points = [];
     if (typeof raw.Data === 'string') {
@@ -306,7 +315,7 @@ router.get('/intradaychart', async (req, res) => {
       current:   parseFloat(raw.CurrVal)   || null,
       points: points.map((p) => ({
         t: p.dttm,
-        p: parseFloat(p.vale1) || null,
+        p: parseFloat(p.vale1 || p.vale0) || null,
         v: parseInt(p.vole, 10) || 0,
       })),
     });
@@ -436,7 +445,7 @@ router.get('/company', async (req, res) => {
     // Fetch BSE session cookies and Yahoo Finance fundamentals in parallel
     const cookies = await getBseCookies();
     const sessionHdr = cookies ? { Cookie: cookies } : {};
-    const [quoteR, infoR, peerR, finR, bulkR, shpR, holdR, corpR, targetR, quoteDataR] = await Promise.allSettled([
+    const [quoteR, infoR, peerR, finR, bulkR, shpR, holdR, corpR, corpAltR, targetR, quoteDataR, perfR, newsR, depthR] = await Promise.allSettled([
       bseGet(`/getScripHeaderData/w`, { Debtflag: '', scripcode: code, seriesid: '' }, 12000),
       bseGet(`/getScripDetails2/w`,     { scripcode: code }, 12000, sessionHdr),
       bseGet(`/EQPeerGp/w`,           { scripcomare: '', scripcode: code }, 12000),
@@ -444,9 +453,13 @@ router.get('/company', async (req, res) => {
       bseGet(`/TabResults_PAR/w`,     { scripcode: code, tabtype: 'BULK'    }, 15000),
       bseGet(`/TabResults_PAR/w`,     { scripcode: code, tabtype: 'SHP'     }, 15000),
       bseGet(`/getScripHolding/w`,    { scripcode: code }, 12000),
-      bseGet(`/DefaultData/w`, { scripcode: code, Fdate: '', Purposecode: '', TDate: '', ddlcategorys: 'E', ddlindustrys: '', segment: 0, strSearch: 'D' }, 12000),
+      bseGet(`/TabResults_PAR/w`,     { scripcode: code, tabtype: 'CA'      }, 15000),
+      bseGet(`/DefaultData/w`,        { scripcode: code, Fdate: '', Purposecode: '', TDate: '', ddlcategorys: 'E', ddlindustrys: '', segment: 0, strSearch: 'D' }, 12000),
       bseGet(`/getScripTarget/w`,     { scripcode: code }, 12000),
       bseGet(`/getQuoteData/w`,       { scripcode: code, seriesid: 'EQ' }, 12000),
+      bseGet(`/PriceGainLoss_New/w`,  { scripcode: code }, 12000),
+      bseGet(`/TabResults_PAR/w`,     { scripcode: code, tabtype: 'NEWS'    }, 15000),
+      bseGet(`/MarketDepth/w`,        { flag: '', quotetype: 'EQ', scripcode: code }, 10000),
     ]);
 
     const _f = (v) => { const n = parseFloat(String(v ?? '').replace(/,/g, '')); return isNaN(n) || n === 0 ? null : n; };
@@ -721,7 +734,23 @@ router.get('/company', async (req, res) => {
     let corporateActions = [];
     if (corpR.status === 'fulfilled') {
       try {
-        const raw  = corpR.value;
+        let raw = corpR.value;
+        if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch {} }
+        const tab = Array.isArray(raw) ? raw : (raw?.TabResults_PAR || raw?.Table || []);
+        if (Array.isArray(tab) && tab.length > 0) {
+          corporateActions = tab.map((r) => ({
+            exDate:  (r.Exdate || r.Ex_date || r.ExDate || r.EX_DATE || r.ex_date || '').slice(0, 10),
+            recDate: (r.RD_Date || r.RecordDate || r.REC_DATE || r.record_date || '').slice(0, 10),
+            purpose: (r.Purpose || r.PURPOSE || r.action || r.Action || r.SubjectHeading || '').trim(),
+            remarks: (r.Remarks || r.REMARKS || r.Purpose || '').trim(),
+          })).filter((r) => r.purpose || r.remarks);
+        }
+      } catch (e) { console.error(`[BSE CorpActions Tab CA ${code}]`, e.message); }
+    }
+
+    if (corporateActions.length === 0 && corpAltR.status === 'fulfilled') {
+      try {
+        const raw  = corpAltR.value;
         const rows = raw?.Table || raw?.Table1 || raw?.Corp_AnnGetData || (Array.isArray(raw) ? raw : []);
         corporateActions = rows.map((r) => ({
           exDate:  (r.Ex_date || r.ExDate || r.EX_DATE || r.ex_date || r.EXDATE || '').slice(0, 10),
@@ -731,7 +760,7 @@ router.get('/company', async (req, res) => {
           bcStart: (r.ND_START_DATE || r.BCStartDate || r.BC_START || r.BCSTART || '').slice(0, 10),
           bcEnd:   (r.ND_END_DATE || r.BCEndDate || r.BC_END || r.BCEND || '').slice(0, 10),
         })).filter((r) => r.purpose || r.remarks);
-      } catch (e) { console.error(`[BSE CorpActions ${code}]`, e.message); }
+      } catch (e) { console.error(`[BSE CorpActions Alt ${code}]`, e.message); }
     }
 
     let analystTargets = [];
@@ -780,7 +809,86 @@ router.get('/company', async (req, res) => {
       } catch (e) { console.error(`[BSE QuoteData ${code}]`, e.message); }
     }
 
-    res.json({ code, quote, financials, bulkDeals, shareholding, holding, corporateActions, analystTargets, quoteData });
+    let performance = null;
+    if (perfR.status === 'fulfilled') {
+      try {
+        const raw = perfR.value;
+        const data = raw?.Data || (Array.isArray(raw) ? raw : []);
+        const headers = raw?.Headers?.[0] || {};
+        const benchmarkName = headers.Index_name_1 || 'Sensex';
+        if (Array.isArray(data) && data.length > 0) {
+          performance = {
+            benchmark: benchmarkName,
+            rows: data.map(r => ({
+              duration: r.Duration,
+              stockChange: _f(r.AbsoluteChg),
+              stockPct: _f(r.change_percent),
+              sensexChange: _f(r.SensexChg),
+              sensexPct: _f(r.SensexPerc),
+              indexPct: _f(r.IndexPerc || r.Index_name_1),
+              indexCode: r.IndexCode || ''
+            }))
+          };
+        }
+      } catch (e) { console.error(`[BSE Perf ${code}]`, e.message); }
+    }
+
+    let companyNews = [];
+    if (newsR.status === 'fulfilled') {
+      try {
+        let raw = newsR.value;
+        if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch {} }
+        const rows = Array.isArray(raw) ? raw : (raw?.TabResults_PAR || raw?.Table || []);
+        if (Array.isArray(rows)) {
+          companyNews = rows.map(r => ({
+            id: r.Newsid || r.NEWSID || '',
+            subject: r.NewsSubj || r.NEWSSUB || r.Subject || r.HEADLINE || '',
+            date: r.Newsdt || r.NEWSDT || r.DT_TM || '',
+          })).filter(r => r.subject);
+        }
+      } catch (e) { console.error(`[BSE News ${code}]`, e.message); }
+    }
+
+    let marketDepth = null;
+    if (depthR.status === 'fulfilled') {
+      try {
+        const raw = depthR.value;
+        if (raw && typeof raw === 'object') {
+          const bids = [];
+          const asks = [];
+          for (let i = 1; i <= 5; i++) {
+            const bp = _f(raw[`BPrice${i}`]);
+            const bq = _f(raw[`BQty${i}`]);
+            const sp = _f(raw[`SPrice${i}`]);
+            const sq = _f(raw[`SQty${i}`]);
+            if (bp != null || bq != null) bids.push({ price: bp, qty: bq });
+            if (sp != null || sq != null) asks.push({ price: sp, qty: sq });
+          }
+          marketDepth = {
+            bids,
+            asks,
+            totalBuyQty: _f(raw.TotalBQty),
+            totalSellQty: _f(raw.TotalSQty),
+            date: raw.dttm || '',
+          };
+        }
+      } catch (e) { console.error(`[BSE MarketDepth ${code}]`, e.message); }
+    }
+
+    res.json({
+      code,
+      quote,
+      financials,
+      bulkDeals,
+      shareholding,
+      holding,
+      corporateActions,
+      analystTargets,
+      quoteData,
+      performance,
+      companyNews,
+      marketDepth
+    });
   } catch (e) {
     console.error('[BSE Company]', e.message);
     res.status(500).json({ error: e.message });
