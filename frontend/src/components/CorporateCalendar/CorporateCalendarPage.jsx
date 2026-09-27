@@ -4,11 +4,10 @@ import {
   Calendar, RefreshCw, Filter, Search, X, Building2, ChevronDown, Info
 } from 'lucide-react'
 import clsx from 'clsx'
+import { apiClient } from '../../services/apiClient'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 import PageTransition from '../Common/PageTransition'
 import Loader from '../Common/Loader'
-
-const BACKEND = import.meta.env.VITE_BACKEND_URL || ''
 
 // ── Category definitions ────────────────────────────────────────────────────
 const CATS = [
@@ -179,9 +178,9 @@ export default function CorporateCalendarPage() {
     setLoading(true); setError(null)
     try {
       const qs = `from=${toYYYYMMDD(fromDate)}&to=${toYYYYMMDD(toDate)}${bust ? '&bust=1' : ''}`
-      const data = await fetch(`${BACKEND}/api/bse/calendar?${qs}`).then(r => r.json())
-      if (data.error) throw new Error(data.error)
-      setEvents(data.events || [])
+      const data = await apiClient(`/api/bse/calendar?${qs}`)
+      if (data?.error) throw new Error(data.error)
+      setEvents(data?.events || [])
       setFetchedAt(new Date())
     } catch (e) {
       setError(e.message)

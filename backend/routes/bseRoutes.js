@@ -1297,8 +1297,15 @@ router.get('/calendar', async (req, res) => {
 // ── OPEN: BSE Insider Trading CSV Download ─────────────────────────────────
 router.get('/insider/download', async (req, res) => {
   const code = sanitizeCode(req.query.code || '');
-  const from = req.query.from || ''; // YYYYMMDD or empty
-  const to   = req.query.to   || ''; // YYYYMMDD or empty
+  const from = req.query.from || ''; // YYYYMMDD, DD/MM/YYYY or empty
+  const to   = req.query.to   || ''; // YYYYMMDD, DD/MM/YYYY or empty
+
+  const toDDMMYYYY = (dStr) => {
+    if (!dStr) return '';
+    if (dStr.includes('/')) return dStr;
+    if (dStr.length === 8) return `${dStr.slice(6,8)}/${dStr.slice(4,6)}/${dStr.slice(0,4)}`;
+    return dStr;
+  };
 
   try {
     const cookies = await getBseCookies();
@@ -1308,8 +1315,8 @@ router.get('/insider/download', async (req, res) => {
     let csvData = await bseGet('/Corp_Regulation_DownloadCSV_ng/w', {
       scripCode: code,
       Regulation: '',
-      fromDT: from,
-      ToDate: to,
+      fromDT: toDDMMYYYY(from),
+      ToDate: toDDMMYYYY(to),
       Isdefault: isDefaultParam,
     }, 20000, sessionHdr);
 
@@ -1342,10 +1349,17 @@ router.get('/insider/download', async (req, res) => {
 // ── OPEN: BSE Insider Trading ────────────────────────────────────────────────
 router.get('/insider', async (req, res) => {
   const code = sanitizeCode(req.query.code || '');
-  const from = req.query.from || ''; // YYYYMMDD or empty
-  const to   = req.query.to   || ''; // YYYYMMDD or empty
+  const from = req.query.from || ''; // YYYYMMDD, DD/MM/YYYY or empty
+  const to   = req.query.to   || ''; // YYYYMMDD, DD/MM/YYYY or empty
   
   res.setHeader('Cache-Control', 'no-store');
+
+  const toDDMMYYYY = (dStr) => {
+    if (!dStr) return '';
+    if (dStr.includes('/')) return dStr;
+    if (dStr.length === 8) return `${dStr.slice(6,8)}/${dStr.slice(4,6)}/${dStr.slice(0,4)}`;
+    return dStr;
+  };
 
   try {
     const cookies = await getBseCookies();
@@ -1356,8 +1370,8 @@ router.get('/insider', async (req, res) => {
     let raw = await bseGet('/getCorp_Regulation_ng/w', {
       scripCode: code,
       Regulation: '',
-      fromDT: from,
-      ToDate: to,
+      fromDT: toDDMMYYYY(from),
+      ToDate: toDDMMYYYY(to),
       Isdefault: isDefaultParam,
     }, 15000, sessionHdr);
     

@@ -37,7 +37,7 @@ function StatCard({ label, value, sub, color = 'text-textPrimary', icon: Icon, i
 
 export default function AGMUpdatesPage() {
   const [fromDate, setFromDate] = useState(today())
-  const [toDate, setToDate] = useState(today())
+  const [toDate, setToDate] = useState(nextMonth())
   const [searchQuery, setSearchQuery] = useState('')
   const [showWatchlistOnly, setShowWatchlistOnly] = useState(false)
   
@@ -54,15 +54,16 @@ export default function AGMUpdatesPage() {
     try {
       // 1. Format dates from YYYY-MM-DD to YYYYMMDD
       const formatApiDate = (d) => {
-        const [y, m, day] = d.split('-')
-        return `${y}${m}${day}`
+        if (!d) return ''
+        return d.replace(/-/g, '')
       }
 
       // 2. Fetch Board Meetings / AGM
       const url = `/api/bse/agm-updates?fromDT=${formatApiDate(fromDate)}&ToDt=${formatApiDate(toDate)}`
       const data = await apiClient(url)
-      const fetchedAgms = (data?.Table || [])
-        .filter(m => m.scrip_code && m.scrip_code !== '-')
+      const rawList = data?.Table || data?.Corp_fetch_BoardMeeting_Table1 || (Array.isArray(data) ? data : [])
+      const fetchedAgms = rawList
+        .filter(m => (m.scrip_code || m.ScripCode) && (m.scrip_code || m.ScripCode) !== '-')
       setAgms(fetchedAgms)
     } catch (err) {
       console.error(err)

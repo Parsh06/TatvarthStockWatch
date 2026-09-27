@@ -7,50 +7,46 @@ const YAHOO_QUERY1 = process.env.YAHOO_QUERY1 || 'https://query1.finance.yahoo.c
 const YAHOO_QUERY2 = process.env.YAHOO_QUERY2 || 'https://query2.finance.yahoo.com';
 const YAHOO_FC     = process.env.YAHOO_FC     || 'https://fc.yahoo.com';
 
-// ── Shared BSE native HTTPS helper ───────────────────────────────────────────
+const axios = require('axios');
 const zlib = require('zlib');
 
 const _bseHeaders = {
-  'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
   'Accept':          'application/json, text/plain, */*',
   'Accept-Language': 'en-US,en;q=0.9',
-  'Accept-Encoding': 'identity',
   'Referer':         `${BSE_BASE_URL}/`,
   'Origin':          BSE_BASE_URL,
   'Sec-Fetch-Dest':  'empty',
   'Sec-Fetch-Mode':  'cors',
   'Sec-Fetch-Site':  'same-site',
+  'sec-ch-ua':       '"Microsoft Edge";v="133", "Not_A Brand";v="8", "Chromium";v="133"',
+  'sec-ch-ua-mobile': '?0',
+  'sec-ch-ua-platform': '"Windows"',
 };
 
 let _bseCookieStr = '';
 let _bseCookieExpiry = 0;
 
-function _refreshBseCookies() {
-  return new Promise((resolve) => {
-    const req = https.request({
-      hostname: new URL(BSE_BASE_URL).hostname,
-      port: 443,
-      path: '/',
-      method: 'GET',
+async function _refreshBseCookies() {
+  try {
+    const resp = await axios.get(BSE_BASE_URL, {
       headers: {
         'User-Agent':      _bseHeaders['User-Agent'],
         'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
-        'Connection':      'keep-alive',
       },
+      timeout: 8000,
       insecureHTTPParser: true,
-    }, (resp) => {
-      const raw = resp.headers['set-cookie'] || [];
-      const str = raw.map((c) => c.split(';')[0]).join('; ');
-      _bseCookieStr = str;
-      _bseCookieExpiry = Date.now() + 25 * 60 * 1000;
-      resp.resume();
-      resolve(str);
     });
-    req.on('error', (e) => { console.error('[BSE Cookies] fetch failed:', e.message); resolve(''); });
-    req.setTimeout(8000, () => { req.destroy(); resolve(''); });
-    req.end();
-  });
+    const raw = resp.headers['set-cookie'] || [];
+    const str = raw.map((c) => c.split(';')[0]).join('; ');
+    _bseCookieStr = str;
+    _bseCookieExpiry = Date.now() + 25 * 60 * 1000;
+    return str;
+  } catch (e) {
+    console.error('[BSE Cookies] fetch failed:', e.message);
+    return '';
+  }
 }
 
 async function getBseCookies() {
@@ -58,50 +54,18 @@ async function getBseCookies() {
   return _refreshBseCookies();
 }
 
-function bseGet(url, params = {}, timeoutMs = 12000, extraHeaders = {}) {
+async function bseGet(url, params = {}, timeoutMs = 12000, extraHeaders = {}) {
   // If a path is passed instead of full URL, prepend base
   if (url.startsWith('/')) url = `${BSE_API_BASE}${url}`;
   
-  return new Promise((resolve, reject) => {
-    const u = new URL(url);
-    Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, String(v)));
-    let settled = false;
-    const finish = (fn) => { if (!settled) { settled = true; clearTimeout(timer); fn(); } };
-    const req = https.request({
-      hostname: u.hostname,
-      port: 443,
-      path: u.pathname + u.search,
-      method: 'GET',
-      headers: { ..._bseHeaders, ...extraHeaders },
-      insecureHTTPParser: true,
-    }, (resp) => {
-      const chunks = [];
-      resp.on('data', (c) => chunks.push(c));
-      resp.on('end',  () => finish(() => {
-        const rawBuf = Buffer.concat(chunks);
-        const encoding = resp.headers['content-encoding'];
-
-        const parseAndResolve = (buf) => {
-          const body = buf.toString('utf8');
-          try { resolve(JSON.parse(body)); } catch { resolve(body); }
-        };
-
-        if (encoding === 'gzip' || encoding === 'deflate') {
-          zlib.unzip(rawBuf, (err, decompressed) => {
-            if (!err && decompressed) parseAndResolve(decompressed);
-            else parseAndResolve(rawBuf);
-          });
-        } else {
-          parseAndResolve(rawBuf);
-        }
-      }));
-    });
-    const timer = setTimeout(() => finish(() => {
-      req.destroy(new Error(`BSE timeout ${timeoutMs}ms — ${u.pathname}`));
-    }), timeoutMs);
-    req.on('error', (e) => finish(() => reject(e)));
-    req.end();
+  const headers = { ..._bseHeaders, ...extraHeaders };
+  const resp = await axios.get(url, {
+    params,
+    headers,
+    timeout: timeoutMs,
+    insecureHTTPParser: true,
   });
+  return resp.data;
 }
 
 // ── Yahoo Finance helpers ─────────────────────────────────────────────────────

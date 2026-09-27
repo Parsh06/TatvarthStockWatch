@@ -27,16 +27,21 @@ function getFormattedDates() {
   const pastWeek = new Date(now);
   pastWeek.setDate(now.getDate() - 14); // 14 days back
 
+  const futureMonth = new Date(now);
+  futureMonth.setDate(now.getDate() + 30); // 30 days ahead
+
   const dd = (d) => String(d.getDate()).padStart(2, '0');
   const mm = (d) => String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = (d) => d.getFullYear();
 
   return {
-    todayDDMMYYYY: `${dd(now)}/${mm(now)}/${yyyy(now)}`,
-    pastDDMMYYYY:  `${dd(pastWeek)}/${mm(pastWeek)}/${yyyy(pastWeek)}`,
+    todayDDMMYYYY:  `${dd(now)}/${mm(now)}/${yyyy(now)}`,
+    pastDDMMYYYY:   `${dd(pastWeek)}/${mm(pastWeek)}/${yyyy(pastWeek)}`,
+    futureDDMMYYYY: `${dd(futureMonth)}/${mm(futureMonth)}/${yyyy(futureMonth)}`,
 
-    todayYYYYMMDD: `${yyyy(now)}${mm(now)}${dd(now)}`,
-    pastYYYYMMDD:  `${yyyy(pastWeek)}${mm(pastWeek)}${dd(pastWeek)}`,
+    todayYYYYMMDD:  `${yyyy(now)}${mm(now)}${dd(now)}`,
+    pastYYYYMMDD:   `${yyyy(pastWeek)}${mm(pastWeek)}${dd(pastWeek)}`,
+    futureYYYYMMDD: `${yyyy(futureMonth)}${mm(futureMonth)}${dd(futureMonth)}`,
   };
 }
 
@@ -143,8 +148,8 @@ async function fetchMarketMovers() {
   const sessionHdr = cookies ? { Cookie: cookies } : {};
 
   const [gainersRes, losersRes] = await Promise.allSettled([
-    bseGet('/MktRGainerLoserDataeqto/w', { GLtype: 'gainer', IndxGrp: 'AllMkt', IndxGrpval: 'AllMkt', orderby: 'all' }, 4_500, sessionHdr),
-    bseGet('/MktRGainerLoserDataeqto/w', { GLtype: 'loser', IndxGrp: 'AllMkt', IndxGrpval: 'AllMkt', orderby: 'all' }, 4_500, sessionHdr),
+    bseGet('/MktRGainerLoserDataeqto/w', { GLtype: 'gainer', IndxGrp: 'AllMkt', IndxGrpval: 'AllMkt', orderby: 'all' }, 8_000, sessionHdr),
+    bseGet('/MktRGainerLoserDataeqto/w', { GLtype: 'loser', IndxGrp: 'AllMkt', IndxGrpval: 'AllMkt', orderby: 'all' }, 8_000, sessionHdr),
   ]);
 
   function parseMovers(res) {
@@ -226,7 +231,7 @@ async function fetchIpo() {
   return result;
 }
 
-/** 5. Today's Board Meetings */
+/** 5. Upcoming & Today's Board Meetings */
 async function fetchBoardMeetings() {
   const CACHE_KEY = 'dashboard:todays_board_meetings';
   const cached = fromCache(CACHE_KEY, 5 * 60_000);
@@ -236,20 +241,20 @@ async function fetchBoardMeetings() {
   const cookies = await getBseCookies();
   const sessionHdr = cookies ? { Cookie: cookies } : {};
 
-  // Fetch for TODAY specifically
+  // Fetch for upcoming 30 days so dashboard displays upcoming scheduled board meetings
   const raw = await bseGet(
     '/Corp_Fetch_BoardMeeting_With_Filter_ng/w',
     {
       SCRIPCODE: '',
       fromDT: dates.todayDDMMYYYY,
-      ToDt: dates.todayDDMMYYYY,
+      ToDt: dates.futureDDMMYYYY,
       purposeCode: '',
       IsCanRev: '0',
       FLAGDUR: '0',
       ISUBGROUP_CODE: ' ',
       LnFlag: 'en'
     },
-    4_500,
+    8_000,
     sessionHdr
   );
 
@@ -261,7 +266,7 @@ async function fetchBoardMeetings() {
   const items = list.slice(0, 5).map(r => ({
     company: (r.Long_Name || r.SHORT_NAME || r.SLONGNAME || r.scripname || r.companyName || '').trim(),
     bseCode: String(r.scrip_code || r.SCRIP_CD || r.scripcode || '').trim(),
-    date:    (r.MEETING_DATE || r.MEETING_BOARD_DATE || r.BOARD_DATE || 'Today').trim(),
+    date:    (r.MEETING_DATE || r.MEETING_BOARD_DATE || r.BOARD_DATE || 'Upcoming').trim(),
     purpose: (r.PURPOSE_NAME || r.PURPOSE || r.purpose || '').trim(),
     type:    'BOARD',
   })).filter(i => i.company);
@@ -270,7 +275,7 @@ async function fetchBoardMeetings() {
   return items;
 }
 
-/** 6. Today's AGMs */
+/** 6. Upcoming & Today's AGMs */
 async function fetchAgms() {
   const CACHE_KEY = 'dashboard:todays_agms';
   const cached = fromCache(CACHE_KEY, 5 * 60_000);
@@ -280,30 +285,34 @@ async function fetchAgms() {
   const cookies = await getBseCookies();
   const sessionHdr = cookies ? { Cookie: cookies } : {};
 
-  // Fetch for TODAY specifically
+  // Fetch for next 30 days
   const raw = await bseGet(
-    '/GetForthBoardMeeting/w',
+    '/Corp_Fetch_BoardMeeting_With_Filter_ng/w',
     {
       SCRIPCODE: '',
-      fromDT: dates.todayYYYYMMDD,
-      ToDt: dates.todayYYYYMMDD,
+      fromDT: dates.todayDDMMYYYY,
+      ToDt: dates.futureDDMMYYYY,
       purposeCode: '',
-      IsCanRev: '',
-      IsSubCode: ''
+      IsCanRev: '0',
+      FLAGDUR: '0',
+      ISUBGROUP_CODE: ' ',
+      LnFlag: 'en'
     },
-    4_500,
+    8_000,
     sessionHdr
   );
 
   let list = [];
   if (raw && typeof raw === 'object') {
-    list = raw.Table || raw.Table1 || (Array.isArray(raw) ? raw : []);
+    const all = raw.Corp_fetch_BoardMeeting_Table1 || raw.Table || (Array.isArray(raw) ? raw : []);
+    list = all.filter(r => (r.PURPOSE_NAME || '').toLowerCase().includes('agm') || (r.PURPOSE_NAME || '').toLowerCase().includes('annual general') || (r.PURPOSE_NAME || '').toLowerCase().includes('general'));
+    if (!list.length) list = all.slice(0, 5);
   }
 
   const items = list.slice(0, 5).map(r => ({
-    company: (r.Long_Name || r.Short_name || r.SLONGNAME || r.companyName || '').trim(),
+    company: (r.Long_Name || r.SHORT_NAME || r.Short_name || r.SLONGNAME || r.companyName || '').trim(),
     bseCode: String(r.scrip_code || r.SCRIP_CD || r.scripcode || '').trim(),
-    date:    (r.MEETING_DATE || r.BOARD_DATE || r.date || 'Today').trim(),
+    date:    (r.MEETING_DATE || r.MEETING_BOARD_DATE || r.BOARD_DATE || 'Upcoming').trim(),
     purpose: (r.PURPOSE_NAME || r.PURPOSE || r.purpose || '').trim(),
     type:    'AGM',
   })).filter(i => i.company);
@@ -318,8 +327,8 @@ async function fetchVolumeSpurts() {
   const cached = fromCache(CACHE_KEY, 45_000);
   if (cached) return cached;
 
-  await ensureSpurtPoller();
-  let snapshot = getLatestSpurt();
+  const { getOrFetchSpurt } = require('../lib/spurtStore');
+  const snapshot = await getOrFetchSpurt();
 
   const list = snapshot?.stocks || [];
   const items = list.slice(0, 5).map(s => ({
