@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const cheerio = require('cheerio');
-const { bseGet, getBseCookies, getYahooFundamentals, getYahooHistory, sanitizeCode } = require('../lib/apiClients');
+const { bseGet, getBseCookies, getYahooFundamentals, getYahooHistory, getYahooIndices, sanitizeCode } = require('../lib/apiClients');
+const { getNseGainersLosers } = require('../services/nseService');
 
 // ── In-memory caches for calendar and movers ─────────────────────────────────
 const _calCache   = new Map(); // key: `${from}|${to}|${cat}`, val: { data, exp }
@@ -129,14 +130,57 @@ router.get('/movers', async (req, res) => {
       bseGet('/MktRGainerLoserDataeqto/w',
         { GLtype: 'loser', IndxGrp: 'AllMkt', IndxGrpval: 'AllMkt', orderby: 'all' }, 12000, sessionHdr),
     ]);
-    const gainers = parseMovers(grR);
-    const losers  = parseMovers(lrR);
+    let gainers = parseMovers(grR);
+    let losers  = parseMovers(lrR);
+
+    // Fallback: If BSE returns empty or 403, fallback to NSE movers
+    if (gainers.length === 0 || losers.length === 0) {
+      try {
+        const [nseG, nseL] = await Promise.allSettled([
+          getNseGainersLosers('gainer', 'allSec'),
+          getNseGainersLosers('loser', 'allSec')
+        ]);
+        if (gainers.length === 0 && nseG.status === 'fulfilled' && Array.isArray(nseG.value?.data)) {
+          gainers = nseG.value.data.map(i => ({
+            bseCode: i.symbol,
+            company: i.symbol,
+            symbol: i.symbol,
+            ltp: i.ltp,
+            change: i.percentChange ? +((i.ltp * i.percentChange / 100).toFixed(2)) : 0,
+            pctChange: i.percentChange,
+            volume: i.volume,
+            rawUrl: `https://www.nseindia.com/get-quotes/equity?symbol=${encodeURIComponent(i.symbol)}`
+          }));
+        }
+        if (losers.length === 0 && nseL.status === 'fulfilled' && Array.isArray(nseL.value?.data)) {
+          losers = nseL.value.data.map(i => ({
+            bseCode: i.symbol,
+            company: i.symbol,
+            symbol: i.symbol,
+            ltp: i.ltp,
+            change: i.percentChange ? +((i.ltp * i.percentChange / 100).toFixed(2)) : 0,
+            pctChange: i.percentChange,
+            volume: i.volume,
+            rawUrl: `https://www.nseindia.com/get-quotes/equity?symbol=${encodeURIComponent(i.symbol)}`
+          }));
+        }
+      } catch (err) {
+        console.warn('[BSE Movers Fallback to NSE Error]', err.message);
+      }
+    }
+
     _moversCache    = { gainers, losers, fetchedAt: new Date().toISOString() };
     _moversCacheExp = Date.now() + MOVERS_TTL;
     res.json({ gainers: gainers.slice(0, limit), losers: losers.slice(0, limit), fetchedAt: _moversCache.fetchedAt, cached: false });
   } catch (e) {
     console.error('[BSE Movers]', e.message);
-    res.status(500).json({ error: e.message });
+    // Return cached or empty array instead of 500
+    res.json({
+      gainers: _moversCache?.gainers?.slice(0, limit) || [],
+      losers: _moversCache?.losers?.slice(0, limit) || [],
+      fetchedAt: _moversCache?.fetchedAt || new Date().toISOString(),
+      cached: true
+    });
   }
 });
 
@@ -303,18 +347,26 @@ router.get('/historical-table', async (req, res) => {
   }
 });
 
-// ── OPEN: BSE Indices (GetSensexDatanew/w) ─────────────────────────────────
+// ── OPEN: BSE Indices (GetSensexDatanew/w with Yahoo fallback) ─────────────
 router.get('/indices', async (req, res) => {
   try {
-    let raw = await bseGet('https://api.bseindia.com/RealTimeBseIndiaAPI/api/GetSensexDatanew/w');
-    if (typeof raw === 'string') {
-      try { raw = JSON.parse(raw); } catch (e) { raw = []; }
+    let raw = null;
+    try {
+      raw = await bseGet('https://api.bseindia.com/RealTimeBseIndiaAPI/api/GetSensexDatanew/w', {}, 5000);
+      if (typeof raw === 'string') {
+        try { raw = JSON.parse(raw); } catch { raw = []; }
+      }
+    } catch { raw = []; }
+
+    let list = Array.isArray(raw) ? raw : (Array.isArray(raw?.Table) ? raw.Table : []);
+    if (!list.length) {
+      list = await getYahooIndices();
     }
-    if (!Array.isArray(raw)) raw = [];
-    res.json(raw);
+    res.json(list);
   } catch (e) {
     console.error('[Indices Error]', e.message);
-    res.status(500).json({ error: e.message });
+    const fallback = await getYahooIndices().catch(() => []);
+    res.json(fallback);
   }
 });
 
@@ -1104,17 +1156,48 @@ router.get('/gainers-losers', verifyToken, async (req, res) => {
     const cookies = await getBseCookies();
     const sessionHdr = cookies ? { Cookie: cookies } : {};
 
-    const data = await bseGet(
-      '/MktRGainerLoserDataeqto/w',
-      params,
-      15000,
-      sessionHdr
-    );
+    let data = null;
+    try {
+      data = await bseGet(
+        '/MktRGainerLoserDataeqto/w',
+        params,
+        15000,
+        sessionHdr
+      );
+    } catch (err) {
+      console.warn('[BSE Gainers/Losers primary error]', err.message);
+    }
     
-    res.json(data);
+    let table = data?.Table || (Array.isArray(data) ? data : []);
+    
+    // Fallback: If BSE API returns 403 or empty, fetch from NSE and map to BSE Table format
+    if (table.length === 0) {
+      try {
+        const nseType = GLtype === 'loser' ? 'loser' : 'gainer';
+        const nseResult = await getNseGainersLosers(nseType, 'allSec');
+        const nseRows = nseResult?.data || [];
+        if (nseRows.length > 0) {
+          table = nseRows.map(r => ({
+            scrip_cd: r.symbol,
+            LONG_NAME: r.symbol,
+            scripname: r.symbol,
+            scrip_grp: 'A',
+            ltradert: r.ltp,
+            change_val: r.percentChange ? +((r.ltp * r.percentChange / 100).toFixed(2)) : 0,
+            change_percent: r.percentChange,
+            trd_vol: r.volume,
+            URL: `https://www.nseindia.com/get-quotes/equity?symbol=${encodeURIComponent(r.symbol)}`
+          }));
+        }
+      } catch (nseErr) {
+        console.warn('[BSE Gainers/Losers NSE fallback error]', nseErr.message);
+      }
+    }
+
+    res.json({ Table: table });
   } catch (e) {
     console.error('[BSE Gainers/Losers]', e.message);
-    res.status(500).json({ error: e.message });
+    res.json({ Table: [] });
   }
 });
 

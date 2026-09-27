@@ -264,6 +264,47 @@ async function getYahooHistory(nseSymbol, bseCode, range = '1M') {
   return null;
 }
 
+async function getYahooIndices() {
+  try {
+    const indicesList = [
+      { name: 'S&P BSE SENSEX', symbol: '%5EBSESN' },
+      { name: 'NIFTY 50', symbol: '%5ENSEI' },
+      { name: 'NIFTY BANK', symbol: '%5ENSEBANK' },
+    ];
+
+    const results = await Promise.allSettled(
+      indicesList.map(async (idx) => {
+        const res = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/${idx.symbol}?interval=1d&range=1d`, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+          timeout: 6000
+        });
+        const meta = res.data?.chart?.result?.[0]?.meta;
+        if (!meta) throw new Error('No meta');
+        const value = meta.regularMarketPrice || 0;
+        const prev = meta.chartPreviousClose || value;
+        const change = +(value - prev).toFixed(2);
+        const changePercent = prev ? +((change / prev) * 100).toFixed(2) : 0;
+        return {
+          name: idx.name,
+          value,
+          change,
+          changePercent,
+          indxnm: idx.name,
+          ltp: value,
+          chg: change,
+          perchg: changePercent
+        };
+      })
+    );
+
+    const items = results.filter(r => r.status === 'fulfilled' && r.value?.value > 0).map(r => r.value);
+    return items;
+  } catch (e) {
+    console.warn('[Yahoo Indices Error]:', e.message);
+    return [];
+  }
+}
+
 function sanitizeCode(raw) {
   return String(raw || '').trim().replace(/[^0-9A-Za-z]/g, '').slice(0, 20);
 }
@@ -278,5 +319,6 @@ module.exports = {
   getBseCookies,
   getYahooFundamentals,
   getYahooHistory,
+  getYahooIndices,
   sanitizeCode
 };
