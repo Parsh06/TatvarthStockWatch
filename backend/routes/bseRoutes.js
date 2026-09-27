@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const axios = require('axios');
+const cheerio = require('cheerio');
 const { bseGet, getBseCookies, getYahooFundamentals, getYahooHistory, sanitizeCode } = require('../lib/apiClients');
 
 // ── In-memory caches for calendar and movers ─────────────────────────────────
@@ -10,6 +12,80 @@ const QUOTE_TTL   = 5 * 60 * 1000;
 let   _moversCache    = null;
 let   _moversCacheExp = 0;
 const MOVERS_TTL  = 5 * 60 * 1000;  // 5 min
+
+async function scrapeBseBoardMeetingsAspx() {
+  try {
+    const res = await axios.get('https://beta.bseindia.com/corporates/board_meeting.aspx?expandable=0', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': 'https://www.bseindia.com/'
+      },
+      timeout: 12000
+    });
+    const $ = cheerio.load(res.data);
+    const rows = [];
+    $('#ContentPlaceHolder1_gvData tr').each((i, el) => {
+      const tds = $(el).find('td');
+      if (tds.length >= 5) {
+        const href = $(tds[1]).find('a').attr('href') || '';
+        rows.push({
+          scrip_code: $(tds[0]).text().trim(),
+          SHORT_NAME: $(tds[1]).text().trim(),
+          Long_Name: $(tds[1]).text().trim(),
+          Industry_name: $(tds[2]).text().trim(),
+          PURPOSE_NAME: $(tds[3]).text().trim(),
+          MEETING_DATE: $(tds[4]).text().trim(),
+          MEETING_BOARD_DATE: $(tds[4]).text().trim(),
+          URL: href ? (href.startsWith('http') ? href : 'https://www.bseindia.com/corporates/' + href) : ''
+        });
+      }
+    });
+    return rows;
+  } catch (e) {
+    console.warn('[Scrape Board Meetings ASPX Fallback Error]', e.message);
+    return [];
+  }
+}
+
+async function scrapeBseBulkDealsAspx() {
+  try {
+    const res = await axios.get('https://beta.bseindia.com/markets/equity/EQReports/bulk_deals.aspx?expandable=3', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': 'https://www.bseindia.com/'
+      },
+      timeout: 12000
+    });
+    const $ = cheerio.load(res.data);
+    const rows = [];
+    $('#ContentPlaceHolder1_gvbulk_deals tr').each((i, el) => {
+      const tds = $(el).find('td');
+      if (tds.length >= 7) {
+        const qty = parseFloat($(tds[5]).text().replace(/,/g, '')) || null;
+        const price = parseFloat($(tds[6]).text().replace(/,/g, '')) || null;
+        const txCode = $(tds[4]).text().trim();
+        rows.push({
+          dealType: 'Bulk',
+          dealDate: $(tds[0]).text().trim(),
+          bseCode: $(tds[1]).text().trim(),
+          scripname: $(tds[2]).text().trim(),
+          clientName: $(tds[3]).text().trim(),
+          transactionType: txCode === 'P' || txCode === 'B' ? 'Buy' : 'Sell',
+          transactionCode: txCode,
+          quantity: qty,
+          price: price,
+          valueCr: qty && price ? Math.round(qty * price / 1e5) / 100 : null
+        });
+      }
+    });
+    return rows;
+  } catch (e) {
+    console.warn('[Scrape Bulk Deals ASPX Fallback Error]', e.message);
+    return [];
+  }
+}
 
 module.exports = function(verifyToken) {
 
@@ -32,22 +108,26 @@ router.get('/movers', async (req, res) => {
     if (r.status !== 'fulfilled' || !r.value) return [];
     const rows = r.value?.Table || r.value?.Table1 || r.value?.Data || (Array.isArray(r.value) ? r.value : []);
     return rows.map((i) => ({
-      bseCode:   String(i.SCRIP_CODE  || i.scripcode   || i.ScripCode  || '').trim(),
-      company:   (i.SCRIP_NAME  || i.scripname    || i.ScripName  || i.CompanyName || '').trim(),
-      symbol:    (i.NSE_SYMBOL  || i.nseSymbol    || i.Symbol     || '').trim(),
-      ltp:       _f(i.LTP        || i.ltp          || i.CURRENT_VALUE),
-      change:    _f(i.NET_CHANGE || i.NetChange    || i.change     || i.NETCHANGE),
-      pctChange: _f(i.PERCENT_CHG|| i.PercentChg   || i.PctChg     || i.PERCHANGE  || i.perChange),
-      volume:    parseInt(String(i.VOLUME || i.volume || i.TotalTradedQuantity || '0').replace(/,/g,''), 10) || null,
+      bseCode:   String(i.scrip_cd || i.SCRIP_CODE || i.scripcode || i.ScripCode || '').trim(),
+      company:   (i.LONG_NAME || i.scripname || i.SCRIP_NAME || i.ScripName || i.CompanyName || '').trim(),
+      symbol:    (i.scripname || i.NSE_SYMBOL || i.nseSymbol || i.Symbol || '').trim(),
+      ltp:       _f(i.ltradert || i.LTP || i.ltp || i.CURRENT_VALUE),
+      change:    _f(i.change_val || i.NET_CHANGE || i.NetChange || i.change || i.NETCHANGE),
+      pctChange: _f(i.change_percent || i.PERCENT_CHG || i.PercentChg || i.PctChg || i.PERCHANGE || i.perChange),
+      volume:    parseInt(String(i.trd_vol || i.VOLUME || i.volume || i.TotalTradedQuantity || '0').replace(/,/g,''), 10) || null,
+      rawUrl:    i.URL || i.NSUrl || '',
     })).filter((m) => m.bseCode && m.ltp != null);
   }
 
   try {
+    const cookies = await getBseCookies();
+    const sessionHdr = cookies ? { Cookie: cookies } : {};
+
     const [grR, lrR] = await Promise.allSettled([
-      bseGet('https://api.bseindia.com/BseIndiaAPI/api/GetTopGainerLoser/w',
-        { Type: 'gainer', CategoryName: 'equity', IndexName: '' }, 12000),
-      bseGet('https://api.bseindia.com/BseIndiaAPI/api/GetTopGainerLoser/w',
-        { Type: 'loser',  CategoryName: 'equity', IndexName: '' }, 12000),
+      bseGet('/MktRGainerLoserDataeqto/w',
+        { GLtype: 'gainer', IndxGrp: 'AllMkt', IndxGrpval: 'AllMkt', orderby: 'all' }, 12000, sessionHdr),
+      bseGet('/MktRGainerLoserDataeqto/w',
+        { GLtype: 'loser', IndxGrp: 'AllMkt', IndxGrpval: 'AllMkt', orderby: 'all' }, 12000, sessionHdr),
     ]);
     const gainers = parseMovers(grR);
     const losers  = parseMovers(lrR);
@@ -65,10 +145,27 @@ router.get('/search', async (req, res) => {
   const q = (req.query.q || '').trim();
   if (!q || q.length < 2) return res.json([]);
   try {
-    const items = await bseGet(
-      '/GetQuoteAllSearchDatabeta/w',
-      { searchString: q }, 10000
-    );
+    let items = null;
+    try {
+      items = await bseGet(
+        '/GetQuoteAllSearchDatabeta/w',
+        { searchString: q }, 10000
+      );
+    } catch {
+      items = null;
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      try {
+        items = await bseGet(
+          'https://api.bseindia.com/MSource/1D/GetQuoteAllSearchDatabeta.aspx',
+          { searchString: q }, 10000
+        );
+      } catch {
+        items = [];
+      }
+    }
+
     if (!Array.isArray(items)) return res.json([]);
     res.json(items.map((i) => ({
       bseCode:   (i.strSricpCode || '').trim(),
@@ -629,14 +726,24 @@ router.get('/deals', async (req, res) => {
     const types     = dealType === 'both' ? [1, 2] : [Number(dealType)];
     const typeLabel = { 1: 'Bulk', 2: 'Block' };
     const allDeals  = [];
+    const cookies   = await getBseCookies();
+    const sessionHdr = cookies ? { Cookie: cookies } : {};
 
     for (const dt of types) {
-      const data = await bseGet(
-        '/BulkDealData_ng/w',
-        { DealType: dt, sc_code: '', FDate: fmtDate(from), TDate: fmtDate(toDate) },
-        15000
-      );
-      const items = (data && Array.isArray(data.Table)) ? data.Table : [];
+      let items = [];
+      try {
+        const data = await bseGet(
+          '/BulkDealData_ng/w',
+          { DealType: dt, sc_code: '', FDate: fmtDate(from), TDate: fmtDate(toDate) },
+          15000,
+          sessionHdr
+        );
+        items = (data && Array.isArray(data.Table)) ? data.Table : [];
+      } catch (err) {
+        console.warn(`[BSE Deals API dt=${dt}]`, err.message);
+        items = [];
+      }
+
       for (const i of items) {
         const qty   = i.QUANTITY != null ? Number(i.QUANTITY) : null;
         const price = i.PRICE    != null ? Number(i.PRICE)    : null;
@@ -646,12 +753,24 @@ router.get('/deals', async (req, res) => {
           bseCode:         String(i.SCRIP_CODE || '').trim(),
           scripname:       (i.scripname    || i.SCRIP_NAME || '').trim(),
           clientName:      (i.CLIENT_NAME  || '').trim(),
-          transactionType: i.TRANSACTION_TYPE === 'P' ? 'Buy' : i.TRANSACTION_TYPE === 'S' ? 'Sell' : (i.TRANSACTION_TYPE || ''),
+          transactionType: i.TRANSACTION_TYPE === 'P' || i.TRANSACTION_TYPE === 'B' ? 'Buy' : i.TRANSACTION_TYPE === 'S' ? 'Sell' : (i.TRANSACTION_TYPE || ''),
           transactionCode: (i.TRANSACTION_TYPE || '').trim(),
           quantity:        qty,
           price:           price,
           valueCr:         qty && price ? Math.round(qty * price / 1e5) / 100 : null,
         });
+      }
+    }
+
+    // If API returned 0 deals, try scraping ASPX page as fallback
+    if (allDeals.length === 0) {
+      try {
+        const aspxDeals = await scrapeBseBulkDealsAspx();
+        if (aspxDeals.length > 0) {
+          allDeals.push(...aspxDeals);
+        }
+      } catch (err) {
+        console.warn('[BSE Deals ASPX Fallback Error]', err.message);
       }
     }
 
@@ -797,10 +916,13 @@ router.get('/agm-updates', verifyToken, async (req, res) => {
   nextMonth.setMonth(nextMonth.getMonth() + 1);
   let defaultTo = getYYYYMMDD(nextMonth);
 
+  const fromVal = fromDT || defaultFrom;
+  const toVal = ToDt || defaultTo;
+
   const params = {
     SCRIPCODE: '',
-    fromDT: fromDT || defaultFrom,
-    ToDt: ToDt || defaultTo,
+    fromDT: fromVal,
+    ToDt: toVal,
     purposeCode: '',
     IsCanRev: '',
     IsSubCode: ''
@@ -810,19 +932,61 @@ router.get('/agm-updates', verifyToken, async (req, res) => {
     const cookies = await getBseCookies();
     const sessionHdr = cookies ? { Cookie: cookies } : {};
 
-    const data = await bseGet(
-      '/GetForthBoardMeeting/w',
-      params,
-      15000,
-      sessionHdr
-    );
-    
-    // Parse result correctly
-    if (typeof data === 'string' && data.trim() === '') {
-      return res.json({ Table: [] });
+    let data = null;
+    try {
+      data = await bseGet(
+        '/GetForthBoardMeeting/w',
+        params,
+        15000,
+        sessionHdr
+      );
+    } catch (err) {
+      console.warn('[BSE AGMUpdates GetForthBoardMeeting error]', err.message);
     }
     
-    res.json(data);
+    let table = data?.Table || (Array.isArray(data) ? data : []);
+
+    // Fallback if empty: Try Corp_Fetch_BoardMeeting_With_Filter_ng/w
+    if (table.length === 0) {
+      try {
+        const toDDMMYYYY = (dStr) => {
+          if (!dStr || dStr.length !== 8) return '';
+          return `${dStr.slice(6,8)}/${dStr.slice(4,6)}/${dStr.slice(0,4)}`;
+        };
+        const altData = await bseGet(
+          '/Corp_Fetch_BoardMeeting_With_Filter_ng/w',
+          {
+            SCRIPCODE: '',
+            fromDT: toDDMMYYYY(fromVal),
+            ToDt: toDDMMYYYY(toVal),
+            purposeCode: '',
+            IsCanRev: '0',
+            FLAGDUR: '0',
+            ISUBGROUP_CODE: ' ',
+            LnFlag: 'en'
+          },
+          15000,
+          sessionHdr
+        );
+        const altRows = altData?.Corp_fetch_BoardMeeting_Table1 || [];
+        if (altRows.length > 0) {
+          table = altRows.map(r => ({
+            scrip_code: r.scrip_code || '',
+            Short_name: r.SHORT_NAME || r.scripname || '',
+            Long_Name: r.Long_Name || r.SHORT_NAME || '',
+            Industry_name: r.Industry_name || '',
+            PURPOSE_NAME: r.PURPOSE_NAME || '',
+            MEETING_DATE: r.MEETING_DATE || '',
+            URL: r.URL || '',
+            DT_TM: r.DT_TM || ''
+          }));
+        }
+      } catch (err) {
+        console.warn('[BSE AGMUpdates Fallback error]', err.message);
+      }
+    }
+
+    res.json({ Table: table });
   } catch (e) {
     console.error(`[BSE AGMUpdates]`, e.message);
     res.status(500).json({ error: e.message });
@@ -840,10 +1004,13 @@ router.get('/board-meetings', verifyToken, async (req, res) => {
   const yyyy = today.getFullYear();
   const defaultDate = `${dd}/${mm}/${yyyy}`;
 
+  const fromVal = fromDT || defaultDate;
+  const toVal = ToDt || defaultDate;
+
   const params = {
     SCRIPCODE: '',
-    fromDT: fromDT || defaultDate,
-    ToDt: ToDt || defaultDate,
+    fromDT: fromVal,
+    ToDt: toVal,
     purposeCode: '',
     IsCanRev: '0',
     FLAGDUR: '0',
@@ -855,19 +1022,67 @@ router.get('/board-meetings', verifyToken, async (req, res) => {
     const cookies = await getBseCookies();
     const sessionHdr = cookies ? { Cookie: cookies } : {};
 
-    const data = await bseGet(
-      '/Corp_Fetch_BoardMeeting_With_Filter_ng/w',
-      params,
-      15000,
-      sessionHdr
-    );
-    
-    // Sometimes it returns a string if it fails to parse, or an object with Corp_fetch_BoardMeeting_Table1
-    if (typeof data === 'string' && data.trim() === '') {
-      return res.json({ Corp_fetch_BoardMeeting_Table1: [] });
+    let data = null;
+    try {
+      data = await bseGet(
+        '/Corp_Fetch_BoardMeeting_With_Filter_ng/w',
+        params,
+        15000,
+        sessionHdr
+      );
+    } catch (err) {
+      console.warn('[BSE Board Meetings API error]', err.message);
     }
     
-    res.json(data);
+    let list = (data && Array.isArray(data.Corp_fetch_BoardMeeting_Table1)) ? data.Corp_fetch_BoardMeeting_Table1 : [];
+
+    // Fallback 1: Try GetForthBoardMeeting/w with YYYYMMDD dates
+    if (list.length === 0) {
+      try {
+        const toYYYYMMDD = (dStr) => {
+          if (!dStr) return '';
+          const parts = dStr.split('/');
+          if (parts.length === 3) return `${parts[2]}${parts[1]}${parts[0]}`;
+          return dStr.replace(/[^0-9]/g, '');
+        };
+        const altData = await bseGet(
+          '/GetForthBoardMeeting/w',
+          { SCRIPCODE: '', fromDT: toYYYYMMDD(fromVal), ToDt: toYYYYMMDD(toVal), purposeCode: '', IsCanRev: '', IsSubCode: '' },
+          15000,
+          sessionHdr
+        );
+        const altRows = altData?.Table || (Array.isArray(altData) ? altData : []);
+        if (altRows.length > 0) {
+          list = altRows.map(r => ({
+            scrip_code: String(r.scrip_code || r.ScripCode || ''),
+            SHORT_NAME: r.Short_name || r.SHORT_NAME || r.scripname || '',
+            Long_Name: r.Long_Name || r.LongName || r.SHORT_NAME || '',
+            Industry_name: r.Industry_name || r.Industry || '',
+            PURPOSE_NAME: r.PURPOSE_NAME || r.Purpose || '',
+            MEETING_DATE: r.MEETING_DATE || r.MeetingDate || '',
+            MEETING_BOARD_DATE: r.MEETING_BOARD_DATE || r.MEETING_DATE || '',
+            URL: r.URL || (r.scrip_code ? `https://www.bseindia.com/stock-share-price/${r.scrip_code}/` : ''),
+            DT_TM: r.DT_TM || ''
+          }));
+        }
+      } catch (err) {
+        console.warn('[BSE Board Meetings Fallback 1 error]', err.message);
+      }
+    }
+
+    // Fallback 2: Try ASPX scraping
+    if (list.length === 0) {
+      try {
+        const aspxRows = await scrapeBseBoardMeetingsAspx();
+        if (aspxRows.length > 0) {
+          list = aspxRows;
+        }
+      } catch (err) {
+        console.warn('[BSE Board Meetings ASPX fallback error]', err.message);
+      }
+    }
+
+    res.json({ Corp_fetch_BoardMeeting_Table1: list });
   } catch (e) {
     console.error('[BSE Board Meetings]', e.message);
     res.status(500).json({ error: e.message });
