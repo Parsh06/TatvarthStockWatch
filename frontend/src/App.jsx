@@ -10,6 +10,7 @@ import AnnouncementsPage from './components/Announcements/AnnouncementsPage'
 import AllAnnouncementsPage from './components/AllAnnouncements/AllAnnouncementsPage'
 import BoardMeetingsPage from './components/BoardMeetings/BoardMeetingsPage'
 import AGMUpdatesPage from './components/AGMUpdates/AGMUpdatesPage'
+import ResultCalendarPage from './components/ResultCalendar/ResultCalendarPage'
 import IPOGmpPage from './components/IPO/IPOGmpPage'
 import IpoVerificationPage from './components/IpoVerification/IpoVerificationPage'
 import OFSPage from './components/OFS/OFSPage'
@@ -112,6 +113,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <AGMUpdatesPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/result-calendar"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <ResultCalendarPage />
             </AppLayout>
           </ProtectedRoute>
         }

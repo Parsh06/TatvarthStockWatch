@@ -225,6 +225,7 @@ stockwatch/
         │   │   └── Topbar.jsx         ← Top navigation bar
         │   ├── News/                  ← Market news feed
         │   ├── Portfolio/             ← Family portfolio management
+        │   ├── ResultCalendar/        ← Forthcoming financial results calendar
         │   ├── SecurityGuard/         ← Client-side security
         │   ├── Settings/              ← User preferences
         │   ├── VolumeSpurt/           ← Volume spurt tracker
@@ -277,6 +278,7 @@ stockwatch/
 | `/all-announcements` | `AllAnnouncementsPage` | 🔒 | All market announcements + AI |
 | `/board-meetings` | `BoardMeetingsPage` | 🔒 | Board meeting tracker |
 | `/agm-updates` | `AGMUpdatesPage` | 🔒 | AGM tracking |
+| `/result-calendar` | `ResultCalendarPage` | 🔒 | Forthcoming financial results calendar |
 | `/ipo-gmp` | `IPOGmpPage` | 🔒 | IPO Grey Market Premium |
 | `/ofs` | `OFSPage` | 🔒 | OFS Live Tracker & Bid Book |
 | `/ipo-check` | `IpoVerificationPage` | 🔒 | IPO allotment verification |
@@ -667,7 +669,8 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 | 2026-09-27 | Dashboard & Market Pages Comprehensive Live Data Resolution: Refactored `bseGet` in `apiClients.js` to use Axios with modern browser headers (`sec-ch-ua`, `Referer`, `Origin`, `insecureHTTPParser`) solving Akamai 403 blocks. Fixed `AGMUpdatesPage.jsx` `toDate` state defaulting to `nextMonth()` instead of `today()`. Switched `CorporateCalendarPage.jsx` from raw `fetch` to `apiClient`. Standardized `DD/MM/YYYY` date formatting for `getCorp_Regulation_ng/w` insider trading endpoints. Enhanced `dashboardService.js` with fallback to upcoming meetings on non-trading days and on-demand spurt snapshot resolution. All dashboard widgets (indices, movers, spurts, meetings, AGMs, IPOs, deals) verified 100% operational | `backend/lib/apiClients.js`, `backend/routes/bseRoutes.js`, `backend/services/dashboardService.js`, `frontend/src/components/AGMUpdates/AGMUpdatesPage.jsx`, `frontend/src/components/CorporateCalendar/CorporateCalendarPage.jsx` |
 | 2026-09-27 | Multi-Provider Fallbacks for Search, Calendar, AGMs & Insider Trading: Integrated MoneyControl autosuggest API as secondary fallback for `/api/bse/search` (guaranteeing instant suggestions for partial queries like `naba`, `nab`, `na`, `tata`, `reliance`). Added ASPX Cheerio scraping fallback for `/api/bse/calendar` (populating 40+ upcoming events even on weekends/403 blocks) and `/api/bse/agm-updates` (returning 1200+ forth meetings). Hardened `/api/bse/insider` and `/api/bse/insider/download` with in-memory TTL caching and zero-500 fail-safe returns | `backend/routes/bseRoutes.js` |
 | 2026-09-27 | Company Data Resolution (Live OHLC, Fundamentals, Financials & Shareholding): Fixed `/api/bse/company` parser to extract LTP from `CurrRate.LTP`, OHLC from `Header`, and company name from `Cmpname.FullN`. Restructured `TabResults_PAR/w?tabtype=RESULTS` parsing to handle `resultinCr` format (`Revenue`, `Net Profit`, `EPS`). Added dynamic Market Cap calculation (`(Equity / FaceValue) * LTP`), merged `peerFund` fields (P/E, EPS, Cash EPS, OPM, NPM, RONW, Face Value), and mapped `TabResults_PAR/w?tabtype=SHP` into `holding` breakdown | `backend/routes/bseRoutes.js`, `backend/lib/apiClients.js` |
-| 2026-09-27 | Company Data Full Suite Integration (Performance, News, Market Depth, Corporate Actions): Added `PriceGainLoss_New/w` for multi-timeframe return comparison (1W to 10Y vs Sensex and Sector Index), `TabResults_PAR/w?tabtype=NEWS` for real-time company announcements with BSE links, `MarketDepth/w` for Top 5 Bids and Asks order book, `TabResults_PAR/w?tabtype=CA` for reliable dividend/split/bonus history, and `StockReachGraphCas/w` with `vale0`/`vale1` support for intraday charts. Enhanced `CompanyDataPage.jsx` with dedicated interactive cards | `backend/routes/bseRoutes.js`, `frontend/src/components/CompanyData/CompanyDataPage.jsx` |
+| 2026-09-27 | Result Calendar Page & BSE Forthcoming Results Proxy: Implemented `/result-calendar` page and `GET /api/bse/results-calendar` endpoint backed by BSE `Corpforthresults/w` API. Features default forthcoming results query, custom and preset date range filtering (Today, Next 7 Days, Next 30 Days), real-time company/code search, watchlist filtering, stat cards, sorting, status badges (Today, Tomorrow, Relative days), links to Company Data and BSE, responsive table and mobile views, and 1-click Excel export (`.xlsx`). Added navigation items to Sidebar and mobile bottom navbar right after AGM Updates | `backend/routes/bseRoutes.js`, `frontend/src/components/ResultCalendar/ResultCalendarPage.jsx` (new), `frontend/src/App.jsx`, `frontend/src/components/Layout/Sidebar.jsx`, `frontend/src/components/Layout/AppLayout.jsx`, `frontend/src/components/Common/CommandPalette.jsx` |
+
 
 ---
 

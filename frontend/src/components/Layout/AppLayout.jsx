@@ -6,7 +6,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Star, Bell, Settings, TrendingUp, Briefcase,
   BarChart2, Search, CalendarDays, Globe, Newspaper, Layers, BellRing, Eye,
-  LogOut, Crown, Presentation, Zap, Users, Rocket, FileCheck2, Building2
+  LogOut, Crown, Presentation, Zap, Users, Rocket, FileCheck2, Building2, CalendarCheck
 } from 'lucide-react'
 import GlobalSearch from '../Common/GlobalSearch'
 import clsx from 'clsx'
@@ -22,6 +22,7 @@ const mobileNav = [
   { to: '/all-announcements', icon: Globe,           label: 'All News'  },
   { to: '/board-meetings',    icon: Presentation,    label: 'Meetings'  },
   { to: '/agm-updates',       icon: Users,           label: 'AGMs'      },
+  { to: '/result-calendar',   icon: CalendarCheck,   label: 'Results'   },
   { to: '/ipo-gmp',           icon: Rocket,          label: 'IPO GMP'   },
   { to: '/ipo-check',          icon: FileCheck2,      label: 'IPO Check' },
   { to: '/ofs',               icon: Building2,       label: 'OFS Tracker'},

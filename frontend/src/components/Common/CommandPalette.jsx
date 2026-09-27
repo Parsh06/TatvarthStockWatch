@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Command, X, ArrowRight, Activity, TrendingUp, Calendar, LayoutDashboard } from 'lucide-react'
+import { Search, Command, X, ArrowRight, Activity, TrendingUp, Calendar, LayoutDashboard, CalendarCheck } from 'lucide-react'
 import clsx from 'clsx'
 import { motion, AnimatePresence } from 'framer-motion'
 import { searchBSEScripts } from '../../services/announcementService'
@@ -8,6 +8,7 @@ import { searchBSEScripts } from '../../services/announcementService'
 const QUICK_LINKS = [
   { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
   { label: 'Watchlist', to: '/watchlist', icon: Activity },
+  { label: 'Result Calendar', to: '/result-calendar', icon: CalendarCheck },
   { label: 'Gainers & Losers', to: '/gainers-losers', icon: TrendingUp },
   { label: 'Corporate Calendar', to: '/calendar', icon: Calendar },
 ]

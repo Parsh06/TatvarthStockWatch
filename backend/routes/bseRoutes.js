@@ -1144,6 +1144,49 @@ router.get('/companynews', async (req, res) => {
 });
 
 
+// ── OPEN: BSE Forthcoming Financial Results Calendar ─────────────────────────
+router.get('/results-calendar', async (req, res) => {
+  const { fromdate, todate, scripcode = '' } = req.query;
+  
+  const toYYYYMMDD = (dStr) => {
+    if (!dStr) return '';
+    const clean = dStr.trim();
+    if (/^\d{8}$/.test(clean)) return clean;
+    const parts = clean.split(/[-/]/);
+    if (parts.length === 3) {
+      if (parts[0].length === 4) return `${parts[0]}${parts[1].padStart(2, '0')}${parts[2].padStart(2, '0')}`;
+      return `${parts[2]}${parts[1].padStart(2, '0')}${parts[0].padStart(2, '0')}`;
+    }
+    return clean.replace(/[^0-9]/g, '');
+  };
+
+  const params = {};
+  if (fromdate || todate) {
+    params.fromdate = toYYYYMMDD(fromdate);
+    params.todate = toYYYYMMDD(todate);
+    params.scripcode = scripcode;
+  } else if (scripcode) {
+    params.scripcode = scripcode;
+  }
+
+  try {
+    const raw = await bseGet('/Corpforthresults/w', params, 15000);
+    const rows = Array.isArray(raw) ? raw : (raw?.Table || raw?.data || []);
+    const normalized = rows.map((r) => ({
+      scripCode: String(r.scrip_Code || r.scrip_code || r.ScripCode || ''),
+      shortName: (r.short_name || r.Short_Name || r.SHORT_NAME || r.scripname || '').trim(),
+      longName: (r.Long_Name || r.long_name || r.LongName || r.company_name || r.short_name || '').trim(),
+      meetingDate: (r.meeting_date || r.Meeting_Date || r.MEETING_DATE || '').trim(),
+      url: r.URL || (r.scrip_Code ? `https://www.bseindia.com/stock-share-price/${r.scrip_Code}/` : '')
+    })).filter(r => r.shortName || r.longName || r.scripCode);
+
+    res.json({ results: normalized, total: normalized.length });
+  } catch (e) {
+    console.error('[BSE ResultsCalendar]', e.message);
+    res.status(500).json({ error: e.message, results: [], total: 0 });
+  }
+});
+
 router.get('/agm-updates', verifyToken, async (req, res) => {
   const { fromDT, ToDt } = req.query;
   
@@ -1800,6 +1843,66 @@ router.get('/announcements/proxy', async (req, res) => {
   } catch (e) {
     console.error('[BSE Announcements Proxy]', e.message);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ── OPEN: BSE Forthcoming Results Calendar ─────────────────────────────────────
+const _resultsCache = new Map();
+const RESULTS_TTL = 15 * 60 * 1000; // 15 min
+
+router.get('/results-calendar', async (req, res) => {
+  const { fromdate, todate, scripcode, refresh } = req.query;
+  const cacheKey = `${fromdate || ''}_${todate || ''}_${scripcode || ''}`;
+  
+  if (refresh !== 'true') {
+    const cached = _resultsCache.get(cacheKey);
+    if (cached && Date.now() < cached.exp) {
+      return res.json({ success: true, total: cached.data.length, data: cached.data, cached: true });
+    }
+  }
+
+  try {
+    let raw;
+    if (fromdate || todate || scripcode) {
+      raw = await bseGet('/Corpforthresults/w', {
+        fromdate: fromdate ? String(fromdate).replace(/-/g, '') : '',
+        scripcode: scripcode || '',
+        todate: todate ? String(todate).replace(/-/g, '') : '',
+      });
+    } else {
+      raw = await bseGet('/Corpforthresults/w');
+    }
+
+    if (typeof raw === 'string') {
+      try { raw = JSON.parse(raw); } catch {}
+    }
+
+    const list = Array.isArray(raw) ? raw : (raw?.Table || raw?.data || []);
+    const normalized = list.map(item => ({
+      scripCode: String(item.scrip_Code || item.scripCode || item.SCRIP_CODE || '').trim(),
+      shortName: (item.short_name || item.shortName || item.SHORT_NAME || '').trim(),
+      companyName: (item.Long_Name || item.longName || item.LONG_NAME || item.short_name || '').trim(),
+      meetingDate: (item.meeting_date || item.meetingDate || item.MEETING_DATE || '').trim(),
+      url: item.URL || item.url || (item.scrip_Code ? `https://www.bseindia.com/stock-share-price/-/-/${item.scrip_Code}/` : '')
+    })).filter(i => i.scripCode || i.companyName);
+
+    _resultsCache.set(cacheKey, { data: normalized, exp: Date.now() + RESULTS_TTL });
+
+    res.json({
+      success: true,
+      fromdate: fromdate || null,
+      todate: todate || null,
+      scripcode: scripcode || null,
+      total: normalized.length,
+      data: normalized
+    });
+  } catch (err) {
+    console.error('[BSE Results Calendar error]', err.message);
+    const fallback = _resultsCache.get(cacheKey);
+    if (fallback) {
+      return res.json({ success: true, total: fallback.data.length, data: fallback.data, cached: true, fallback: true });
+    }
+    res.status(500).json({ success: false, error: err.message, data: [], total: 0 });
   }
 });
 
