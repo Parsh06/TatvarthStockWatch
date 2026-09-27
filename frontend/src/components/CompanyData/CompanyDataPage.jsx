@@ -756,21 +756,41 @@ export default function CompanyDataPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border">
-                      {['Quarter', 'Revenue', 'Net Profit', 'EPS'].map((h) => (
-                        <th key={h} className="text-left px-3 py-2 text-xs font-semibold text-textMuted">{h}</th>
-                      ))}
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap">Quarter</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap">Revenue</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap">Net Profit</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap">EPS (₹)</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap">Cash EPS</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap">OPM %</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap">NPM %</th>
+                      {companyData.financials.some(q => q.reportUrl) && (
+                        <th className="text-right px-3 py-2 text-xs font-semibold text-textMuted whitespace-nowrap">BSE Report</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
                     {companyData.financials.slice(0, 8).map((q, i) => (
                       <tr key={i} className="border-b border-border/50 hover:bg-white/3 transition">
-                        <td className="px-3 py-2.5 text-textPrimary font-medium">{q.quarter || '—'}</td>
-                        <td className="px-3 py-2.5 text-textMuted tabular-nums">{q.revenue != null ? fmtCr(q.revenue) : '—'}</td>
-                        <td className={clsx('px-3 py-2.5 font-semibold tabular-nums',
+                        <td className="px-3 py-2.5 text-textPrimary font-semibold whitespace-nowrap">{q.quarter || '—'}</td>
+                        <td className="px-3 py-2.5 text-textPrimary text-right tabular-nums font-medium">{q.revenue != null ? fmtCr(q.revenue) : '—'}</td>
+                        <td className={clsx('px-3 py-2.5 text-right font-bold tabular-nums',
                           q.profit > 0 ? 'text-emerald-400' : q.profit < 0 ? 'text-red-400' : 'text-textMuted')}>
                           {q.profit != null ? fmtCr(q.profit) : '—'}
                         </td>
-                        <td className="px-3 py-2.5 text-textMuted tabular-nums">{q.eps != null ? fmt(q.eps) : '—'}</td>
+                        <td className="px-3 py-2.5 text-textMuted text-right tabular-nums">{display(q.eps, '₹')}</td>
+                        <td className="px-3 py-2.5 text-textMuted text-right tabular-nums">{display(q.cashEps, '₹')}</td>
+                        <td className="px-3 py-2.5 text-primary text-right tabular-nums font-medium">{display(q.opm, '', '%', 1)}</td>
+                        <td className="px-3 py-2.5 text-blue-400 text-right tabular-nums font-medium">{display(q.npm, '', '%', 1)}</td>
+                        {companyData.financials.some(q => q.reportUrl) && (
+                          <td className="px-3 py-2.5 text-right">
+                            {q.reportUrl ? (
+                              <a href={q.reportUrl} target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-primary font-semibold hover:underline bg-primary/10 px-2 py-0.5 rounded">
+                                View <ArrowUpRight className="w-3 h-3" />
+                              </a>
+                            ) : '—'}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -1202,7 +1222,7 @@ export default function CompanyDataPage() {
           )}
 
           {/* Per-section unavailability notices */}
-          {companyData && !hasHolding && (
+          {companyData && !hasHolding && !hasShareholding && (
             <div className="glass-panel rounded-xl px-5 py-4 flex items-center gap-3 text-xs text-textMuted/60 shadow-inner">
               <Info className="w-4 h-4 flex-shrink-0 text-primary/70" />
               <span><span className="text-textMuted font-medium">Shareholding Breakdown</span> — data currently unavailable for this script</span>

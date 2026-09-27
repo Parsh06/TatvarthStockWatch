@@ -594,15 +594,24 @@ router.get('/company', async (req, res) => {
           const revRow = raw.resultinCr.find(r => /revenue|sales/i.test(r.title));
           const patRow = raw.resultinCr.find(r => /net profit|pat/i.test(r.title));
           const epsRow = raw.resultinCr.find(r => /^eps/i.test(r.title));
+          const cashEpsRow = raw.resultinCr.find(r => /cash eps/i.test(r.title));
+          const opmRow = raw.resultinCr.find(r => /opm/i.test(r.title));
+          const npmRow = raw.resultinCr.find(r => /npm/i.test(r.title));
           const quarters = [raw.col2, raw.col3, raw.col4].filter(Boolean);
+          const links = raw.resultinS?.[0] || {};
           
           quarters.forEach((q, idx) => {
             const vKey = `v${idx + 1}`;
+            const linkKey = idx === 0 ? 'LLQ' : idx === 1 ? 'LSQ' : 'LFY';
             financials.push({
               quarter: q,
               revenue: revRow ? _f(revRow[vKey]) : null,
               profit:  patRow ? _f(patRow[vKey]) : null,
               eps:     epsRow ? _f(epsRow[vKey]) : null,
+              cashEps: cashEpsRow ? _f(cashEpsRow[vKey]) : null,
+              opm:     opmRow ? _f(opmRow[vKey]) : null,
+              npm:     npmRow ? _f(npmRow[vKey]) : null,
+              reportUrl: links[linkKey] || null,
             });
           });
         } else {
