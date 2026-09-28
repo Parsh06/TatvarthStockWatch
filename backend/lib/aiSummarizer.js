@@ -4,19 +4,14 @@ const { GoogleGenAI } = require('@google/genai');
 const axios = require('axios');
 const { AI_ANALYST_PROMPT } = require('./prompts');
 
-// ── 5-Tier Gemini Model Cascade ──────────────────────────────────────────────
-// Priority order:
-// 1. gemini-2.5-flash      - Best multi-page vision reasoning & structured synthesis
-// 2. gemini-2.0-flash      - High speed, reliable, rich extraction
-// 3. gemini-1.5-flash      - Large context window, high stability fallback
-// 4. gemini-2.0-flash-lite - Fast, lightweight official model
-// 5. gemini-1.5-pro        - Deep reasoning fallback
+// ── Active Gemini Model Cascade ──────────────────────────────────────────────
 const MODEL_CASCADE = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-pro',
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-3.6-flash',
+  'gemini-3.7-flash',
+  'gemini-flash-latest',
 ];
 
 // Lazily initialized Gemini SDK client
@@ -26,7 +21,11 @@ function getAiClient() {
   if (!_aiClient) {
     const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
     if (apiKey) {
-      _aiClient = new GoogleGenAI({ apiKey });
+      try {
+        _aiClient = new GoogleGenAI({ apiKey });
+      } catch (e) {
+        console.warn('[aiSummarizer] GoogleGenAI init fallback to REST:', e.message);
+      }
     }
   }
   return _aiClient;
@@ -46,9 +45,14 @@ async function downloadPdfAsBase64(pdfUrl) {
         'Referer': 'https://www.bseindia.com/',
         'Origin': 'https://www.bseindia.com',
       },
-      timeout: 25000,
+      timeout: 10000,
     });
-    return Buffer.from(response.data).toString('base64');
+    // Cap at 2.5MB to stay well within free tier token quotas and prevent timeouts
+    if (response.data.length <= 2.5 * 1024 * 1024) {
+      return Buffer.from(response.data).toString('base64');
+    }
+    console.log(`[aiSummarizer] PDF is ${(response.data.length / (1024*1024)).toFixed(1)}MB (>2.5MB), using text prompt mode.`);
+    return null;
   } catch (err) {
     console.error(`[aiSummarizer] Failed to download PDF (${pdfUrl}):`, err.message);
     return null;
@@ -84,7 +88,6 @@ function safeParseJson(rawText) {
   if (!rawText || typeof rawText !== 'string') return null;
 
   let cleaned = rawText.trim();
-  // Strip markdown code fences if wrapped in ```json ... ``` or ``` ... ```
   const match = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (match) {
     cleaned = match[1].trim();
@@ -93,7 +96,6 @@ function safeParseJson(rawText) {
   try {
     return JSON.parse(cleaned);
   } catch (err) {
-    // If strict parse fails, try extracting first outermost { ... }
     const firstBrace = cleaned.indexOf('{');
     const lastBrace = cleaned.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
@@ -110,9 +112,9 @@ function safeParseJson(rawText) {
 /**
  * generateAIAnalysis
  *
- * Runs on-demand AI analysis using the 5-Tier Gemini Model Cascade.
+ * Runs on-demand AI analysis using the Active Gemini Model Cascade with REST fallback.
  *
- * @param {object} ann - Announcement object (must have .pdfUrl)
+ * @param {object} ann - Announcement object
  * @param {object} [options] - Optional configurations
  * @returns {Promise<{ _model: string, analysis: object } | null>}
  */
@@ -120,12 +122,6 @@ async function generateAIAnalysis(ann, options = {}) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
     console.warn('[aiSummarizer] GEMINI_API_KEY is not set');
-    return null;
-  }
-
-  const client = getAiClient();
-  if (!client) {
-    console.warn('[aiSummarizer] Gemini client could not be initialized');
     return null;
   }
 
@@ -138,7 +134,8 @@ async function generateAIAnalysis(ann, options = {}) {
     base64Pdf = await downloadPdfAsBase64(pdfUrl);
   }
 
-  // ── Cascade through Model Hierarchy ──────────────────────────────────────────
+  const textPrompt = `${AI_ANALYST_PROMPT}\n\nFiling Details:\nCompany: ${ann.scriptName || ann.scriptCode || ann.companyName || ''}\nExchange: ${ann.exchange || 'BSE/NSE'}\nCategory: ${ann.category || ''}\nSub-Category: ${ann.subCategory || ''}\nHeadline/Subject: ${ann.subject || ann.headline || ''}\nDescription: ${ann.description || ''}\nDate: ${ann.datetimeIST || ann.date || ''}\nPDF URL: ${ann.pdfUrl || 'N/A'}\n\nAnalyze this corporate filing exhaustively based on the details above.`;
+
   let lastError = null;
 
   for (const modelName of customModels) {
@@ -147,27 +144,21 @@ async function generateAIAnalysis(ann, options = {}) {
 
       const parts = [];
       if (base64Pdf) {
-        parts.push({ inlineData: { data: base64Pdf, mimeType: 'application/pdf' } });
+        parts.push({ inline_data: { mime_type: 'application/pdf', data: base64Pdf } });
         parts.push({ text: AI_ANALYST_PROMPT });
       } else {
-        const textPrompt = `${AI_ANALYST_PROMPT}\n\nFiling Details:\nCompany: ${ann.scriptName || ann.scriptCode || ''}\nExchange: ${ann.exchange || 'BSE/NSE'}\nCategory: ${ann.category || ''}\nHeadline/Subject: ${ann.subject || ann.headline || ''}\nDescription: ${ann.description || ''}\nDate: ${ann.datetimeIST || ann.date || ''}\n\nNote: The full PDF filing could not be downloaded directly. Analyze the filing based on the headline, subject, category, and description provided above.`;
         parts.push({ text: textPrompt });
       }
 
-      const response = await client.models.generateContent({
-        model: modelName,
-        contents: [
-          {
-            role: 'user',
-            parts,
-          },
-        ],
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+      const response = await axios.post(url, {
+        contents: [{ role: 'user', parts }],
+        generationConfig: {
+          responseMimeType: 'application/json'
+        }
+      }, { timeout: 8000 });
 
-      const rawOutput = response.text;
+      const rawOutput = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
       const parsed = safeParseJson(rawOutput);
 
       if (!parsed) {
@@ -189,10 +180,10 @@ async function generateAIAnalysis(ann, options = {}) {
 
     } catch (err) {
       lastError = err;
-      const statusCode = err?.status || err?.response?.status;
-      const errMsg = err?.message || 'Unknown error';
+      const statusCode = err?.response?.status || err?.status;
+      const errMsg = err?.response?.data?.error?.message || err?.message || 'Unknown error';
 
-      console.warn(`[aiSummarizer] Tier "${modelName}" failed for ${scriptLabel} (Status: ${statusCode || 'N/A'} - ${errMsg}). Cascading to next model...`);
+      console.warn(`[aiSummarizer] Tier "${modelName}" failed for ${scriptLabel} (Status: ${statusCode || 'N/A'} - ${errMsg}). Cascading...`);
     }
   }
 

@@ -109,19 +109,14 @@ export default function AllAnnouncementsPage() {
     setFromDate(r.from()); setToDate(r.to()); setResult(null); setError(null)
   }
 
-  async function fetchAnnouncements() {
+  async function fetchAnnouncements(isManualRefresh = false) {
     if (!fromDate || !toDate) { setError('Select valid From and To dates.'); return }
     if (fromDate > toDate)    { setError('From date must not be after To date.'); return }
     setLoading(true); setError(null); setPage(1); setSearch('')
     try {
       if (fromDate === today() && toDate === today()) {
-        // Fetch NSE live first (saves to DB), then read all from DB
-        try {
-          await apiClient('/api/announcements/fetch-nse', { method: 'POST' })
-        } catch (nseErr) {
-          console.warn('[AllAnnouncements] NSE fetch failed (non-blocking):', nseErr.message)
-        }
-        const data = await getAnnouncementsFromDB({ limitCount: 5000, refresh: true }) // All today's BSE+NSE from DB
+        // Read directly from MongoDB Atlas cache for sub-200ms load
+        const data = await getAnnouncementsFromDB({ limitCount: 5000, refresh: isManualRefresh })
         setResult({
           from: fromDate,
           to: toDate,
@@ -130,7 +125,7 @@ export default function AllAnnouncementsPage() {
           announcements: data
         })
       } else {
-        // Company filtering is done client-side
+        // Query BSE date range archive
         const params = new URLSearchParams({ from: toYYYYMMDD(fromDate), to: toYYYYMMDD(toDate) })
         const data = await apiClient(`/api/bse/announcements?${params}`)
         setResult(data)
@@ -141,7 +136,7 @@ export default function AllAnnouncementsPage() {
 
   // Fetch automatically on mount
   useEffect(() => {
-    fetchAnnouncements()
+    fetchAnnouncements(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
