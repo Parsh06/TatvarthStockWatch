@@ -25,7 +25,7 @@ const LOADING_STAGES = [
  *   initialAnalysis — aiAnalysis object from DB (if already cached)
  *   onResult(analysis) — called when analysis is ready (new or cached)
  */
-export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysis, onResult }) {
+export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysis, announcement, onResult }) {
   const hasCached = initialAnalysis?.generated === true
 
   const [state, setState] = useState(hasCached ? 'cached' : 'idle') // idle | cached | loading | error
@@ -70,7 +70,7 @@ export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysi
     startStageTimer()
 
     try {
-      const result = await analyzeAnnouncement(announcementId)
+      const result = await analyzeAnnouncement(announcementId, false, announcement)
       stopStageTimer()
       setState('cached')
       onResult?.(result.analysis)

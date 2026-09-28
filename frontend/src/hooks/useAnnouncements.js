@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { getAnnouncementsFromDB } from '../services/announcementService'
+import { apiClient } from '../services/apiClient'
 import { auth, FIREBASE_ENABLED } from '../services/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { useCronStatus } from './useCronStatus'
@@ -64,9 +65,8 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
         if (opts.exchange && opts.exchange !== 'ALL') params.set('exchange', opts.exchange)
         if (opts.scripCode) params.set('scriptCode', opts.scripCode)
 
-        const res  = await window.fetch(`/api/announcements?${params.toString()}`)
-        const json = await res.json()
-        const data = Array.isArray(json.data) ? json.data : []
+        const res  = await apiClient(`/api/announcements?${params.toString()}`)
+        const data = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
         setAnnouncements(data)
         setSource('local')
         setLastFetched(new Date())
@@ -87,20 +87,35 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
         if (opts.toDate) params.set('toDate', opts.toDate)
         if (extractedCode) params.set('scripCode', extractedCode)
         
-        const res = await window.fetch(`/api/bse/announcements/proxy?${params.toString()}`)
-        if (!res.ok) throw new Error('Failed to fetch from proxy')
-        const json = await res.json()
-        setAnnouncements(Array.isArray(json.data) ? json.data : [])
+        const res = await apiClient(`/api/bse/announcements/proxy?${params.toString()}`)
+        const data = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
+        setAnnouncements(data)
         setSource('proxy')
       } else {
-        // Production mode: Default to MongoDB for "today"
-        const data = await getAnnouncementsFromDB({
+        // Production mode: Default to MongoDB for "today" (auto-fetches if empty or on refresh)
+        let data = await getAnnouncementsFromDB({
           exchange:   opts.exchange,
           scripCode:  opts.scripCode,
           limitCount: opts.limitCount || 2000,
+          refresh:    Boolean(opts.refresh),
         })
+
+        // Fallback to proxy if still empty
+        if (!Array.isArray(data) || data.length === 0) {
+          try {
+            const proxyRes = await apiClient('/api/bse/announcements/proxy')
+            if (Array.isArray(proxyRes?.data) && proxyRes.data.length > 0) {
+              data = proxyRes.data
+              setSource('proxy')
+            }
+          } catch (proxyErr) {
+            console.warn('[useAnnouncements] Proxy fallback failed:', proxyErr)
+          }
+        } else {
+          setSource('db')
+        }
+
         setAnnouncements(Array.isArray(data) ? data : [])
-        setSource('db')
       }
       
       setLastFetched(new Date())
@@ -147,14 +162,9 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
       else if (rawAnnName && rawNames.has(rawAnnName)) {
         isWatchlisted = true
       }
-      // 5. Normalized company name match / substring match
-      else if (normAnnName) {
-        for (const wNorm of normNames) {
-          if (wNorm === normAnnName || (wNorm.length >= 3 && normAnnName.includes(wNorm)) || (normAnnName.length >= 3 && wNorm.includes(normAnnName))) {
-            isWatchlisted = true
-            break
-          }
-        }
+      // 5. Normalized exact company name match
+      else if (normAnnName && normNames.has(normAnnName)) {
+        isWatchlisted = true
       }
 
       return {

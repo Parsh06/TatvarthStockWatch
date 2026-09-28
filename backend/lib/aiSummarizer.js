@@ -9,14 +9,14 @@ const { AI_ANALYST_PROMPT } = require('./prompts');
 // 1. gemini-2.5-flash      - Best multi-page vision reasoning & structured synthesis
 // 2. gemini-2.0-flash      - High speed, reliable, rich extraction
 // 3. gemini-1.5-flash      - Large context window, high stability fallback
-// 4. gemini-3.1-flash-lite - Fast, lightweight
-// 5. gemini-3.5-flash-lite - Emergency ultra-low latency fallback
+// 4. gemini-2.0-flash-lite - Fast, lightweight official model
+// 5. gemini-1.5-pro        - Deep reasoning fallback
 const MODEL_CASCADE = [
   'gemini-2.5-flash',
   'gemini-2.0-flash',
   'gemini-1.5-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-3.5-flash-lite',
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-pro',
 ];
 
 // Lazily initialized Gemini SDK client
@@ -36,18 +36,21 @@ function getAiClient() {
  * Downloads a filing PDF from a URL and returns a base64 encoded string.
  */
 async function downloadPdfAsBase64(pdfUrl) {
+  if (!pdfUrl) return null;
   try {
     const response = await axios.get(pdfUrl, {
       responseType: 'arraybuffer',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/pdf,application/octet-stream,*/*',
+        'Referer': 'https://www.bseindia.com/',
+        'Origin': 'https://www.bseindia.com',
       },
-      timeout: 20000,
+      timeout: 25000,
     });
     return Buffer.from(response.data).toString('base64');
   } catch (err) {
-    console.error(`[aiSummarizer] Failed to download PDF: ${pdfUrl}`, err.message);
+    console.error(`[aiSummarizer] Failed to download PDF (${pdfUrl}):`, err.message);
     return null;
   }
 }
@@ -120,18 +123,6 @@ async function generateAIAnalysis(ann, options = {}) {
     return null;
   }
 
-  const pdfUrl = ann.pdfUrl;
-  if (!pdfUrl) {
-    console.log(`[aiSummarizer] No PDF URL for announcement ${ann._id || ann.id}`);
-    return null;
-  }
-
-  const base64Pdf = await downloadPdfAsBase64(pdfUrl);
-  if (!base64Pdf) {
-    console.error(`[aiSummarizer] Could not obtain base64 PDF payload for ${ann._id || ann.id}`);
-    return null;
-  }
-
   const client = getAiClient();
   if (!client) {
     console.warn('[aiSummarizer] Gemini client could not be initialized');
@@ -141,22 +132,34 @@ async function generateAIAnalysis(ann, options = {}) {
   const scriptLabel = ann.scriptName || ann.scriptCode || ann.symbol || ann._id || ann.id || 'Filing';
   const customModels = options.models || MODEL_CASCADE;
 
+  const pdfUrl = ann.pdfUrl;
+  let base64Pdf = null;
+  if (pdfUrl) {
+    base64Pdf = await downloadPdfAsBase64(pdfUrl);
+  }
+
   // ── Cascade through Model Hierarchy ──────────────────────────────────────────
   let lastError = null;
 
   for (const modelName of customModels) {
     try {
-      console.log(`[aiSummarizer] Attempting AI analysis with model: "${modelName}" for ${scriptLabel}`);
+      console.log(`[aiSummarizer] Attempting AI analysis with model: "${modelName}" for ${scriptLabel} (hasPdf=${Boolean(base64Pdf)})`);
+
+      const parts = [];
+      if (base64Pdf) {
+        parts.push({ inlineData: { data: base64Pdf, mimeType: 'application/pdf' } });
+        parts.push({ text: AI_ANALYST_PROMPT });
+      } else {
+        const textPrompt = `${AI_ANALYST_PROMPT}\n\nFiling Details:\nCompany: ${ann.scriptName || ann.scriptCode || ''}\nExchange: ${ann.exchange || 'BSE/NSE'}\nCategory: ${ann.category || ''}\nHeadline/Subject: ${ann.subject || ann.headline || ''}\nDescription: ${ann.description || ''}\nDate: ${ann.datetimeIST || ann.date || ''}\n\nNote: The full PDF filing could not be downloaded directly. Analyze the filing based on the headline, subject, category, and description provided above.`;
+        parts.push({ text: textPrompt });
+      }
 
       const response = await client.models.generateContent({
         model: modelName,
         contents: [
           {
             role: 'user',
-            parts: [
-              { inlineData: { data: base64Pdf, mimeType: 'application/pdf' } },
-              { text: AI_ANALYST_PROMPT },
-            ],
+            parts,
           },
         ],
         config: {

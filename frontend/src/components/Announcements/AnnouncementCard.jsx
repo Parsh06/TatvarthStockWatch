@@ -129,6 +129,7 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
               announcementId={String(a.id || a._id || '')}
               pdfUrl={pdfUrl}
               initialAnalysis={initialAnalysis}
+              announcement={a}
               onResult={(analysis, meta) => handleAnalysisResult(analysis, meta)}
             />
             {pdfUrl && (

@@ -11,17 +11,63 @@ const { fetchAllNSEAnnouncements } = require('../lib/nseScraper');
 /**
  * GET /api/announcements
  * Retrieve market announcements with optional query filters.
+ * Automatically fetches and populates from BSE/NSE if DB is empty for today or on refresh.
  */
 router.get('/', async (req, res) => {
-  const { exchange, scriptCode, nseSymbol, limit: lim, since } = req.query;
+  const { exchange, scriptCode, nseSymbol, limit: lim, since, refresh } = req.query;
   try {
-    const list = await getAnnouncements({
+    let list = await getAnnouncements({
       exchange,
       scriptCode,
       nseSymbol,
       limitCount: lim,
       sinceDate: since,
     });
+
+    // If MongoDB is empty or explicit refresh requested, poll live BSE + NSE
+    const shouldLiveFetch = (list.length === 0 && !since && !scriptCode && !nseSymbol) || refresh === 'true' || refresh === '1';
+
+    if (shouldLiveFetch) {
+      try {
+        const { fetchAllBSEAnnouncements } = require('../lib/bseScraper');
+        const { fetchAllNSEAnnouncements } = require('../lib/nseScraper');
+
+        const [bseAll, nseAll] = await Promise.all([
+          fetchAllBSEAnnouncements().catch((err) => {
+            console.warn('[Announcements Route] BSE fetch error:', err.message);
+            return [];
+          }),
+          fetchAllNSEAnnouncements(new Map()).catch((err) => {
+            console.warn('[Announcements Route] NSE fetch error:', err.message);
+            return [];
+          }),
+        ]);
+
+        const seenIds = new Set();
+        const allFetched = [];
+        for (const a of [...bseAll, ...nseAll]) {
+          const id = String(a.id);
+          if (!seenIds.has(id)) {
+            seenIds.add(id);
+            allFetched.push(a);
+          }
+        }
+
+        if (allFetched.length > 0) {
+          await saveAnnouncements(allFetched);
+          list = await getAnnouncements({
+            exchange,
+            scriptCode,
+            nseSymbol,
+            limitCount: lim,
+            sinceDate: since,
+          });
+        }
+      } catch (liveErr) {
+        console.warn('[Announcements Route] Live fetch fallback error:', liveErr.message);
+      }
+    }
+
     res.json({ data: list, total: list.length });
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -22,34 +22,36 @@ import { apiClient } from './apiClient'
  *
  * @param {{ exchange?: string, scripCode?: string, limitCount?: number }} opts
  */
-export async function getAnnouncementsFromDB({ exchange, scripCode, limitCount = 100 } = {}) {
-  // Alias to the backend proxy which now reads from MongoDB
-  return fetchSavedAnnouncements({ exchange, scripCode, limitCount })
+export async function getAnnouncementsFromDB({ exchange, scripCode, limitCount = 100, refresh = false } = {}) {
+  // Alias to the backend proxy which reads from MongoDB (and auto-refreshes if needed)
+  return fetchSavedAnnouncements({ exchange, scripCode, limitCount, refresh })
 }
 
 /**
  * Fetch live announcements from the Vercel backend (which calls BSE/NSE APIs).
  * Falls back to empty array on error — callers decide what to show.
  */
-export async function fetchAnnouncements({ exchange, scripCode, fromDate, toDate } = {}) {
+export async function fetchAnnouncements({ exchange, scripCode, fromDate, toDate, refresh = false } = {}) {
   const params = new URLSearchParams()
   if (exchange) params.set('exchange', exchange)
   if (scripCode) params.set('scripCode', scripCode)
   if (fromDate) params.set('fromDate', fromDate)
   if (toDate) params.set('toDate', toDate)
+  if (refresh) params.set('refresh', 'true')
   const json = await apiClient(`/api/announcements?${params.toString()}`)
   return Array.isArray(json) ? json : (json.data || [])
 }
 
 /**
  * Fetch saved (DB-persisted) announcements via backend proxy.
- * Lighter than the live BSE/NSE fetch — reads from Firestore.
+ * Lighter than the live BSE/NSE fetch — reads from MongoDB.
  */
-export async function fetchSavedAnnouncements({ exchange, scripCode, limitCount } = {}) {
+export async function fetchSavedAnnouncements({ exchange, scripCode, limitCount, refresh = false } = {}) {
   const params = new URLSearchParams()
   if (exchange && exchange !== 'ALL') params.set('exchange', exchange)
   if (scripCode) params.set('scriptCode', scripCode)
   if (limitCount) params.set('limit', String(limitCount))
+  if (refresh) params.set('refresh', 'true')
   const json = await apiClient(`/api/announcements?${params.toString()}`)
   return Array.isArray(json) ? json : (json.data || [])
 }
@@ -130,8 +132,11 @@ export async function markAllNotificationsRead(uid) {
  * @param {string} announcementId - MongoDB _id of the announcement
  * @param {boolean} [force=false] - Force regeneration even if cached
  */
-export async function analyzeAnnouncement(announcementId, force = false) {
+export async function analyzeAnnouncement(announcementId, force = false, announcementData = null) {
   const url = `/api/announcements/${encodeURIComponent(announcementId)}/analyze${force ? '?force=true' : ''}`
-  return apiClient(url, { method: 'POST' })
+  return apiClient(url, {
+    method: 'POST',
+    body: announcementData ? JSON.stringify(announcementData) : undefined,
+  })
 }
 

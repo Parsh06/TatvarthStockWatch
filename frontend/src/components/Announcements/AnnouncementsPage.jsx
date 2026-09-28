@@ -126,7 +126,7 @@ export default function AnnouncementsPage() {
             <span className="text-xs text-textMuted">Updated {formatRelativeDate(lastFetched)}</span>
           )}
           <button
-            onClick={() => fetch(filters)}
+            onClick={() => fetch({ ...filters, refresh: true })}
             disabled={loading}
             className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-xl text-sm font-medium transition shadow-lg shadow-primary/20 hover:shadow-primary/30"
           >

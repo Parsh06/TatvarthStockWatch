@@ -92,6 +92,7 @@ export default function AllAnnouncementsPage() {
   const [result,     setResult]     = useState(null)
   const [page,       setPage]       = useState(1)
   const [onlyWatchlist, setOnlyWatchlist] = useState(false)
+  const [showAllCategories, setShowAllCategories] = useState(false)
   // Per-card AI analysis results: Map<announcementId, { analysis, generatedAt, cached }>
   const [aiAnalysisMap, setAiAnalysisMap] = useState(new Map())
 
@@ -120,7 +121,7 @@ export default function AllAnnouncementsPage() {
         } catch (nseErr) {
           console.warn('[AllAnnouncements] NSE fetch failed (non-blocking):', nseErr.message)
         }
-        const data = await getAnnouncementsFromDB({ limitCount: 5000 }) // All today's BSE+NSE from DB
+        const data = await getAnnouncementsFromDB({ limitCount: 5000, refresh: true }) // All today's BSE+NSE from DB
         setResult({
           from: fromDate,
           to: toDate,
@@ -153,7 +154,8 @@ export default function AllAnnouncementsPage() {
       : allItems
     const counts = {}
     for (const a of source) {
-      const base = (a.category || 'Other').split(' / ')[0].trim()
+      const raw = (a.category || 'Other').trim()
+      const base = raw.includes(' / ') ? raw.split(' / ')[0].trim() : raw
       counts[base] = (counts[base] || 0) + 1
     }
     return Object.entries(counts).sort((a, b) => b[1] - a[1])
@@ -177,7 +179,24 @@ export default function AllAnnouncementsPage() {
     // codeFilter: Server cannot filter by company server-side, must do it here
     if (codeFilter)    list = list.filter((a) => a.bseCode === codeFilter || a.scriptCode === codeFilter)
     if (onlyWatchlist) list = list.filter((a) => watchlistCodes.has(a.bseCode))
-    if (catFilter)     list = list.filter((a) => a.category.toLowerCase().includes(catFilter.toLowerCase()))
+    if (catFilter) {
+      const target = catFilter.toLowerCase()
+      list = list.filter((a) => {
+        const cat = (a.category || '').toLowerCase()
+        const sub = (a.subCategory || '').toLowerCase()
+        const head = (a.subject || a.headline || '').toLowerCase()
+        if (target === 'result' || target === 'financial results' || target === 'results') {
+          return cat.includes('result') || sub.includes('result') || head.includes('financial result') || head.includes('unaudited financial') || head.includes('audited financial')
+        }
+        if (target === 'board meeting') {
+          return cat.includes('board meeting') || head.includes('board meeting')
+        }
+        if (target === 'dividend') {
+          return cat.includes('dividend') || sub.includes('dividend') || head.includes('dividend')
+        }
+        return cat.includes(target) || target.includes(cat) || sub.includes(target)
+      })
+    }
     
     // Exchange filtering
     if (exchange === 'BSE') list = list.filter(a => a.bseCode || (a.source === 'BSE' || !a.nseSymbol))
@@ -388,21 +407,29 @@ export default function AllAnnouncementsPage() {
 
           {/* Category chips — built from filtered scope when company is selected, else all items */}
           {categoryOptions.length > 0 && baseList.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 items-center">
               <button onClick={() => { setCatFilter(''); setPage(1) }}
                 className={clsx('inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition font-medium',
                   !catFilter ? 'bg-primary/15 border-primary/40 text-primary' : 'border-border text-textMuted hover:border-primary/30 hover:text-textPrimary')}>
                 All <span className="opacity-70">{(companyFiltered ? baseList : allItems).length.toLocaleString()}</span>
               </button>
-              {categoryOptions.slice(0, 10).map(([cat, cnt]) => (
+              {(showAllCategories ? categoryOptions : categoryOptions.slice(0, 16)).map(([cat, cnt]) => (
                 <button key={cat} onClick={() => { setCatFilter(c => c === cat ? '' : cat); setPage(1) }}
                   className={clsx('inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition font-medium',
-                    catFilter === cat
+                    catFilter === cat || (catFilter.toLowerCase() === 'result' && cat.toLowerCase().includes('result'))
                       ? 'bg-primary/15 border-primary/40 text-primary'
                       : 'border-border text-textMuted hover:border-primary/30 hover:text-textPrimary')}>
                   {cat} <span className="opacity-60">{cnt.toLocaleString()}</span>
                 </button>
               ))}
+              {categoryOptions.length > 16 && (
+                <button
+                  onClick={() => setShowAllCategories(v => !v)}
+                  className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border border-dashed border-primary/40 text-primary hover:bg-primary/10 transition font-medium"
+                >
+                  {showAllCategories ? 'Show Less' : `+${categoryOptions.length - 16} More`}
+                </button>
+              )}
             </div>
           )}
 
@@ -517,6 +544,7 @@ export default function AllAnnouncementsPage() {
                             announcementId={String(a.id || a._id || a.bseCode || '')}
                             pdfUrl={a.pdfUrl}
                             initialAnalysis={a.aiAnalysis?.generated ? a.aiAnalysis : null}
+                            announcement={a}
                             onResult={(analysis, meta) => setCardAnalysis(a.id || a._id, { analysis, generatedAt: meta?.generatedAt, cached: meta?.cached })}
                           />
                           {a.pdfUrl && (
