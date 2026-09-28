@@ -29,7 +29,7 @@ export function AnnouncementsProvider({ children }) {
   const [readIds, setReadIds] = useState(loadReadSet)
 
   const unreadCount = useMemo(
-    () => watchlistedAnnouncements.filter(a => !readIds.has(a.id)).length,
+    () => (watchlistedAnnouncements || []).filter(a => a && a.id && (!readIds?.has || !readIds.has(a.id))).length,
     [watchlistedAnnouncements, readIds]
   )
 

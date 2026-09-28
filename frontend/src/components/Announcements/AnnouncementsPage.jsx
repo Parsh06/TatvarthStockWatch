@@ -25,7 +25,16 @@ function saveReadSet(s) {
 
 export default function AnnouncementsPage() {
   const [searchParams] = useSearchParams()
-  const { announcements, watchlistedAnnouncements, loading, lastFetched, fetch, readIds, unreadCount, markRead, markAllRead } = useGlobalAnnouncements()
+  const globalAnnouncements = useGlobalAnnouncements() || {}
+  const announcements = globalAnnouncements.announcements || []
+  const watchlistedAnnouncements = globalAnnouncements.watchlistedAnnouncements || []
+  const loading = globalAnnouncements.loading || false
+  const lastFetched = globalAnnouncements.lastFetched || null
+  const fetch = globalAnnouncements.fetch || (() => {})
+  const readIds = globalAnnouncements.readIds || new Set()
+  const unreadCount = globalAnnouncements.unreadCount || 0
+  const markRead = globalAnnouncements.markRead || (() => {})
+  const markAllRead = globalAnnouncements.markAllRead || (() => {})
   
   const [page, setPage]       = useState(1)
   const [filters, setFilters] = useState({
@@ -37,58 +46,66 @@ export default function AnnouncementsPage() {
   })
 
   // Only show watchlist-matched announcements
-  const watchlistOnly = announcements.filter((a) => a.isWatchlisted)
+  const watchlistOnly = useMemo(() => {
+    return (announcements || []).filter((a) => a && a.isWatchlisted)
+  }, [announcements])
 
   const filtered = useMemo(() => {
-    let list = watchlistOnly
+    let list = watchlistOnly || []
     if (filters.search) {
       const s = filters.search.toLowerCase()
       list = list.filter((a) =>
-        (a.scriptName || a.companyName || '').toLowerCase().includes(s) ||
-        (a.scriptCode || a.scripCode   || '').toLowerCase().includes(s) ||
-        (a.subject    || a.headline    || '').toLowerCase().includes(s)
+        a && (
+          (a.scriptName || a.companyName || '').toLowerCase().includes(s) ||
+          (a.scriptCode || a.scripCode   || '').toLowerCase().includes(s) ||
+          (a.subject    || a.headline    || '').toLowerCase().includes(s)
+        )
       )
     }
-    if (filters.exchange === 'BSE') list = list.filter(a => a.bseCode || (a.source === 'BSE' || !a.nseSymbol))
-    if (filters.exchange === 'NSE') list = list.filter(a => a.nseSymbol || a.source === 'NSE')
+    if (filters.exchange === 'BSE') list = list.filter(a => a && (a.bseCode || a.source === 'BSE' || !a.nseSymbol))
+    if (filters.exchange === 'NSE') list = list.filter(a => a && (a.nseSymbol || a.source === 'NSE'))
     if (filters.category) list = list.filter((a) => {
+      if (!a) return false
       const cat = (a.category || '').toLowerCase()
       const target = filters.category.toLowerCase()
       return cat === target || cat.includes(target) || target.includes(cat)
     })
-    if (filters.fromDate) list = list.filter((a) => (a.announcementDate || '') >= filters.fromDate)
-    if (filters.toDate)   list = list.filter((a) => (a.announcementDate || '') <= filters.toDate + 'T23:59:59')
+    if (filters.fromDate) list = list.filter((a) => a && (a.announcementDate || '') >= filters.fromDate)
+    if (filters.toDate)   list = list.filter((a) => a && (a.announcementDate || '') <= filters.toDate + 'T23:59:59')
     return list
-  }, [announcements, filters])
+  }, [watchlistOnly, filters])
 
   // Category counts from ALL watchlist announcements (before filtering by category)
   const categoryCounts = useMemo(() => {
     const counts = {}
-    let base = watchlistOnly
+    let base = watchlistOnly || []
     if (filters.search) {
       const s = filters.search.toLowerCase()
       base = base.filter((a) =>
-        (a.scriptName || a.companyName || '').toLowerCase().includes(s) ||
-        (a.scriptCode || a.scripCode   || '').toLowerCase().includes(s) ||
-        (a.subject    || a.headline    || '').toLowerCase().includes(s)
+        a && (
+          (a.scriptName || a.companyName || '').toLowerCase().includes(s) ||
+          (a.scriptCode || a.scripCode   || '').toLowerCase().includes(s) ||
+          (a.subject    || a.headline    || '').toLowerCase().includes(s)
+        )
       )
     }
-    if (filters.exchange === 'BSE') base = base.filter(a => a.bseCode || (a.source === 'BSE' || !a.nseSymbol))
-    if (filters.exchange === 'NSE') base = base.filter(a => a.nseSymbol || a.source === 'NSE')
+    if (filters.exchange === 'BSE') base = base.filter(a => a && (a.bseCode || a.source === 'BSE' || !a.nseSymbol))
+    if (filters.exchange === 'NSE') base = base.filter(a => a && (a.nseSymbol || a.source === 'NSE'))
     for (const a of base) {
+      if (!a) continue
       const cat = (a.category || 'Other').trim()
       counts[cat] = (counts[cat] || 0) + 1
     }
     return counts
-  }, [announcements, filters.search, filters.exchange])
+  }, [watchlistOnly, filters.search, filters.exchange])
 
-  const paginated = filtered.slice(0, page * PAGE_SIZE)
-  const hasMore   = paginated.length < filtered.length
+  const paginated = (filtered || []).slice(0, page * PAGE_SIZE)
+  const hasMore   = paginated.length < (filtered || []).length
 
   function handleFilterChange(f) { setFilters(f); setPage(1) }
 
   function handleMarkAllRead() {
-    markAllRead(filtered.map(a => a.id))
+    markAllRead((filtered || []).map(a => a.id).filter(Boolean))
   }
 
   const getISTDate = (d = new Date()) => new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
