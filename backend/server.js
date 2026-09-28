@@ -62,6 +62,18 @@ app.use('/api/bse',           require('./routes/bseRoutes')(verifyToken));
 app.use('/api/nse',           require('./routes/nseRoutes')(verifyToken));
 app.use('/api/market',        require('./routes/marketRoutes')(verifyToken));
 
+// ── Root Endpoint ─────────────────────────────────────────────────────────────
+app.get('/', (req, res) => {
+  res.json({
+    status: 'online',
+    service: 'Tatvarth StockWatch API',
+    version: '1.0.0',
+    documentation: '/api/health',
+    frontend: 'https://tatvarthstockwatch.web.app',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // ── Legacy Aliases & Convenience Endpoints ────────────────────────────────────
 app.get('/api/search/scripts', (req, res) => res.redirect(`/api/bse/search?q=${encodeURIComponent(req.query.q || '')}`));
 app.get('/api/telegram-status', verifyToken, (req, res, next) => {
