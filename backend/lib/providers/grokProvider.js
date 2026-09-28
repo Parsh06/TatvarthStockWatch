@@ -22,7 +22,8 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 // Groq model cascade — using currently available models (Sep 2026)
 const GROQ_MODELS = [
   'qwen/qwen3.8-27b',       // Fast, strong reasoning, good JSON output
-  'openai/gpt-oss-20b',     // Fast fallback
+  'openai/gpt-oss-120b',     // Deep reasoning, 131k context
+  'openai/gpt-oss-20b',      // Fast fallback
 ];
 
 /**

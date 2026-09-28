@@ -289,9 +289,13 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
           </div>
 
           {/* Executive Summary */}
-          {Array.isArray(a.summary) && a.summary.some(s => hasVal(s)) && (
+          {((Array.isArray(a.summary) && a.summary.some(s => hasVal(s))) || hasVal(a.executiveSummary)) && (
             <Section icon={Info} title="Executive Summary" iconColor="text-blue-400">
-              <BulletList items={a.summary} color="text-blue-400" />
+              {Array.isArray(a.summary) && a.summary.some(s => hasVal(s)) ? (
+                <BulletList items={a.summary} color="text-blue-400" />
+              ) : (
+                <p className="text-sm text-textPrimary leading-relaxed">{a.executiveSummary}</p>
+              )}
             </Section>
           )}
 
@@ -460,6 +464,7 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
                 <KvRow label="Bonus Issue" value={a.corporateActions?.bonusIssue} />
                 <KvRow label="Buyback" value={a.corporateActions?.buyback} />
                 <KvRow label="Rights Issue" value={a.corporateActions?.rightsIssue} />
+                <KvRow label="IPO" value={a.corporateActions?.ipo} />
                 <KvRow label="Merger" value={a.corporateActions?.merger} />
                 <KvRow label="Acquisition" value={a.corporateActions?.acquisition} />
                 <KvRow label="Fund Raise" value={a.corporateActions?.fundRaise} />

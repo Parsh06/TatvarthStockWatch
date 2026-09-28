@@ -25,10 +25,11 @@ const { GEMINI_MODELS } = require('./providers/geminiProvider');
 const MODEL_CASCADE = GEMINI_MODELS;
 
 /**
- * Downloads a filing PDF from a URL and returns a base64 encoded string.
+ * Downloads a filing PDF from a URL and extracts its text layer + optional base64.
+ * Uses pdf-parse to extract structured text directly in memory.
  */
-async function downloadPdfAsBase64(pdfUrl) {
-  if (!pdfUrl) return null;
+async function downloadPdfAndExtractText(pdfUrl) {
+  if (!pdfUrl) return { extractedText: null, base64Pdf: null };
   try {
     const response = await axios.get(pdfUrl, {
       responseType: 'arraybuffer',
@@ -36,20 +37,54 @@ async function downloadPdfAsBase64(pdfUrl) {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/pdf,application/octet-stream,*/*',
         'Referer': 'https://www.bseindia.com/',
-        'Origin': 'https://www.bseindia.com',
       },
-      timeout: 7000,
+      timeout: 10000,
     });
-    // Cap at 1.5MB to stay well within free tier token limits (250k TPM)
-    if (response.data.length <= 1.5 * 1024 * 1024) {
-      return Buffer.from(response.data).toString('base64');
+
+    const buf = Buffer.from(response.data);
+    let extractedText = null;
+
+    try {
+      const { PDFParse } = require('pdf-parse');
+      const parser = new PDFParse(new Uint8Array(response.data));
+      await parser.load();
+      const parseRes = await parser.getText();
+      if (parseRes && typeof parseRes.text === 'string' && parseRes.text.trim().length > 30) {
+        // Clean and normalize text
+        extractedText = parseRes.text
+          .replace(/\r\n/g, '\n')
+          .replace(/[ \t]+/g, ' ')
+          .replace(/\n\s*\n\s*\n/g, '\n\n')
+          .trim();
+        // Limit to 12,000 characters to stay within token budgets
+        if (extractedText.length > 12000) {
+          extractedText = extractedText.substring(0, 12000) + '\n... [Remaining filing content omitted for brevity]';
+        }
+        console.log(`[aiSummarizer] Successfully extracted ${extractedText.length} chars of text from PDF (${pdfUrl})`);
+      }
+    } catch (parseErr) {
+      console.warn(`[aiSummarizer] PDF text extraction failed (${pdfUrl}):`, parseErr.message);
     }
-    console.log(`[aiSummarizer] PDF is ${(response.data.length / (1024*1024)).toFixed(1)}MB (>1.5MB), using fast text synthesis mode.`);
-    return null;
+
+    // Prepare base64 for vision models (cap at 10MB)
+    let base64Pdf = null;
+    if (buf.length <= 10 * 1024 * 1024) {
+      base64Pdf = buf.toString('base64');
+    }
+
+    return { extractedText, base64Pdf };
   } catch (err) {
-    console.warn(`[aiSummarizer] PDF download skipped (${pdfUrl}):`, err.message);
-    return null;
+    console.warn(`[aiSummarizer] PDF download failed (${pdfUrl}):`, err.message);
+    return { extractedText: null, base64Pdf: null };
   }
+}
+
+/**
+ * Backward compatibility alias.
+ */
+async function downloadPdfAsBase64(pdfUrl) {
+  const { base64Pdf } = await downloadPdfAndExtractText(pdfUrl);
+  return base64Pdf;
 }
 
 /**
@@ -61,6 +96,7 @@ function normalizeAnalysisOutput(raw) {
   return {
     executiveSummary: typeof raw.executiveSummary === 'string' ? raw.executiveSummary : (typeof raw.headline === 'string' ? raw.headline : 'Executive summary unavailable.'),
     announcementCategory: typeof raw.announcementCategory === 'string' ? raw.announcementCategory : 'General Updates',
+    announcementType: typeof raw.announcementType === 'string' ? raw.announcementType : undefined,
     headline: typeof raw.headline === 'string' ? raw.headline : undefined,
     summary: Array.isArray(raw.summary) ? raw.summary.filter(Boolean) : undefined,
     sentiment: typeof raw.sentiment === 'string' ? raw.sentiment : 'Neutral',
@@ -117,15 +153,19 @@ function safeParseJson(rawText) {
 async function generateAIAnalysis(ann, options = {}) {
   const scriptLabel = ann.scriptName || ann.scriptCode || ann.symbol || ann._id || ann.id || 'Filing';
 
-  // ── 1. Download PDF if available ──────────────────────────────────────────
+  // ── 1. Download PDF & Extract Text if available ───────────────────────────
   const pdfUrl = ann.pdfUrl;
   let base64Pdf = null;
+  let extractedText = null;
+
   if (pdfUrl) {
-    base64Pdf = await downloadPdfAsBase64(pdfUrl);
+    const pdfResult = await downloadPdfAndExtractText(pdfUrl);
+    base64Pdf = pdfResult.base64Pdf;
+    extractedText = pdfResult.extractedText;
   }
 
-  // ── 2. Build the full prompt with filing metadata ─────────────────────────
-  const promptWithDetails = `${AI_ANALYST_PROMPT}
+  // ── 2. Build the full prompt with filing metadata & extracted text ─────────
+  let promptWithDetails = `${AI_ANALYST_PROMPT}
 
 ---
 
@@ -141,12 +181,24 @@ Description: ${ann.description || ''}
 Date / Time (IST): ${ann.datetimeIST || ann.date || ann.announcementDate || ''}
 Statutory Filing PDF Link: ${ann.pdfUrl || 'N/A'}`;
 
+  if (extractedText) {
+    promptWithDetails += `
+
+---
+
+# EXTRACTED TEXT FROM OFFICIAL STATUTORY FILING PDF
+${extractedText}`;
+  }
+
   // ── 3. Route to AI provider ───────────────────────────────────────────────
   console.log(`[aiSummarizer] Requesting AI analysis for ${scriptLabel} (hasPdf=${Boolean(base64Pdf)})`);
   const routerStatus = getRouterStatus();
   console.log(`[aiSummarizer] Router status: Gemini=${routerStatus.hasGemini ? 'ON' : 'OFF'}, Groq=${routerStatus.hasGroq ? 'ON' : 'OFF'}, Cooldown=${routerStatus.geminiCooldownActive ? `YES (${Math.ceil(routerStatus.geminiCooldownRemainingMs/1000)}s)` : 'NO'}`);
 
-  const result = await routeRequest(promptWithDetails, base64Pdf, options);
+  // Only pass base64Pdf to multimodal Gemini if text could not be extracted (e.g. scanned image PDF).
+  // If text is already extracted into the prompt, sending a heavy base64 PDF wastes bandwidth and causes timeouts.
+  const multimodalPayload = extractedText ? null : base64Pdf;
+  const result = await routeRequest(promptWithDetails, multimodalPayload, options);
 
   if (!result || !result.success) {
     console.warn(`[aiSummarizer] All providers failed for ${scriptLabel}. Engaging resilient synthesis fallback.`);
@@ -264,5 +316,6 @@ module.exports = {
   safeParseJson,
   normalizeAnalysisOutput,
   downloadPdfAsBase64,
+  downloadPdfAndExtractText,
   getRouterStatus,
 };

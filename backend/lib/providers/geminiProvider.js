@@ -13,14 +13,10 @@
 
 const axios = require('axios');
 
-// ── Active Gemini Model Cascade (Prioritizing 500 RPD Pool) ─────────────────
+// ── Active Gemini Model Cascade (Fast failover to Groq) ───────────────────
 const GEMINI_MODELS = [
   'gemini-3.1-flash-lite',
-  'gemini-3.1-flash-lite-preview',
-  'gemini-flash-lite-latest',
   'gemini-3.7-flash',
-  'gemini-3.8-flash',
-  'gemini-3.5-flash-lite',
 ];
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -90,7 +86,7 @@ async function callGemini(prompt, base64Pdf, options = {}) {
   }
 
   const models = options.models || GEMINI_MODELS;
-  const timeout = options.timeout || 8000;
+  const timeout = options.timeout || 4500;
   let allRateLimited = true;
 
   for (let i = 0; i < models.length; i++) {
@@ -110,11 +106,6 @@ async function callGemini(prompt, base64Pdf, options = {}) {
     }
 
     console.warn(`[GeminiProvider] Model "${modelName}" failed: ${result.error}`);
-
-    // 1s delay between cascade tiers to avoid burst limits
-    if (i < models.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
   }
 
   return {
