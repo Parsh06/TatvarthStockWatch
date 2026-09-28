@@ -25,11 +25,11 @@ const { GEMINI_MODELS } = require('./providers/geminiProvider');
 const MODEL_CASCADE = GEMINI_MODELS;
 
 /**
- * Downloads a filing PDF from a URL and extracts its text layer + optional base64.
- * Uses pdf-parse to extract structured text directly in memory.
+ * Downloads a filing PDF from a URL and returns a base64 encoded string
+ * so multimodal AI models (Gemini) can perform native OCR and visual parsing.
  */
-async function downloadPdfAndExtractText(pdfUrl) {
-  if (!pdfUrl) return { extractedText: null, base64Pdf: null };
+async function downloadPdfAsBase64(pdfUrl) {
+  if (!pdfUrl) return null;
   try {
     const response = await axios.get(pdfUrl, {
       responseType: 'arraybuffer',
@@ -37,54 +37,23 @@ async function downloadPdfAndExtractText(pdfUrl) {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/pdf,application/octet-stream,*/*',
         'Referer': 'https://www.bseindia.com/',
+        'Origin': 'https://www.bseindia.com',
       },
-      timeout: 10000,
+      timeout: 12000,
     });
 
     const buf = Buffer.from(response.data);
-    let extractedText = null;
-
-    try {
-      const { PDFParse } = require('pdf-parse');
-      const parser = new PDFParse(new Uint8Array(response.data));
-      await parser.load();
-      const parseRes = await parser.getText();
-      if (parseRes && typeof parseRes.text === 'string' && parseRes.text.trim().length > 30) {
-        // Clean and normalize text
-        extractedText = parseRes.text
-          .replace(/\r\n/g, '\n')
-          .replace(/[ \t]+/g, ' ')
-          .replace(/\n\s*\n\s*\n/g, '\n\n')
-          .trim();
-        // Limit to 12,000 characters to stay within token budgets
-        if (extractedText.length > 12000) {
-          extractedText = extractedText.substring(0, 12000) + '\n... [Remaining filing content omitted for brevity]';
-        }
-        console.log(`[aiSummarizer] Successfully extracted ${extractedText.length} chars of text from PDF (${pdfUrl})`);
-      }
-    } catch (parseErr) {
-      console.warn(`[aiSummarizer] PDF text extraction failed (${pdfUrl}):`, parseErr.message);
+    // Support up to 15MB for full multi-page visual filings
+    if (buf.length <= 15 * 1024 * 1024) {
+      console.log(`[aiSummarizer] Downloaded PDF (${(buf.length / (1024*1024)).toFixed(2)}MB) from ${pdfUrl} for multimodal analysis.`);
+      return buf.toString('base64');
     }
-
-    // Prepare base64 for vision models (cap at 10MB)
-    let base64Pdf = null;
-    if (buf.length <= 10 * 1024 * 1024) {
-      base64Pdf = buf.toString('base64');
-    }
-
-    return { extractedText, base64Pdf };
+    console.warn(`[aiSummarizer] PDF is ${(buf.length / (1024*1024)).toFixed(1)}MB (>15MB cap).`);
+    return null;
   } catch (err) {
     console.warn(`[aiSummarizer] PDF download failed (${pdfUrl}):`, err.message);
-    return { extractedText: null, base64Pdf: null };
+    return null;
   }
-}
-
-/**
- * Backward compatibility alias.
- */
-async function downloadPdfAsBase64(pdfUrl) {
-  const { base64Pdf } = await downloadPdfAndExtractText(pdfUrl);
-  return base64Pdf;
 }
 
 /**
@@ -145,6 +114,7 @@ function safeParseJson(rawText) {
  *
  * Runs on-demand AI analysis using the dual-provider system (Gemini + Grok).
  * The providerRouter handles failover, cooldown, and provider selection.
+ * Sends the statutory filing PDF binary (multimodal OCR) and PDF URL directly with AI_ANALYST_PROMPT.
  *
  * @param {object} ann - Announcement object
  * @param {object} [options] - Optional configurations
@@ -153,23 +123,19 @@ function safeParseJson(rawText) {
 async function generateAIAnalysis(ann, options = {}) {
   const scriptLabel = ann.scriptName || ann.scriptCode || ann.symbol || ann._id || ann.id || 'Filing';
 
-  // ── 1. Download PDF & Extract Text if available ───────────────────────────
+  // ── 1. Download PDF directly as base64 for native multimodal vision / OCR ─
   const pdfUrl = ann.pdfUrl;
   let base64Pdf = null;
-  let extractedText = null;
-
   if (pdfUrl) {
-    const pdfResult = await downloadPdfAndExtractText(pdfUrl);
-    base64Pdf = pdfResult.base64Pdf;
-    extractedText = pdfResult.extractedText;
+    base64Pdf = await downloadPdfAsBase64(pdfUrl);
   }
 
-  // ── 2. Build the full prompt with filing metadata & extracted text ─────────
-  let promptWithDetails = `${AI_ANALYST_PROMPT}
+  // ── 2. Build the full prompt with filing metadata & statutory PDF link ────
+  const promptWithDetails = `${AI_ANALYST_PROMPT}
 
 ---
 
-# FILING METADATA & DETAILS
+# FILING METADATA & STATUTORY SOURCE
 Company Name: ${ann.scriptName || ann.scriptCode || ann.companyName || 'Listed Entity'}
 Exchange: ${ann.exchange || 'BSE/NSE'}
 BSE Scrip Code: ${ann.bseCode || ann.scriptCode || ''}
@@ -179,26 +145,20 @@ Sub-Category: ${ann.subCategory || ''}
 Headline / Subject: ${ann.subject || ann.headline || ''}
 Description: ${ann.description || ''}
 Date / Time (IST): ${ann.datetimeIST || ann.date || ann.announcementDate || ''}
-Statutory Filing PDF Link: ${ann.pdfUrl || 'N/A'}`;
+Statutory Filing PDF Link: ${ann.pdfUrl || 'N/A'}
 
-  if (extractedText) {
-    promptWithDetails += `
-
----
-
-# EXTRACTED TEXT FROM OFFICIAL STATUTORY FILING PDF
-${extractedText}`;
-  }
+# INSTRUCTIONS FOR MULTIMODAL OCR & FILING ANALYSIS
+1. The statutory filing document is provided (both as attached PDF binary for direct multimodal OCR/vision examination, and via the Statutory Filing PDF Link above).
+2. Examine the document thoroughly across all pages, tables, financial statements, stamps, signatures, and notes using full visual and OCR understanding.
+3. Distinguish units carefully (e.g. ₹ in Lakhs vs ₹ in Crores) and calculate/extract YoY% and QoQ% growth rates.
+4. Output ONLY valid JSON adhering strictly to the JSON schema specified above.`;
 
   // ── 3. Route to AI provider ───────────────────────────────────────────────
-  console.log(`[aiSummarizer] Requesting AI analysis for ${scriptLabel} (hasPdf=${Boolean(base64Pdf)})`);
+  console.log(`[aiSummarizer] Requesting AI analysis for ${scriptLabel} (hasPdf=${Boolean(base64Pdf)}, pdfUrl=${pdfUrl || 'N/A'})`);
   const routerStatus = getRouterStatus();
   console.log(`[aiSummarizer] Router status: Gemini=${routerStatus.hasGemini ? 'ON' : 'OFF'}, Groq=${routerStatus.hasGroq ? 'ON' : 'OFF'}, Cooldown=${routerStatus.geminiCooldownActive ? `YES (${Math.ceil(routerStatus.geminiCooldownRemainingMs/1000)}s)` : 'NO'}`);
 
-  // Only pass base64Pdf to multimodal Gemini if text could not be extracted (e.g. scanned image PDF).
-  // If text is already extracted into the prompt, sending a heavy base64 PDF wastes bandwidth and causes timeouts.
-  const multimodalPayload = extractedText ? null : base64Pdf;
-  const result = await routeRequest(promptWithDetails, multimodalPayload, options);
+  const result = await routeRequest(promptWithDetails, base64Pdf, options);
 
   if (!result || !result.success) {
     console.warn(`[aiSummarizer] All providers failed for ${scriptLabel}. Engaging resilient synthesis fallback.`);
@@ -316,6 +276,5 @@ module.exports = {
   safeParseJson,
   normalizeAnalysisOutput,
   downloadPdfAsBase64,
-  downloadPdfAndExtractText,
   getRouterStatus,
 };

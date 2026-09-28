@@ -21,22 +21,23 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 // Groq model cascade — using currently available models (Sep 2026)
 const GROQ_MODELS = [
-  'qwen/qwen3.8-27b',       // Fast, strong reasoning, good JSON output
-  'openai/gpt-oss-120b',     // Deep reasoning, 131k context
-  'openai/gpt-oss-20b',      // Fast fallback
+  'openai/gpt-oss-120b',     // Deep reasoning, 131k context, generous token budget
+  'openai/gpt-oss-20b',      // Fast fallback, generous token budget
+  'qwen/qwen3.8-27b',        // Fast, strong reasoning
 ];
 
 /**
  * Calls a single Groq model via OpenAI-compatible API.
  *
  * @param {string} apiKey      - Groq API key (gsk_...)
- * @param {string} modelName   - e.g. 'llama-3.3-70b-versatile'
+ * @param {string} modelName   - e.g. 'openai/gpt-oss-120b'
  * @param {string} prompt      - Full prompt text
  * @param {number} [timeout=12000] - Request timeout in ms
  * @returns {Promise<{ success: boolean, text?: string, model: string, rateLimited?: boolean, error?: string }>}
  */
 async function callGroqModel(apiKey, modelName, prompt, timeout = 12000) {
   try {
+    const maxTokens = modelName.includes('qwen') ? 950 : 2048;
     const requestBody = {
       model: modelName,
       messages: [
@@ -47,7 +48,7 @@ async function callGroqModel(apiKey, modelName, prompt, timeout = 12000) {
       ],
       response_format: { type: 'json_object' },
       temperature: 0.2,
-      max_tokens: 4096,
+      max_tokens: maxTokens,
     };
 
     const response = await axios.post(GROQ_API_URL, requestBody, {

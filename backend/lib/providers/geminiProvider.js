@@ -86,7 +86,7 @@ async function callGemini(prompt, base64Pdf, options = {}) {
   }
 
   const models = options.models || GEMINI_MODELS;
-  const timeout = options.timeout || 4500;
+  const timeout = options.timeout || (base64Pdf ? 9500 : 5000);
   let allRateLimited = true;
 
   for (let i = 0; i < models.length; i++) {
