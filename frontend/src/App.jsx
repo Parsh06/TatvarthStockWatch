@@ -61,9 +61,11 @@ function PublicRoute({ children }) {
 }
 
 function AppRoutes() {
+  const isVercel = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')
+
   return (
     <>
-      <Analytics />
+      {isVercel && <Analytics />}
       <FirebaseAnalyticsTracker />
       <OfflineBanner />
       <CommandPalette />

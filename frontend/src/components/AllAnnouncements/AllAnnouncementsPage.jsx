@@ -180,21 +180,25 @@ export default function AllAnnouncementsPage() {
     if (codeFilter)    list = list.filter((a) => a.bseCode === codeFilter || a.scriptCode === codeFilter)
     if (onlyWatchlist) list = list.filter((a) => watchlistCodes.has(a.bseCode))
     if (catFilter) {
-      const target = catFilter.toLowerCase()
+      const target = catFilter.toLowerCase().trim()
       list = list.filter((a) => {
-        const cat = (a.category || '').toLowerCase()
-        const sub = (a.subCategory || '').toLowerCase()
-        const head = (a.subject || a.headline || '').toLowerCase()
+        const rawCat = (a.category || '').toLowerCase().trim()
+        const baseCat = rawCat.includes(' / ') ? rawCat.split(' / ')[0].trim() : rawCat
+        const sub = (a.subCategory || '').toLowerCase().trim()
+
         if (target === 'result' || target === 'financial results' || target === 'results') {
-          return cat.includes('result') || sub.includes('result') || head.includes('financial result') || head.includes('unaudited financial') || head.includes('audited financial')
+          return baseCat === 'result' || baseCat === 'financial results' || rawCat.includes('result') || sub.includes('result')
         }
-        if (target === 'board meeting') {
-          return cat.includes('board meeting') || head.includes('board meeting')
+        if (target === 'board meeting' || target === 'board meetings') {
+          return baseCat === 'board meeting' || rawCat.includes('board meeting')
+        }
+        if (target === 'insider trading') {
+          return baseCat === 'insider trading' || rawCat.includes('insider trading')
         }
         if (target === 'dividend') {
-          return cat.includes('dividend') || sub.includes('dividend') || head.includes('dividend')
+          return baseCat === 'dividend' || rawCat.includes('dividend') || sub.includes('dividend')
         }
-        return cat.includes(target) || target.includes(cat) || sub.includes(target)
+        return baseCat === target || rawCat === target || rawCat.includes(target) || sub.includes(target)
       })
     }
     

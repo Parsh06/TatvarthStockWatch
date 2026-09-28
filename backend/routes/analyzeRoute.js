@@ -100,15 +100,16 @@ module.exports = function createAnalyzeRouter(verifyToken) {
         analysis: result.analysis,
       };
 
+      const updateData = { ...ann };
+      delete updateData._id;
+      updateData.aiAnalysis = aiAnalysis;
+      updateData.updatedAt = new Date();
+
       await col.updateOne(
-        { _id: announcementId },
+        { $or: [{ _id: announcementId }, { id: announcementId }] },
         { 
-          $set: { 
-            ...ann,
-            _id: announcementId,
-            aiAnalysis,
-            updatedAt: new Date()
-          } 
+          $set: updateData,
+          $setOnInsert: { _id: announcementId, id: announcementId }
         },
         { upsert: true }
       );
