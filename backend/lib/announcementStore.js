@@ -80,7 +80,7 @@ async function saveAnnouncements(announcements) {
  * @param {string} [opts.sinceDate]   ISO date string
  * @returns {Promise<object[]>}
  */
-async function getAnnouncements({ exchange, scriptCode, nseSymbol, limitCount = 100, sinceDate } = {}) {
+async function getAnnouncements({ exchange, scriptCode, nseSymbol, limitCount = 1000, sinceDate } = {}) {
   const db = await getDb();
   const collection = db.collection('announcements');
 
@@ -103,7 +103,7 @@ async function getAnnouncements({ exchange, scriptCode, nseSymbol, limitCount = 
   try {
     const docs = await collection.find(query)
       .sort({ announcementDate: -1 })
-      .limit(Number(limitCount) || 100)
+      .limit(Number(limitCount) || 1000)
       .toArray();
       
     return docs.map(d => ({ ...d, id: String(d._id), _id: undefined }));

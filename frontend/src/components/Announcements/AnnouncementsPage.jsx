@@ -151,7 +151,7 @@ export default function AnnouncementsPage() {
         <div className="flex items-center gap-3 px-4 py-3 bg-primary/10 border border-primary/30 rounded-xl text-sm text-primary shadow-inner">
           <Zap className="w-4 h-4 flex-shrink-0" />
           <span>
-            No announcements yet — go to <strong>Watchlist</strong> and click <strong>Fetch News</strong> to load today's announcements.
+            No market announcements recorded for today yet. Click <strong>Refresh</strong> above to poll latest announcements or check <strong>All Announcements</strong>.
           </span>
         </div>
       )}
@@ -179,9 +179,17 @@ export default function AnnouncementsPage() {
       {/* List */}
       {loading ? (
         <Loader />
-      ) : filtered.length === 0 && announcements.length > 0 ? (
-        <EmptyState icon={Bell} title="No matching announcements" subtitle="Try adjusting your filters or clearing the category selection" />
-      ) : filtered.length === 0 ? null : (
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={Bell}
+          title={announcements.length === 0 ? "No announcements recorded today" : "No announcements for your watchlist"}
+          subtitle={
+            announcements.length === 0
+              ? "No market announcements have been captured for today yet. Use the Refresh button above to poll the latest updates."
+              : "None of your watchlisted scripts have announcements matching the selected filters today. Check All Announcements to see all market updates."
+          }
+        />
+      ) : (
         <div className="space-y-3">
           {paginated.map((a) => (
             <AnnouncementCard

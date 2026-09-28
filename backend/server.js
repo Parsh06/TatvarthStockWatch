@@ -55,7 +55,6 @@ app.use('/api/announcements', require('./routes/analyzeRoute')(verifyToken));
 app.use('/api/watchlist',     require('./routes/watchlistRoutes'));
 app.use('/api/prefs',         require('./routes/prefRoutes'));
 app.use('/api/push',          require('./routes/pushRoutes'));
-app.use('/api/portfolio',     require('./routes/portfolioRoutes'));
 app.use('/api/alerts',        require('./routes/alertRoutes'));
 app.use('/api/dashboard',     require('./routes/dashboardRoutes'));
 app.use('/api/ipo',           require('./routes/ipoVerificationRoutes')(verifyToken));

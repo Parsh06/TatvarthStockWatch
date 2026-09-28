@@ -1,15 +1,14 @@
 /**
  * GlobalSearch — Ctrl+K / Cmd+K modal.
- * Searches: watchlist, portfolio (from localStorage), BSE live search.
+ * Searches: watchlist, BSE live search.
  */
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, X, Briefcase, Star, Building2, Clock, CornerDownLeft } from 'lucide-react'
+import { Search, X, Star, Building2, Clock, CornerDownLeft } from 'lucide-react'
 import clsx from 'clsx'
 import { useWatchlist } from '../../contexts/WatchlistContext'
 
 const BACKEND    = import.meta.env.VITE_BACKEND_URL || ''
-const LS_KEY     = 'portfolio_holdings_v2'
 const RECENT_KEY = 'global_search_recent_v1'
 
 function useDebounce(v, d) {
@@ -18,14 +17,6 @@ function useDebounce(v, d) {
   return dv
 }
 
-function loadPortfolioNames() {
-  try {
-    const raw = localStorage.getItem(LS_KEY)
-    if (!raw) return []
-    const { holdings } = JSON.parse(raw)
-    return Array.isArray(holdings) ? holdings : []
-  } catch { return [] }
-}
 
 function loadRecent() {
   try {
@@ -95,8 +86,6 @@ export default function GlobalSearch({ open, onClose }) {
   const listRef   = useRef(null)
   const dq        = useDebounce(query, 300)
 
-  const portfolioHoldings = useMemo(() => loadPortfolioNames(), [open])
-
   useEffect(() => {
     if (open) {
       setQuery('')
@@ -139,20 +128,6 @@ export default function GlobalSearch({ open, onClose }) {
     [q, watchlist]
   )
 
-  const portfolioMatches = useMemo(() =>
-    q.length < 1 ? [] : portfolioHoldings.filter(h =>
-      (h.scripName || '').toLowerCase().includes(q) ||
-      (h.bseCode || '').toLowerCase().includes(q)
-    ).slice(0, 4),
-    [q, portfolioHoldings]
-  )
-
-  function navigate2(path, state, recentEntry) {
-    if (recentEntry) saveRecent(recentEntry)
-    navigate(path, { state })
-    onClose()
-  }
-
   // Flatten every visible result into one ordered list so arrow keys can move across sections
   const flatResults = useMemo(() => {
     const items = []
@@ -165,12 +140,6 @@ export default function GlobalSearch({ open, onClose }) {
         { key: `wl-${s.bseCode || s.ltdCode}`, label: s.scriptName, path: '/company-data',
           state: { script: { bseCode: s.bseCode || s.ltdCode, scripName: s.scriptName, symbol: s.nseSymbol || '' } } }),
     }))
-    portfolioMatches.forEach((h) => items.push({
-      index: i++, icon: Briefcase, iconClass: 'text-primary',
-      title: h.scripName, subtitle: `BSE ${h.bseCode}`,
-      onPick: () => navigate2('/portfolio', undefined,
-        { key: `pf-${h.bseCode}`, label: h.scripName, path: '/portfolio' }),
-    }))
     bseResults.forEach((item) => items.push({
       index: i++, icon: Building2, iconClass: 'text-textMuted',
       title: item.scripName, subtitle: `${item.symbol} · ${item.isin}`, trailing: item.bseCode,
@@ -180,7 +149,7 @@ export default function GlobalSearch({ open, onClose }) {
           state: { script: { bseCode: item.bseCode, scripName: item.scripName, symbol: item.symbol || '', isin: item.isin || '' } } }),
     }))
     return items
-  }, [watchlistMatches, portfolioMatches, bseResults])
+  }, [watchlistMatches, bseResults])
 
   useEffect(() => { setActiveIndex(0) }, [dq])
 
@@ -244,7 +213,7 @@ export default function GlobalSearch({ open, onClose }) {
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search watchlist, portfolio, or any BSE company…"
+            placeholder="Search watchlist or any BSE company…"
             className="flex-1 min-w-0 bg-transparent text-textPrimary text-sm placeholder-textMuted/50 focus:outline-none"
           />
           {bseLoading && <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin flex-shrink-0" />}
@@ -301,7 +270,7 @@ export default function GlobalSearch({ open, onClose }) {
 
               {recent.length === 0 && watchlist.length === 0 && (
                 <p className="text-xs text-center text-textMuted/40 py-10 px-4">
-                  Start typing to search your watchlist, portfolio, or any BSE-listed company
+                  Start typing to search your watchlist or any BSE-listed company
                 </p>
               )}
             </div>
@@ -323,29 +292,11 @@ export default function GlobalSearch({ open, onClose }) {
             </div>
           )}
 
-          {portfolioMatches.length > 0 && (
-            <div>
-              <p className="text-[10px] font-semibold text-textMuted uppercase tracking-wider px-4 py-2 bg-background/40">Portfolio</p>
-              {flatResults
-                .filter((item) => item.index >= watchlistMatches.length && item.index < watchlistMatches.length + portfolioMatches.length)
-                .map((item) => (
-                  <ResultRow
-                    key={`pf-${item.index}`}
-                    item={item}
-                    query={query}
-                    active={item.index === activeIndex}
-                    onHover={() => setActiveIndex(item.index)}
-                    onPick={item.onPick}
-                  />
-                ))}
-            </div>
-          )}
-
           {bseResults.length > 0 && (
             <div>
               <p className="text-[10px] font-semibold text-textMuted uppercase tracking-wider px-4 py-2 bg-background/40">BSE Companies</p>
               {flatResults
-                .filter((item) => item.index >= watchlistMatches.length + portfolioMatches.length)
+                .filter((item) => item.index >= watchlistMatches.length)
                 .map((item) => (
                   <ResultRow
                     key={`bse-${item.index}`}

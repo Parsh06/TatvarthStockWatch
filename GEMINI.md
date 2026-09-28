@@ -112,7 +112,6 @@ stockwatch/
 │   │   ├── ipoVerificationRoutes.js   ← IPO verify + bulk verify + applicants CRUD
 │   │   ├── marketRoutes.js            ← Volume spurt, IPO GMP
 │   │   ├── nseRoutes.js               ← NSE proxy routes
-│   │   ├── portfolioRoutes.js         ← Family portfolio CRUD
 │   │   ├── prefRoutes.js              ← User notification preferences CRUD
 │   │   ├── pushRoutes.js              ← Multi-device Web Push subscriptions CRUD
 │   │   └── watchlistRoutes.js         ← Watchlist CRUD, bulk import, catchup & CSV export
@@ -148,7 +147,6 @@ stockwatch/
 │   │   ├── watchlistStore.js          ← Watchlist Firestore operations
 │   │   ├── prefsStore.js              ← User preferences Firestore operations
 │   │   ├── pushStore.js               ← Push device Firestore operations
-│   │   ├── portfolioStore.js          ← Portfolio Firestore operations
 │   │   ├── spurtStore.js              ← Volume spurt Firestore operations
 │   │   ├── notificationEngine.js      ← Core notification pipeline (18KB)
 │   │   ├── notificationFilter.js      ← Category-based notification filtering (15KB)
@@ -225,7 +223,6 @@ stockwatch/
         │   │   ├── Sidebar.jsx        ← Navigation sidebar
         │   │   └── Topbar.jsx         ← Top navigation bar
         │   ├── News/                  ← Market news feed
-        │   ├── Portfolio/             ← Family portfolio management
         │   ├── ResultCalendar/        ← Forthcoming financial results calendar
         │   ├── SecurityGuard/         ← Client-side security
         │   ├── Settings/              ← User preferences
@@ -251,7 +248,6 @@ stockwatch/
         │   ├── alertService.js        ← Alert API calls
         │   ├── announcementService.js ← Announcement API calls
         │   ├── dashboardService.js    ← Dashboard API calls
-        │   ├── portfolioService.js    ← Portfolio API calls
         │   └── watchlistService.js    ← Watchlist API calls
         │
         └── utils/
@@ -289,7 +285,6 @@ stockwatch/
 | `/bulk-block` | `BulkBlockPage` | 🔒 | Bulk & Block deals |
 | `/company-data` | `CompanyDataPage` | 🔒 | Company information |
 | `/settings` | `SettingsPage` | 🔒 | User preferences |
-| `/portfolio` | `PortfolioPage` | 🔒 | Family portfolio |
 | `/calendar` | `CorporateCalendarPage` | 🔒 | Economic calendar |
 | `/insider` | `InsiderTradingPage` | 🔒 | Insider trading tracker |
 | `*` | → redirect | — | Catch-all → `/dashboard` |
@@ -317,7 +312,6 @@ stockwatch/
 | POST | `/api/ipo/verify` | 🔒 | `ipoVerificationRoutes.js` |
 | POST | `/api/ipo/verify-bulk` | 🔒 | `ipoVerificationRoutes.js` |
 | GET/POST | `/api/push/*` | 🔒 / Open | `pushRoutes.js` |
-| GET/PUT | `/api/portfolio` | 🔒 | `portfolioRoutes.js` |
 | GET/DELETE | `/api/alerts/*` | 🔒 | `alertRoutes.js` |
 | GET | `/api/bse/*` | 🔒 / Open | `bseRoutes.js` |
 | GET | `/api/nse/*` | 🔒 | `nseRoutes.js` |
@@ -665,7 +659,6 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 | 2026-09-16 | BigShare Multi-Registrar IPO Bulk Verification & 500+ Streaming Engine: Fixed BigShare (`Raksan Transformers Limited`) allotment verification by adding auto-registrar resolution in backend (`resolveSymbolAndRegistrar`), normalizing `clientId` and `registrar` attributes in `/symbols`, stripping `BIGSHARE_` prefix in `queryBigshare`, updating Gemini vision fallback models (`gemini-3.5-flash-lite`, `gemini-3.6-flash`, `gemini-flash-latest`, `gemini-3.5-flash`), parallelizing Firestore PAN lookups, and increasing per-user bulk rate limit to 150/min. Implemented enterprise client-side chunk streaming pipeline in `IpoVerificationPage.jsx` (`CHUNK_SIZE=8`, `CONCURRENT_CHUNKS=2`) to seamlessly handle 500+ PAN cards without serverless timeouts, paired with an animated live Progress HUD (percentage, ETA, count), pause/cancel controls (`AbortController`), live search & status tab filtering, and 1-click Excel report export (`.xlsx`) via SheetJS | `backend/lib/bigshareScraper.js`, `backend/routes/ipoVerificationRoutes.js`, `frontend/src/components/IpoVerification/IpoVerificationPage.jsx` |
 | 2026-09-16 | BigShare Hybrid Captcha Engine Resolution: Fixed captcha validation failures by upgrading OCR fallback cascade with active production models (`gemini-flash-lite-latest`, `gemini-3.5-flash-lite`, `gemini-3.6-flash`), adding intelligent retry with auto-prefer Vision on `CAPTCHA` rejection from server, and multi-server round-robin across all 3 BigShare endpoints (`ipo`, `ipo1`, `ipo2`) guaranteeing zero captcha failures during 500+ bulk runs | `backend/lib/bigshareScraper.js`, `backend/tests/test_bigshare_verification.js` |
 | 2026-09-16 | Zero-Hang Timeout Guarding & Real-Time Dynamic ETA Engine: Hardened `/api/ipo/verify-bulk` with individual 22-second applicant query timeout guards (`Promise.race`) and stateless Gemini vision execution. Enhanced frontend `IpoVerificationPage.jsx` with per-chunk 20s abort controllers, realistic initial ETA calculations (`totalApplicants * 1.5s`), live 1-second interval countdown ticker, and 1-Click Retry buttons (both per-card `Retry Applicant` and summary `Retry Failed (N)`) preventing any browser or serverless pending hangs | `backend/lib/bigshareScraper.js`, `backend/routes/ipoVerificationRoutes.js`, `frontend/src/components/IpoVerification/IpoVerificationPage.jsx` |
-| 2026-09-16 | FinTech Typography Upgrade: Switched global app typography to `Plus Jakarta Sans` (body/UI sans), `Outfit` (display headings), and `JetBrains Mono` (numbers/tickers), configured Tailwind `fontFamily` tokens, and enabled tabular numerals (`tnum`, `cv02`, `cv03`, `cv04`) in `index.css` for precision financial table alignment | `frontend/index.html`, `frontend/tailwind.config.js`, `frontend/src/index.css` |
 | 2026-09-27 | BSE API Modernization & Resilient Scrapers: Upgraded backend BSE endpoints across Movers (`MktRGainerLoserDataeqto/w`), Search (`GetQuoteAllSearchDatabeta.aspx` fallback), Board Meetings (`Corp_Fetch_BoardMeeting_With_Filter_ng/w` + `GetForthBoardMeeting/w` + ASPX cheerio scraping fallback), AGM Updates, Bulk & Block Deals (`BulkDealData_ng/w` + ASPX scraping fallback), Volume Spurt (`SpurtvolumeNew/w?flag=1`), and Insider Trading (`getCorp_Regulation_ng/w`). All 9 test suites verified with 100% pass rate | `backend/routes/bseRoutes.js`, `backend/lib/apiClients.js`, `backend/tests/test_bse_routes.js` (new) |
 | 2026-09-27 | Dashboard & Market Pages Comprehensive Live Data Resolution: Refactored `bseGet` in `apiClients.js` to use Axios with modern browser headers (`sec-ch-ua`, `Referer`, `Origin`, `insecureHTTPParser`) solving Akamai 403 blocks. Fixed `AGMUpdatesPage.jsx` `toDate` state defaulting to `nextMonth()` instead of `today()`. Switched `CorporateCalendarPage.jsx` from raw `fetch` to `apiClient`. Standardized `DD/MM/YYYY` date formatting for `getCorp_Regulation_ng/w` insider trading endpoints. Enhanced `dashboardService.js` with fallback to upcoming meetings on non-trading days and on-demand spurt snapshot resolution. All dashboard widgets (indices, movers, spurts, meetings, AGMs, IPOs, deals) verified 100% operational | `backend/lib/apiClients.js`, `backend/routes/bseRoutes.js`, `backend/services/dashboardService.js`, `frontend/src/components/AGMUpdates/AGMUpdatesPage.jsx`, `frontend/src/components/CorporateCalendar/CorporateCalendarPage.jsx` |
 | 2026-09-27 | Multi-Provider Fallbacks for Search, Calendar, AGMs & Insider Trading: Integrated MoneyControl autosuggest API as secondary fallback for `/api/bse/search` (guaranteeing instant suggestions for partial queries like `naba`, `nab`, `na`, `tata`, `reliance`). Added ASPX Cheerio scraping fallback for `/api/bse/calendar` (populating 40+ upcoming events even on weekends/403 blocks) and `/api/bse/agm-updates` (returning 1200+ forth meetings). Hardened `/api/bse/insider` and `/api/bse/insider/download` with in-memory TTL caching and zero-500 fail-safe returns | `backend/routes/bseRoutes.js` |
@@ -673,7 +666,10 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 | 2026-09-27 | Result Calendar Page & BSE Forthcoming Results Proxy: Implemented `/result-calendar` page and `GET /api/bse/results-calendar` endpoint backed by BSE `Corpforthresults/w` API. Features default forthcoming results query, custom and preset date range filtering (Today, Next 7 Days, Next 30 Days), real-time company/code search, watchlist filtering, stat cards, sorting, status badges (Today, Tomorrow, Relative days), links to Company Data and BSE, responsive table and mobile views, and 1-click Excel export (`.xlsx`). Added navigation items to Sidebar and mobile bottom navbar right after AGM Updates | `backend/routes/bseRoutes.js`, `frontend/src/components/ResultCalendar/ResultCalendarPage.jsx` (new), `frontend/src/App.jsx`, `frontend/src/components/Layout/Sidebar.jsx`, `frontend/src/components/Layout/AppLayout.jsx`, `frontend/src/components/Common/CommandPalette.jsx` |
 | 2026-09-27 | Declared Financial Results Integration & Dynamic Mode Switch: Added `GET /api/bse/financial-results` endpoint backed by `Corp_FinanceResult_ng_new/w` with in-memory TTL caching. Upgraded `ResultCalendarPage.jsx` with an interactive Mode Switcher ("See Financial Results" ↔ "Show Result Calendar"), audit/nature/industry filter bar, formatted quarter badges (`Q1 FY27`, `Q4 FY26`, `H1 FY26`), audited verification chips, and dedicated stat cards. Renamed navigation item in Sidebar to "Financial Results" and mobile bottom nav to "Financials" | `backend/routes/bseRoutes.js`, `frontend/src/components/ResultCalendar/ResultCalendarPage.jsx`, `frontend/src/components/Layout/Sidebar.jsx`, `frontend/src/components/Layout/AppLayout.jsx`, `frontend/src/components/Common/CommandPalette.jsx` |
 | 2026-09-28 | Web Analytics & Firebase Analytics Integration: Installed `@vercel/analytics` and mounted `<Analytics />` in `App.jsx`. Enhanced `firebase.js` with client-safe, adblocker-resilient `trackPageView` and `logFirebaseEvent` helpers using measurement ID `G-XQFHRJ94SM`. Added `FirebaseAnalyticsTracker` in `App.jsx` to automatically log all page routes and titles on navigation | `frontend/package.json`, `frontend/src/App.jsx`, `frontend/src/services/firebase.js` |
-
+| 2026-09-28 | Complete Portfolio Deprecation & Removal: Fully removed the Portfolio page, `/portfolio` route, navigation buttons in Sidebar and mobile bottom navbar, "Add to Portfolio" actions in `ScriptDrawer.jsx` and `CompanyDataPage.jsx`, search indexing in `GlobalSearch.jsx`, `LoginPage.jsx` mentions, backend route `/api/portfolio` and store `portfolioStore.js` | `frontend/src/App.jsx`, `frontend/src/components/Layout/Sidebar.jsx`, `frontend/src/components/Layout/AppLayout.jsx`, `frontend/src/components/Common/GlobalSearch.jsx`, `frontend/src/components/CompanyData/CompanyDataPage.jsx`, `frontend/src/components/Watchlist/ScriptDrawer.jsx`, `frontend/src/components/Auth/LoginPage.jsx`, `backend/server.js`, `backend/routes/portfolioRoutes.js` (deleted), `backend/lib/portfolioStore.js` (deleted), `frontend/src/services/portfolioService.js` (deleted), `frontend/src/components/Portfolio` (deleted) |
+| 2026-09-28 | My Announcements & Watchlist Matching Resolution: Fixed `useAnnouncements.js` fetch branching so `getAnnouncementsFromDB` properly queries today's announcements from MongoDB Atlas when no custom date/search filters are active. Upgraded announcement script matching with robust company name normalization (stripping corporate suffixes, punctuation, and multi-whitespace), multi-identifier checking (BSE scrip codes `bseCode`/`ltdCode`/`scripCode`/`scriptCode`, NSE symbols `symbol`/`nseSymbol`, company names `companyName`/`scriptName`/`name`), and substring matching. Verified 12:00 AM IST midnight wipe in `cronService.js` (`performMidnightWipeIfNeeded`) | `frontend/src/hooks/useAnnouncements.js`, `frontend/src/components/Announcements/AnnouncementsPage.jsx`, `backend/lib/announcementStore.js` |
+| 2026-09-28 | Dashboard Benchmark NIFTY 50, My Announcements Filters & Search UI Modernization: Added `NIFTY 50` live benchmark index to Dashboard primary indices alongside `BSE SENSEX`, `BSE BANKEX`, and `BSE Focused IT` in `dashboardService.js`. Removed date range picker from My Announcements filter bar (`AnnouncementFilters.jsx`) since it tracks today's active announcements. Completely redesigned `ScriptSearchInput.jsx` with 100% solid opaque background (preventing mobile/desktop transparency bleed-through), removed growth arrow icon, added subtle scrip & segment badge pills, and highlighted search match styling | `backend/services/dashboardService.js`, `frontend/src/components/Announcements/AnnouncementFilters.jsx`, `frontend/src/components/Common/ScriptSearchInput.jsx` |
+| 2026-09-28 | Official BSE StockReachGraphCas Historical Charts & Bhavcopy Table: Replaced deprecated `/getScripAllData/w` with BSE's official `StockReachGraphCas/w` API for `1W`, `1M`, `3M`, `6M`, `1Y`, and `5Y` historical price charts. Added resilient date parser `parseBseDateString` for BSE timestamp strings, and added `GET /api/bse/historical-table` endpoint for historical table views with volume, turnover, and OHLC data | `backend/routes/bseRoutes.js` |
 
 ---
 

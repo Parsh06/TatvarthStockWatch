@@ -4,7 +4,7 @@ import {
   Search, RefreshCw, AlertCircle, TrendingUp, TrendingDown,
   BarChart2, Users, Activity, Layers, Info, ChevronDown, ChevronUp,
   Star, Bell, CheckCircle2, Target, PieChart, Calendar, Percent,
-  ThumbsUp, ThumbsDown, Minus, Package, Briefcase, Newspaper, FileText,
+  ThumbsUp, ThumbsDown, Minus, Package, Newspaper, FileText,
   ArrowUpRight, ArrowDownRight,
 } from 'lucide-react'
 import clsx from 'clsx'
@@ -266,7 +266,6 @@ export default function CompanyDataPage() {
   const [histLoading, setHistLoading] = useState(false)
   const [histTableData, setHistTableData] = useState([])
   const [histTableLoading, setHistTableLoading] = useState(false)
-  const [showPortfolioHint, setShowPortfolioHint] = useState(false)
 
   const { watchlist, addScript } = useWatchlist()
 
@@ -494,15 +493,6 @@ export default function CompanyDataPage() {
                       Add to Watchlist
                     </button>
                   )}
-                  {/* Add to Portfolio — navigates to portfolio page with pre-selected script */}
-                  <button
-                    onClick={() => navigate('/portfolio', {
-                      state: { addScript: { bseCode: item?.bseCode, scripName: item?.scripName || quote?.companyName, symbol: item?.symbol || '', isin: item?.isin || '' }, liveQuote: quote ? { ltp: quote.ltp, prevClose: quote.prevClose, open: quote.open, high: quote.high, low: quote.low, change, pctChange: changePct } : null }
-                    })}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-semibold transition"
-                  >
-                    <Briefcase className="w-3.5 h-3.5" /> Add to Portfolio
-                  </button>
                 </div>
               </div>
             </div>

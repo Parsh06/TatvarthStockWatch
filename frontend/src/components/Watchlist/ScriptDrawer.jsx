@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X, ExternalLink, FileText, Bell, Briefcase, BarChart2 } from 'lucide-react'
+import { X, ExternalLink, FileText, Bell, BarChart2 } from 'lucide-react'
 import clsx from 'clsx'
 import { getExchangeColor, formatRelativeDate, getCategoryColor } from '../../utils/formatters'
 import { updateScript } from '../../services/watchlistService'
@@ -129,15 +129,9 @@ export default function ScriptDrawer({ script, onClose }) {
           <div className="flex gap-3">
             <button
               onClick={() => { onClose(); navigate('/company-data', { state: { script: { bseCode: code, scripName: script?.scriptName, symbol } } }) }}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-xl text-xs font-semibold transition-colors duration-150"
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-xl text-xs font-semibold transition-colors duration-150"
             >
               <BarChart2 className="w-4 h-4" /> Company Data
-            </button>
-            <button
-              onClick={() => { onClose(); navigate('/portfolio', { state: { addScript: { bseCode: code, scripName: script?.scriptName, symbol, isin: script?.isin || '' } } }) }}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-surface border border-border hover:border-primary/40 rounded-xl text-xs text-textPrimary hover:text-primary transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg shadow-black/10"
-            >
-              <Briefcase className="w-4 h-4 text-primary/70" /> Add to Portfolio
             </button>
           </div>
 

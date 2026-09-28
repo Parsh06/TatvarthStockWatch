@@ -8,7 +8,7 @@
  *   className    — extra classes on the wrapper div
  */
 import { useState, useEffect, useRef, useId } from 'react'
-import { Search, X, Loader2, TrendingUp } from 'lucide-react'
+import { Search, X, Loader2 } from 'lucide-react'
 import clsx from 'clsx'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || ''
@@ -22,8 +22,7 @@ function useDebounce(val, delay) {
   return d
 }
 
-// Splits text around the matched query so we can bold it without
-// dangerouslySetInnerHTML (keeps this XSS-safe for API-provided strings).
+// Splits text around the matched query so we can highlight it cleanly
 function HighlightMatch({ text, query }) {
   if (!query || !text) return <>{text}</>
   const idx = text.toLowerCase().indexOf(query.toLowerCase())
@@ -31,7 +30,7 @@ function HighlightMatch({ text, query }) {
   return (
     <>
       {text.slice(0, idx)}
-      <span className="text-primary font-semibold">{text.slice(idx, idx + query.length)}</span>
+      <span className="text-primary font-bold bg-primary/10 px-0.5 rounded">{text.slice(idx, idx + query.length)}</span>
       {text.slice(idx + query.length)}
     </>
   )
@@ -141,15 +140,15 @@ export default function ScriptSearchInput({ placeholder = 'Search company…', o
     <div ref={wrapRef} className={clsx('relative w-full', className)}>
       <style>{`
         @keyframes tswDropdownIn {
-          from { opacity: 0; transform: translateY(-6px) scale(0.98); }
-          to   { opacity: 1; transform: translateY(0) scale(1); }
+          from { opacity: 0; transform: translateY(-4px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
 
       <div className="relative group">
         <Search
           className={clsx(
-            'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none transition-colors',
+            'absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none transition-colors',
             query ? 'text-primary' : 'text-textMuted'
           )}
         />
@@ -164,55 +163,55 @@ export default function ScriptSearchInput({ placeholder = 'Search company…', o
           onFocus={() => suggestions.length > 0 && setOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          className="w-full pl-9 pr-9 py-2.5 bg-background border border-border rounded-lg text-sm text-textPrimary
-                     placeholder-textMuted transition-all duration-150
-                     focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/15"
+          className="w-full pl-10 pr-10 py-2.5 sm:py-3 bg-surface border border-border rounded-xl text-sm font-medium text-textPrimary
+                     placeholder-textMuted/60 transition-all duration-150 shadow-sm
+                     focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
         />
         {loading ? (
-          <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/70 animate-spin" />
+          <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-primary animate-spin" />
         ) : query ? (
           <button
             onClick={clear}
             aria-label="Clear search"
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-textMuted hover:text-textPrimary hover:bg-white/5 transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-textMuted hover:text-textPrimary hover:bg-white/10 transition-colors"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-4 h-4" />
           </button>
         ) : null}
       </div>
 
-      {/* Dropdown */}
+      {/* Dropdown Menu - 100% Solid & Opaque */}
       {showDropdown && (
         <div
           id={listboxId}
           role="listbox"
           ref={listRef}
-          style={{ animation: 'tswDropdownIn 0.15s ease-out' }}
-          className="absolute z-50 top-full left-0 right-0 mt-1.5 bg-surface/95 backdrop-blur-md border border-border
-                     rounded-xl shadow-2xl shadow-black/30 overflow-hidden max-h-72 overflow-y-auto"
+          style={{ animation: 'tswDropdownIn 0.15s ease-out', backgroundColor: 'var(--bg-surface)' }}
+          className="absolute z-50 top-full left-0 right-0 mt-2 bg-surface border border-border
+                     rounded-2xl shadow-2xl shadow-black/60 overflow-hidden max-h-80 overflow-y-auto divide-y divide-border/40"
         >
           {loading && suggestions.length === 0 && (
-            <div className="px-4 py-4 flex items-center gap-2 text-xs text-textMuted">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-primary/70" />
-              Searching…
+            <div className="px-5 py-4 flex items-center gap-3 text-xs text-textMuted">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              <span>Searching companies…</span>
             </div>
           )}
 
           {errored && (
-            <div className="px-4 py-4 text-xs text-textMuted">
-              Couldn't reach search right now. Try again in a moment.
+            <div className="px-5 py-4 text-xs text-textMuted">
+              Unable to load search results right now. Please try again.
             </div>
           )}
 
           {!loading && !errored && suggestions.length === 0 && debouncedQ.length >= 2 && (
-            <div className="px-4 py-4 text-xs text-textMuted">
-              No matches for <span className="text-textPrimary">"{debouncedQ}"</span>
+            <div className="px-5 py-4 text-xs text-textMuted">
+              No matching companies found for <span className="text-textPrimary font-semibold">"{debouncedQ}"</span>
             </div>
           )}
 
           {suggestions.map((item, i) => (
             <button
-              key={`${item.bseCode}-${item.type}`}
+              key={`${item.bseCode}-${item.type}-${i}`}
               id={`${listboxId}-opt-${i}`}
               data-index={i}
               role="option"
@@ -220,27 +219,29 @@ export default function ScriptSearchInput({ placeholder = 'Search company…', o
               onMouseEnter={() => setActiveIndex(i)}
               onMouseDown={() => pick(item)}
               className={clsx(
-                'w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3',
-                'px-4 py-2.5 text-left transition-colors border-b border-border/50 last:border-b-0',
-                i === activeIndex ? 'bg-primary/10' : 'hover:bg-white/5'
+                'w-full flex items-center justify-between gap-3 px-4 py-3 text-left transition-all duration-150',
+                i === activeIndex ? 'bg-primary/15' : 'hover:bg-primary/8'
               )}
             >
-              <div className="min-w-0 flex items-center gap-2">
-                <TrendingUp className="w-3.5 h-3.5 text-primary/50 shrink-0 hidden sm:block" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-textPrimary truncate">
-                    <HighlightMatch text={item.scripName} query={debouncedQ} />
-                  </p>
-                  <p className="text-xs text-textMuted truncate">{item.symbol} · {item.isin}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-textPrimary truncate leading-tight">
+                  <HighlightMatch text={item.scripName} query={debouncedQ} />
+                </p>
+                <div className="flex items-center gap-2 mt-1 text-xs text-textMuted font-mono">
+                  {item.symbol && <span className="font-semibold text-textPrimary/80">{item.symbol}</span>}
+                  {item.symbol && item.isin && <span>·</span>}
+                  {item.isin && <span className="opacity-80">{item.isin}</span>}
                 </div>
               </div>
-              <div className="flex-shrink-0 flex sm:flex-col items-center sm:items-end gap-2 sm:gap-0 pl-5 sm:pl-0">
-                <p className="text-xs font-mono text-primary">{item.bseCode}</p>
+              <div className="flex-shrink-0 flex items-center gap-2">
                 {item.type && (
-                  <span className="text-[10px] leading-tight px-1.5 py-0.5 rounded-full bg-primary/10 text-primary/80 sm:mt-0.5">
-                    {item.type.replace('in Equity ', '')}
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-textMuted">
+                    {item.type.replace('in Equity ', '').trim()}
                   </span>
                 )}
+                <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-primary/10 text-primary border border-primary/20">
+                  {item.bseCode}
+                </span>
               </div>
             </button>
           ))}

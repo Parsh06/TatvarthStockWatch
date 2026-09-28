@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ShieldCheck, Zap, Activity, Sparkles, BarChart3, Bell,
-  TrendingUp, Briefcase, Search, PieChart
+  TrendingUp, Eye, Search, CalendarCheck
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import toast from 'react-hot-toast'
@@ -122,7 +122,7 @@ export default function LoginPage() {
             <FeaturePill icon={Search} text="IPO Verification" delayMs={420} />
             <FeaturePill icon={Sparkles} text="AI Analysis" delayMs={480} />
             <FeaturePill icon={TrendingUp} text="Gainers & Losers" delayMs={540} />
-            <FeaturePill icon={Briefcase} text="Portfolio Tracking" delayMs={600} />
+            <FeaturePill icon={Eye} text="Insider Trading" delayMs={600} />
           </div>
 
           {/* Ticker tape */}
@@ -236,9 +236,9 @@ export default function LoginPage() {
                 delayMs={580}
               />
               <FeatureItem
-                icon={PieChart}
-                title="Family Portfolio"
-                desc="Manage and track investments for your entire family in one secure dashboard."
+                icon={CalendarCheck}
+                title="Financial Results & AGM"
+                desc="Track scheduled board meetings, forthcoming result announcements, and AGMs."
                 delayMs={640}
               />
             </div>

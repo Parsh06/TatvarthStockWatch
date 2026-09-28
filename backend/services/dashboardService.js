@@ -138,40 +138,76 @@ async function scrapeBulkDealsAspxDirect() {
 
 // ── Data Fetchers ─────────────────────────────────────────────────────────────
 
-/** 1. Primary Market Indices (Sensex, Nifty, etc) */
+/** 1. Primary Market Indices (Sensex, Nifty 50, Bankex, Focused IT) */
 async function fetchIndices() {
   const CACHE_KEY = 'dashboard:indices';
   const cached = fromCache(CACHE_KEY, 30_000);
   if (cached) return cached;
 
-  let raw = null;
+  let bseNormalized = [];
   try {
-    raw = await bseGet('https://api.bseindia.com/RealTimeBseIndiaAPI/api/GetSensexDatanew/w', {}, 4_000);
+    let raw = await bseGet('https://api.bseindia.com/RealTimeBseIndiaAPI/api/GetSensexDatanew/w', {}, 4_000);
     if (typeof raw === 'string') {
       try { raw = JSON.parse(raw); } catch { raw = []; }
     }
+    const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.Table) ? raw.Table : []);
+    bseNormalized = list.map(item => {
+      const name = (item.indxnm || item.indexname || item.name || '').trim();
+      const val  = parseFloat(String(item.ltp || item.currentValue || item.val || 0).replace(/,/g, '')) || 0;
+      const chg  = parseFloat(String(item.chg || item.change || 0).replace(/,/g, '')) || 0;
+      const pchg = parseFloat(String(item.perchg || item.perChange || item.pChange || 0).replace(/[,%]/g, '')) || 0;
+      return { name, value: val, change: chg, changePercent: pchg };
+    }).filter(i => i.name && i.value > 0);
   } catch (err) {
-    raw = [];
+    bseNormalized = [];
   }
 
-  const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.Table) ? raw.Table : []);
-  let normalized = list.map(item => {
-    const name = (item.indxnm || item.indexname || item.name || '').trim();
-    const val  = parseFloat(String(item.ltp || item.currentValue || item.val || 0).replace(/,/g, '')) || 0;
-    const chg  = parseFloat(String(item.chg || item.change || 0).replace(/,/g, '')) || 0;
-    const pchg = parseFloat(String(item.perchg || item.perChange || item.pChange || 0).replace(/[,%]/g, '')) || 0;
-    return { name, value: val, change: chg, changePercent: pchg };
-  }).filter(i => i.name && i.value > 0);
+  // Fetch NIFTY 50 in parallel for benchmark parity
+  let nifty50 = null;
+  try {
+    const res = await axios.get('https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI?interval=1d&range=1d', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+      timeout: 4_000
+    });
+    const meta = res.data?.chart?.result?.[0]?.meta;
+    if (meta?.regularMarketPrice) {
+      const val = meta.regularMarketPrice;
+      const prev = meta.chartPreviousClose || val;
+      const chg = +(val - prev).toFixed(2);
+      const pchg = prev ? +((chg / prev) * 100).toFixed(2) : 0;
+      nifty50 = { name: 'NIFTY 50', value: val, change: chg, changePercent: pchg };
+    }
+  } catch (e) {
+    // Yahoo fallback non-critical
+  }
 
-  if (!normalized.length) {
+  // Assemble indices list: SENSEX, NIFTY 50, BANKEX, Focused IT
+  let result = [];
+  const sensex = bseNormalized.find(i => i.name.toUpperCase().includes('SENSEX'));
+  const bankex = bseNormalized.find(i => i.name.toUpperCase().includes('BANKEX'));
+  const it = bseNormalized.find(i => i.name.toUpperCase().includes('IT'));
+
+  if (sensex) result.push(sensex);
+  if (nifty50) result.push(nifty50);
+  if (bankex) result.push(bankex);
+  if (it) result.push(it);
+
+  // If any missing, add remaining from bseNormalized
+  for (const item of bseNormalized) {
+    if (!result.some(r => r.name === item.name)) {
+      result.push(item);
+    }
+  }
+
+  if (!result.length) {
     const { getYahooIndices } = require('../lib/apiClients');
-    normalized = await getYahooIndices().catch(() => []);
+    result = await getYahooIndices().catch(() => []);
   }
 
-  if (!normalized.length) throw new Error('Indices unavailable');
+  if (!result.length) throw new Error('Indices unavailable');
 
-  toCache(CACHE_KEY, normalized, 30_000);
-  return normalized;
+  toCache(CACHE_KEY, result, 30_000);
+  return result;
 }
 
 /** 2. Announcement Statistics & Top Categories (Optimized via MongoDB Aggregation) */

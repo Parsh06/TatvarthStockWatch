@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Star, Bell, Settings, TrendingUp, ChevronLeft, ChevronRight, LogOut, Crown, Layers, BarChart2, Globe, Newspaper, Briefcase, CalendarDays, Eye, Presentation, Zap, Users, Rocket, FileCheck2, Building2, CalendarCheck } from 'lucide-react'
+import { LayoutDashboard, Star, Bell, Settings, TrendingUp, ChevronLeft, ChevronRight, LogOut, Crown, Layers, BarChart2, Globe, Newspaper, CalendarDays, Eye, Presentation, Zap, Users, Rocket, FileCheck2, Building2, CalendarCheck } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../contexts/AuthContext'
 import { useGlobalAnnouncements } from '../../contexts/AnnouncementsContext'
@@ -10,7 +10,6 @@ import toast from 'react-hot-toast'
 const NAV_TOP = [
   { to: '/dashboard',          icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/watchlist',          icon: Star,            label: 'Watchlist' },
-  { to: '/portfolio',          icon: Briefcase,       label: 'Portfolio' },
   { to: '/announcements',      icon: Bell,            label: 'My Announcements' },
   { to: '/all-announcements',  icon: Globe,           label: 'All Announcements' },
   { to: '/board-meetings',     icon: Presentation,    label: 'Board Meeting Updates' },

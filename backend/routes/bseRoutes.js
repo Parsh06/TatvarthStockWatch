@@ -325,55 +325,98 @@ router.get('/intradaychart', async (req, res) => {
   }
 });
 
-// ── OPEN: BSE historical OHLC (getScripAllData/w) ────────────────────────────
+// ── Helper to parse BSE date formats (e.g. "Mon Jun 29 2026 00:00:00") ─────────
+function parseBseDateString(dttmStr) {
+  if (!dttmStr) return '';
+  const months = {
+    Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+    Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+  };
+  const parts = String(dttmStr).trim().split(/\s+/);
+  if (parts.length >= 4 && months[parts[1]]) {
+    const month = months[parts[1]];
+    const day = parts[2].padStart(2, '0');
+    const year = parts[3];
+    return `${year}-${month}-${day}`;
+  }
+  const d = new Date(dttmStr);
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  return String(dttmStr).slice(0, 10);
+}
+
+// ── OPEN: BSE historical OHLC (StockReachGraphCas/w) ──────────────────────────
 router.get('/history', async (req, res) => {
   const code  = sanitizeCode(req.query.code);
   const symbol = sanitizeCode(req.query.symbol);
-  const range = (req.query.range || '1M').toUpperCase().replace(/[^0-9YMW]/g, '');
+  let range = (req.query.range || '1M').toUpperCase().replace(/[^0-9YMW]/g, '');
+  if (!range) range = '1M';
   if (!code && !symbol) return res.status(400).json({ error: 'code or symbol required' });
 
-  const today = new Date();
-  const from  = new Date(today);
-  if      (range === '1W') from.setDate(today.getDate() - 7);
-  else if (range === '3M') from.setMonth(today.getMonth() - 3);
-  else if (range === '6M') from.setMonth(today.getMonth() - 6);
-  else if (range === '1Y') from.setFullYear(today.getFullYear() - 1);
-  else if (range === '5Y') from.setFullYear(today.getFullYear() - 5);
-  else                     from.setMonth(today.getMonth() - 1);
-
-  const fmtD = (d) =>
-    `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+  const flagMap = {
+    '1W': '1W',
+    '1M': '1M',
+    '3M': '3M',
+    '6M': '6M',
+    '1Y': '1Y',
+    '5Y': '5Y',
+  };
+  const flag = flagMap[range] || '1M';
 
   try {
     let points = null;
-    
-    // Attempt BSE First
+    let meta = null;
+
+    // 1. Primary Source: Official BSE StockReachGraphCas API
     if (code) {
       try {
         const raw = await bseGet(
-          '/getScripAllData/w',
-          { scripcode: code, seriesid: 'EQ', fromdate: fmtD(from), todate: fmtD(today) },
-          10000
+          'https://api.bseindia.com/BseIndiaAPI/api/StockReachGraphCas/w',
+          { scripcode: code, flag: flag, fromdate: '', todate: '', seriesid: '' },
+          8000
         );
-        const rows = raw?.Data || raw?.Table || raw?.data || (Array.isArray(raw) ? raw : []);
-        if (!Array.isArray(rows) || rows.length === 0 || (typeof raw === 'string' && raw.includes('<html'))) {
-          throw new Error('BSE Historical data blocked or empty');
+
+        meta = {
+          scripName: raw?.Scripname || '',
+          currVal: parseFloat(raw?.CurrVal || 0) || null,
+          prevClose: parseFloat(raw?.PrevClose || 0) || null,
+          lowVal: parseFloat(raw?.LowVal || 0) || null,
+          highVal: parseFloat(raw?.HighVal || 0) || null,
+          lowVol: parseFloat(raw?.LowVol || 0) || null,
+          highVol: parseFloat(raw?.HighVol || 0) || null,
+        };
+
+        let rows = raw?.Data;
+        if (typeof rows === 'string') {
+          try { rows = JSON.parse(rows); } catch { rows = []; }
         }
-        points = rows.map((r) => ({
-          date:   (r.DateTime || r.Date || r.dt  || '').slice(0, 10),
-          open:   parseFloat(r.Open  || r.open  || 0) || null,
-          high:   parseFloat(r.High  || r.high  || 0) || null,
-          low:    parseFloat(r.Low   || r.low   || 0) || null,
-          close:  parseFloat(r.Close || r.close || r.LTP || 0) || null,
-          volume: parseInt(r.No_Of_Shares || r.Volume || r.vol || 0, 10) || 0,
-        })).filter((p) => p.date && p.close).reverse(); // BSE data comes newest first, we want oldest first for chart
-      } catch (e) {
-        // BSE history endpoint is currently blocked (returns error_Bse.html).
-        // Silently catch the error and allow the fallback to Yahoo Finance to proceed.
+
+        if (Array.isArray(rows) && rows.length > 0) {
+          points = rows.map((r) => {
+            const dateStr = parseBseDateString(r.dttm);
+            const price = parseFloat(r.vale1 || r.val || r.close || 0);
+            const volume = parseInt(String(r.vole || r.volume || 0).replace(/,/g, ''), 10) || 0;
+            return {
+              date: dateStr,
+              dttm: r.dttm,
+              close: price,
+              open: price,
+              high: price,
+              low: price,
+              volume: volume,
+            };
+          }).filter((p) => p.date && p.close > 0);
+        }
+      } catch (err) {
+        console.warn(`[BSE StockReachGraphCas ${code}]`, err.message);
       }
     }
 
-    // Fallback to Yahoo Finance
+    // 2. Secondary Fallback: Yahoo Finance History
     if (!points || points.length === 0) {
       const yahooPoints = await getYahooHistory(symbol, code, range);
       if (yahooPoints && yahooPoints.length > 0) {
@@ -382,14 +425,55 @@ router.get('/history', async (req, res) => {
     }
 
     if (!points) points = [];
-    
-    // Sort oldest first just in case
+
+    // Sort oldest first for proper left-to-right chart progression
     points.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    res.json({ code, symbol, range, points, total: points.length });
+    res.json({ code, symbol, range, meta, points, total: points.length });
   } catch (e) {
     console.error(`[History Error ${code}]`, e.message);
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message, points: [] });
+  }
+});
+
+// ── OPEN: BSE historical data table ──────────────────────────────────────────
+router.get('/historical-table', async (req, res) => {
+  const code = sanitizeCode(req.query.code);
+  if (!code) return res.json({ StockData: [] });
+
+  try {
+    const raw = await bseGet(
+      'https://api.bseindia.com/BseIndiaAPI/api/StockReachGraphCas/w',
+      { scripcode: code, flag: '1M', fromdate: '', todate: '', seriesid: '' },
+      8000
+    );
+    let rows = raw?.Data;
+    if (typeof rows === 'string') {
+      try { rows = JSON.parse(rows); } catch { rows = []; }
+    }
+    if (Array.isArray(rows) && rows.length > 0) {
+      const stockData = rows.map((r) => {
+        const dateStr = parseBseDateString(r.dttm);
+        const price = parseFloat(r.vale1 || 0);
+        const vol = parseInt(String(r.vole || 0).replace(/,/g, ''), 10) || 0;
+        return {
+          Dates: dateStr,
+          qe_open: price,
+          qe_high: price,
+          qe_low: price,
+          qe_close: price,
+          WeightedPrice: price,
+          no_of_shrs: vol.toLocaleString('en-IN'),
+          no_trades: '-',
+          net_turnov: vol && price ? `₹${(Math.round(vol * price)).toLocaleString('en-IN')}` : '-',
+          Perc_Del_Qty: '-',
+        };
+      }).reverse(); // Most recent dates first for table view
+      return res.json({ StockData: stockData });
+    }
+    res.json({ StockData: [] });
+  } catch (e) {
+    res.json({ StockData: [] });
   }
 });
 
@@ -1664,14 +1748,18 @@ router.get('/calendar', async (req, res) => {
 // ── OPEN: BSE Insider Trading CSV Download ─────────────────────────────────
 router.get('/insider/download', async (req, res) => {
   const code = sanitizeCode(req.query.code || '');
-  const from = req.query.from || ''; // YYYYMMDD, DD/MM/YYYY or empty
-  const to   = req.query.to   || ''; // YYYYMMDD, DD/MM/YYYY or empty
+  const from = req.query.from || ''; // YYYYMMDD, YYYY-MM-DD, DD/MM/YYYY or empty
+  const to   = req.query.to   || ''; // YYYYMMDD, YYYY-MM-DD, DD/MM/YYYY or empty
 
-  const toDDMMYYYY = (dStr) => {
+  const toYYYYMMDD = (dStr) => {
     if (!dStr) return '';
-    if (dStr.includes('/')) return dStr;
-    if (dStr.length === 8) return `${dStr.slice(6,8)}/${dStr.slice(4,6)}/${dStr.slice(0,4)}`;
-    return dStr;
+    if (dStr.includes('/')) {
+      const parts = dStr.split('/');
+      if (parts.length === 3 && parts[2].length === 4) {
+        return `${parts[2]}${parts[1].padStart(2, '0')}${parts[0].padStart(2, '0')}`;
+      }
+    }
+    return dStr.replace(/-/g, '').trim();
   };
 
   try {
@@ -1684,8 +1772,8 @@ router.get('/insider/download', async (req, res) => {
       csvData = await bseGet('/Corp_Regulation_DownloadCSV_ng/w', {
         scripCode: code,
         Regulation: '',
-        fromDT: toDDMMYYYY(from),
-        ToDate: toDDMMYYYY(to),
+        fromDT: toYYYYMMDD(from),
+        ToDate: toYYYYMMDD(to),
         Isdefault: isDefaultParam,
       }, 15000, sessionHdr);
     } catch (err) {
@@ -1727,16 +1815,20 @@ router.get('/insider/download', async (req, res) => {
 // ── OPEN: BSE Insider Trading ────────────────────────────────────────────────
 router.get('/insider', async (req, res) => {
   const code = sanitizeCode(req.query.code || '');
-  const from = req.query.from || ''; // YYYYMMDD, DD/MM/YYYY or empty
-  const to   = req.query.to   || ''; // YYYYMMDD, DD/MM/YYYY or empty
+  const from = req.query.from || ''; // YYYYMMDD, YYYY-MM-DD, DD/MM/YYYY or empty
+  const to   = req.query.to   || ''; // YYYYMMDD, YYYY-MM-DD, DD/MM/YYYY or empty
   
   res.setHeader('Cache-Control', 'no-store');
 
-  const toDDMMYYYY = (dStr) => {
+  const toYYYYMMDD = (dStr) => {
     if (!dStr) return '';
-    if (dStr.includes('/')) return dStr;
-    if (dStr.length === 8) return `${dStr.slice(6,8)}/${dStr.slice(4,6)}/${dStr.slice(0,4)}`;
-    return dStr;
+    if (dStr.includes('/')) {
+      const parts = dStr.split('/');
+      if (parts.length === 3 && parts[2].length === 4) {
+        return `${parts[2]}${parts[1].padStart(2, '0')}${parts[0].padStart(2, '0')}`;
+      }
+    }
+    return dStr.replace(/-/g, '').trim();
   };
 
   try {
@@ -1750,8 +1842,8 @@ router.get('/insider', async (req, res) => {
       raw = await bseGet('/getCorp_Regulation_ng/w', {
         scripCode: code,
         Regulation: '',
-        fromDT: toDDMMYYYY(from),
-        ToDate: toDDMMYYYY(to),
+        fromDT: toYYYYMMDD(from),
+        ToDate: toYYYYMMDD(to),
         Isdefault: isDefaultParam,
       }, 15000, sessionHdr);
     } catch (err) {

@@ -44,11 +44,11 @@ export default function AnnouncementFilters({ filters, onChange, categoryCounts 
     onChange({ exchange: '', category: '', fromDate: '', toDate: '', search: '' })
   }
 
-  const hasFilters = filters.exchange || filters.category || filters.fromDate || filters.toDate || filters.search
+  const hasFilters = filters.exchange || filters.category || filters.search
 
   return (
     <div className="space-y-3">
-      {/* Row 1: search + exchange pills + date + clear */}
+      {/* Row 1: search + exchange pills + clear */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted" />
@@ -90,15 +90,6 @@ export default function AnnouncementFilters({ filters, onChange, categoryCounts 
           >
             BOTH
           </button>
-        </div>
-
-        {/* Date range */}
-        <div className="flex items-center gap-1 sm:gap-2">
-          <input type="date" value={filters.fromDate} onChange={update('fromDate')}
-            className="bg-surface border border-border rounded-xl px-2 py-1.5 sm:px-4 sm:py-2 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-xs sm:text-sm shadow-inner cursor-pointer transition-all" />
-          <span className="text-textMuted text-xs sm:text-sm">–</span>
-          <input type="date" value={filters.toDate} onChange={update('toDate')}
-            className="bg-surface border border-border rounded-xl px-2 py-1.5 sm:px-4 sm:py-2 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-xs sm:text-sm shadow-inner cursor-pointer transition-all" />
         </div>
 
         {hasFilters && (

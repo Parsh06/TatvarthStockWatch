@@ -15,7 +15,6 @@ import AgmWidget                      from './AgmWidget'
 import VolumeSpurtWidget              from './VolumeSpurtWidget'
 import DealsWidget                    from './DealsWidget'
 import TopWatchlistCompaniesWidget    from './TopWatchlistCompaniesWidget'
-import WatchlistGroupsWidget          from './WatchlistGroupsWidget'
 
 // Simple fade-up animation for each section row
 const fadeUp = {
@@ -149,14 +148,10 @@ export default function DashboardPage() {
           />
         </Row>
 
-        {/* ── Row 9: Top Companies + Watchlist Groups ─────────────── */}
-        <Row className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* ── Row 9: Top Watchlist Companies ─────────────── */}
+        <Row>
           <TopWatchlistCompaniesWidget
             data={d.watchlist?.topCompanies}
-            loading={loading && !d.watchlist}
-          />
-          <WatchlistGroupsWidget
-            data={d.watchlist?.groups}
             loading={loading && !d.watchlist}
           />
         </Row>

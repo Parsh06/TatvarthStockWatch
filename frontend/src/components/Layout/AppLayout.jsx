@@ -4,7 +4,7 @@ import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, Star, Bell, Settings, TrendingUp, Briefcase,
+  LayoutDashboard, Star, Bell, Settings, TrendingUp,
   BarChart2, Search, CalendarDays, Globe, Newspaper, Layers, BellRing, Eye,
   LogOut, Crown, Presentation, Zap, Users, Rocket, FileCheck2, Building2, CalendarCheck
 } from 'lucide-react'
@@ -17,7 +17,6 @@ import { Moon, Sun } from 'lucide-react'
 const mobileNav = [
   { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/watchlist',         icon: Star,            label: 'Watchlist' },
-  { to: '/portfolio',         icon: Briefcase,       label: 'Portfolio' },
   { to: '/announcements',     icon: Bell,            label: 'My News'   },
   { to: '/all-announcements', icon: Globe,           label: 'All News'  },
   { to: '/board-meetings',    icon: Presentation,    label: 'Meetings'   },

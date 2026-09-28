@@ -23,7 +23,6 @@ import NewsPage from './components/News/NewsPage'
 import GainersLosersPage from './components/GainersLosers/GainersLosersPage'
 import VolumeSpurtPage from './components/VolumeSpurt/VolumeSpurtPage'
 import SettingsPage from './components/Settings/SettingsPage'
-import PortfolioPage from './components/Portfolio/PortfolioPage'
 import CorporateCalendarPage from './components/CorporateCalendar/CorporateCalendarPage'
 import InsiderTradingPage from './components/InsiderTrading/InsiderTradingPage'
 import AppLayout from './components/Layout/AppLayout'
@@ -229,16 +228,6 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <SettingsPage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/portfolio"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <PortfolioPage />
             </AppLayout>
           </ProtectedRoute>
         }
