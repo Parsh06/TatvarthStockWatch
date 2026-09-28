@@ -51,6 +51,7 @@
 | Firebase Admin | 12.0.0 | Server-side auth + Firestore |
 | MongoDB driver | 6.21.0 | MongoDB Atlas connection |
 | @google/genai | 2.10.0 | Gemini AI (announcement summarization) |
+| Groq API (REST) | — | Groq LPU inference (AI failover via providerRouter) |
 | @upstash/redis | 1.38.0 | Distributed rate limiting & rates cache |
 | Axios | 1.6.2 | HTTP client for scraping BSE/NSE/KFintech |
 | Cheerio | 1.0.0-rc.12 | HTML parsing (scraping) |
@@ -138,8 +139,12 @@ stockwatch/
 │   │   ├── ipoClosingStore.js        ← MongoDB Atlas today's closing IPOs store
 │   │   ├── ipoUtils.js               ← IPO helper functions
 │   │   ├── ipoClosingNotificationService.js
-│   │   ├── aiSummarizer.js            ← Gemini AI integration
+│   │   ├── aiSummarizer.js            ← Dual AI integration (Gemini + Groq via providerRouter)
 │   │   ├── prompts.js                 ← AI prompt templates (23KB)
+│   │   ├── providers/                 ← AI provider modules
+│   │   │   ├── geminiProvider.js      ← Gemini REST API (6-model cascade)
+│   │   │   ├── grokProvider.js        ← Groq OpenAI-compat API (qwen, gpt-oss)
+│   │   │   └── providerRouter.js      ← Smart routing + cooldown + failover
 │   │   ├── categoryClassifier.js      ← Announcement category classification (22KB)
 │   │   ├── alertCategories.js         ← ★ SYNC WITH frontend/src/utils/bseCategories.js
 │   │   ├── alertStore.js              ← Alert Firestore operations
@@ -673,6 +678,7 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 | 2026-09-28 | My Announcements Auto-Seed, Refresh & Proxy Fallback Engine: Resolved empty announcements issue on `/announcements` by enabling `GET /api/announcements` to auto-poll live BSE & NSE announcements if MongoDB is empty after midnight wipe or on `refresh=true`. Upgraded `useAnnouncements.js` to use `apiClient` with automatic fallback to BSE live proxy, and added `refresh: true` trigger to the Refresh button on `AnnouncementsPage.jsx` so watchlisted scripts (such as Austin Engineering Company Ltd) immediately load their announcements | `backend/routes/announcementRoutes.js`, `frontend/src/services/announcementService.js`, `frontend/src/hooks/useAnnouncements.js`, `frontend/src/components/Announcements/AnnouncementsPage.jsx` |
 | 2026-09-28 | All Announcements Category Expansion & Resilient AI Analysis Cascade: Fixed category filtering on `AllAnnouncementsPage.jsx` so Result / Financial Results filings are prominently accessible in category chips (with "+N More" expander) and flexible case-insensitive matching across categories and subcategories. Hardened `aiSummarizer.js` with active official Gemini models (`gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-flash`, `gemini-2.0-flash-lite`, `gemini-1.5-pro`), added BSE CDN PDF download headers (`Referer`, `Origin`), text-based fallback when PDF download is blocked/unavailable, and flexible request body metadata forwarding in `analyzeRoute.js` and `AiAnalyzeButton.jsx`. Removed unused `@vercel/analytics` import causing `Unexpected token '<'` on Firebase Hosting | `frontend/src/components/AllAnnouncements/AllAnnouncementsPage.jsx`, `backend/lib/aiSummarizer.js`, `backend/routes/analyzeRoute.js`, `frontend/src/components/Common/AiAnalyzeButton.jsx`, `frontend/src/components/Announcements/AnnouncementCard.jsx`, `frontend/src/services/announcementService.js`, `frontend/src/App.jsx` |
 | 2026-09-28 | Prompts.js Integration & Full Multi-Field Equity Research Extraction: Linked `AI_ANALYST_PROMPT` from `prompts.js` directly into `aiSummarizer.js` with structured filing metadata (Company, Category, Subcategory, Subject, Date, Description, PDF URL) and active 500 RPD model cascade (`gemini-3.1-flash-lite`, `gemini-3.1-flash-lite-preview`, `gemini-flash-lite-latest`, `gemini-3.7-flash`, `gemini-3.8-flash`). Fully tested and verified with live BSE filing for *Rays of Belief Ltd* | `backend/lib/aiSummarizer.js`, `backend/lib/prompts.js` |
+| 2026-09-28 | Dual AI Provider System (Gemini + Groq): Implemented smart primary-failover AI routing. Created `providers/` module with `geminiProvider.js` (6-model REST cascade), `grokProvider.js` (Groq LPU with `qwen/qwen3.8-27b` + `openai/gpt-oss-20b`), and `providerRouter.js` (adaptive cooldown: 5min at 3 fails, 15min at 6+ fails). Refactored `aiSummarizer.js` to use router. Added `_provider` field to MongoDB analysis docs and API responses. Same prompt/schema for both providers. Gemini primary (free), Groq failover (fast). Live tested: Gemini 503 → Groq succeeded via `qwen/qwen3.8-27b` in 23s. | `backend/lib/providers/*.js`, `backend/lib/aiSummarizer.js`, `backend/routes/analyzeRoute.js`, `backend/.env` |
 
 ---
 

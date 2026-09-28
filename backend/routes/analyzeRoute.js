@@ -67,11 +67,12 @@ module.exports = function createAnalyzeRouter(verifyToken) {
 
       // ── 2. Return cache if already generated and not forced ──────────────────
       if (ann.aiAnalysis?.generated === true && !force) {
-        console.log(`[Analyze] Cache hit for ${announcementId} (${ann.scriptName || ann.scriptCode || ''})`);
+        console.log(`[Analyze] Cache hit for ${announcementId} (${ann.scriptName || ann.scriptCode || ''}) [provider: ${ann.aiAnalysis.provider || 'gemini'}]`);
         return res.json({
           cached: true,
           generatedAt: ann.aiAnalysis.generatedAt,
           model: ann.aiAnalysis.model,
+          provider: ann.aiAnalysis.provider || 'gemini',
           analysis: ann.aiAnalysis.analysis,
         });
       }
@@ -95,7 +96,8 @@ module.exports = function createAnalyzeRouter(verifyToken) {
       const aiAnalysis = {
         generated: true,
         generatedAt: new Date().toISOString(),
-        model: result._model || 'gemini-2.0-flash',
+        model: result._model || 'unknown',
+        provider: result._provider || 'gemini',
         version: '2',
         analysis: result.analysis,
       };
@@ -114,13 +116,14 @@ module.exports = function createAnalyzeRouter(verifyToken) {
         { upsert: true }
       );
 
-      console.log(`[Analyze] ✅ Stored AI analysis for ${announcementId}`);
+      console.log(`[Analyze] ✅ Stored AI analysis for ${announcementId} (provider: ${aiAnalysis.provider}, model: ${aiAnalysis.model})`);
 
       // ── 6. Return fresh result ───────────────────────────────────────────────
       return res.json({
         cached: false,
         generatedAt: aiAnalysis.generatedAt,
         model: aiAnalysis.model,
+        provider: aiAnalysis.provider,
         analysis: aiAnalysis.analysis,
       });
 

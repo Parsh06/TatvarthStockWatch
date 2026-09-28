@@ -1,35 +1,28 @@
 'use strict';
 
-const { GoogleGenAI } = require('@google/genai');
+/**
+ * aiSummarizer.js
+ *
+ * AI-powered announcement analysis engine for StockWatch.
+ *
+ * Uses a dual-provider system (Gemini + Grok) via providerRouter
+ * for intelligent failover and rate-limit resilience.
+ *
+ * Flow:
+ *   1. Build prompt from announcement metadata + AI_ANALYST_PROMPT
+ *   2. Optionally download PDF as base64
+ *   3. Route to best available AI provider via providerRouter
+ *   4. Parse + validate JSON response
+ *   5. Return normalized analysis or deterministic fallback
+ */
+
 const axios = require('axios');
 const { AI_ANALYST_PROMPT } = require('./prompts');
+const { routeRequest, getRouterStatus } = require('./providers/providerRouter');
 
-// ── Active Gemini Model Cascade (Prioritizing 500 RPD Pool) ─────────────────
-const MODEL_CASCADE = [
-  'gemini-3.1-flash-lite',
-  'gemini-3.1-flash-lite-preview',
-  'gemini-flash-lite-latest',
-  'gemini-3.7-flash',
-  'gemini-3.8-flash',
-  'gemini-3.5-flash-lite',
-];
-
-// Lazily initialized Gemini SDK client
-let _aiClient = null;
-
-function getAiClient() {
-  if (!_aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-    if (apiKey) {
-      try {
-        _aiClient = new GoogleGenAI({ apiKey });
-      } catch (e) {
-        console.warn('[aiSummarizer] GoogleGenAI init fallback to REST:', e.message);
-      }
-    }
-  }
-  return _aiClient;
-}
+// Re-export for backward compatibility — legacy consumers may import from here
+const { GEMINI_MODELS } = require('./providers/geminiProvider');
+const MODEL_CASCADE = GEMINI_MODELS;
 
 /**
  * Downloads a filing PDF from a URL and returns a base64 encoded string.
@@ -66,8 +59,10 @@ function normalizeAnalysisOutput(raw) {
   if (!raw || typeof raw !== 'object') return null;
 
   return {
-    executiveSummary: typeof raw.executiveSummary === 'string' ? raw.executiveSummary : 'Executive summary unavailable.',
+    executiveSummary: typeof raw.executiveSummary === 'string' ? raw.executiveSummary : (typeof raw.headline === 'string' ? raw.headline : 'Executive summary unavailable.'),
     announcementCategory: typeof raw.announcementCategory === 'string' ? raw.announcementCategory : 'General Updates',
+    headline: typeof raw.headline === 'string' ? raw.headline : undefined,
+    summary: Array.isArray(raw.summary) ? raw.summary.filter(Boolean) : undefined,
     sentiment: typeof raw.sentiment === 'string' ? raw.sentiment : 'Neutral',
     importance: typeof raw.importance === 'string' ? raw.importance : 'Medium',
     keyHighlights: Array.isArray(raw.keyHighlights) ? raw.keyHighlights.filter(Boolean) : [],
@@ -82,7 +77,7 @@ function normalizeAnalysisOutput(raw) {
 }
 
 /**
- * Cleans and parses JSON string from Gemini response.
+ * Cleans and parses JSON string from AI response (works for both Gemini and Grok).
  */
 function safeParseJson(rawText) {
   if (!rawText || typeof rawText !== 'string') return null;
@@ -112,28 +107,24 @@ function safeParseJson(rawText) {
 /**
  * generateAIAnalysis
  *
- * Runs on-demand AI analysis using high-capacity Gemini models with REST fallback.
+ * Runs on-demand AI analysis using the dual-provider system (Gemini + Grok).
+ * The providerRouter handles failover, cooldown, and provider selection.
  *
  * @param {object} ann - Announcement object
  * @param {object} [options] - Optional configurations
- * @returns {Promise<{ _model: string, analysis: object } | null>}
+ * @returns {Promise<{ _model: string, _provider: string, analysis: object } | null>}
  */
 async function generateAIAnalysis(ann, options = {}) {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) {
-    console.warn('[aiSummarizer] GEMINI_API_KEY is not set');
-    return null;
-  }
-
   const scriptLabel = ann.scriptName || ann.scriptCode || ann.symbol || ann._id || ann.id || 'Filing';
-  const customModels = options.models || MODEL_CASCADE;
 
+  // ── 1. Download PDF if available ──────────────────────────────────────────
   const pdfUrl = ann.pdfUrl;
   let base64Pdf = null;
   if (pdfUrl) {
     base64Pdf = await downloadPdfAsBase64(pdfUrl);
   }
 
+  // ── 2. Build the full prompt with filing metadata ─────────────────────────
   const promptWithDetails = `${AI_ANALYST_PROMPT}
 
 ---
@@ -150,68 +141,42 @@ Description: ${ann.description || ''}
 Date / Time (IST): ${ann.datetimeIST || ann.date || ann.announcementDate || ''}
 Statutory Filing PDF Link: ${ann.pdfUrl || 'N/A'}`;
 
-  let lastError = null;
+  // ── 3. Route to AI provider ───────────────────────────────────────────────
+  console.log(`[aiSummarizer] Requesting AI analysis for ${scriptLabel} (hasPdf=${Boolean(base64Pdf)})`);
+  const routerStatus = getRouterStatus();
+  console.log(`[aiSummarizer] Router status: Gemini=${routerStatus.hasGemini ? 'ON' : 'OFF'}, Groq=${routerStatus.hasGroq ? 'ON' : 'OFF'}, Cooldown=${routerStatus.geminiCooldownActive ? `YES (${Math.ceil(routerStatus.geminiCooldownRemainingMs/1000)}s)` : 'NO'}`);
 
-  for (let i = 0; i < customModels.length; i++) {
-    const modelName = customModels[i];
-    try {
-      console.log(`[aiSummarizer] Attempting AI analysis with model: "${modelName}" for ${scriptLabel} (hasPdf=${Boolean(base64Pdf)})`);
+  const result = await routeRequest(promptWithDetails, base64Pdf, options);
 
-      const parts = [];
-      if (base64Pdf) {
-        parts.push({ inline_data: { mime_type: 'application/pdf', data: base64Pdf } });
-      }
-      parts.push({ text: promptWithDetails });
-
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-      const response = await axios.post(url, {
-        contents: [{ role: 'user', parts }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.2
-        }
-      }, { timeout: 8000 });
-
-      const rawOutput = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      const parsed = safeParseJson(rawOutput);
-
-      if (!parsed) {
-        console.warn(`[aiSummarizer] Model "${modelName}" returned invalid JSON, trying next tier...`);
-        continue;
-      }
-
-      const normalized = normalizeAnalysisOutput(parsed);
-      if (!normalized) {
-        console.warn(`[aiSummarizer] Model "${modelName}" returned invalid schema, cascading...`);
-        continue;
-      }
-
-      console.log(`[aiSummarizer] ✅ Successfully generated analysis using "${modelName}" for ${scriptLabel}`);
-      return {
-        _model: modelName,
-        analysis: normalized,
-      };
-
-    } catch (err) {
-      lastError = err;
-      const statusCode = err?.response?.status || err?.status;
-      const errMsg = err?.response?.data?.error?.message || err?.message || 'Unknown error';
-
-      console.warn(`[aiSummarizer] Tier "${modelName}" failed for ${scriptLabel} (Status: ${statusCode || 'N/A'} - ${errMsg}).`);
-      
-      // If we hit rate limiting or temporary error, sleep 1 second before next model in cascade to avoid burst limit
-      if (i < customModels.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
+  if (!result || !result.success) {
+    console.warn(`[aiSummarizer] All providers failed for ${scriptLabel}. Engaging resilient synthesis fallback.`);
+    return generateDeterministicSummary(ann);
   }
 
-  console.warn(`[aiSummarizer] All ${customModels.length} models rate-limited/failed for ${scriptLabel}. Engaging resilient synthesis fallback.`);
-  return generateDeterministicSummary(ann);
+  // ── 4. Parse and validate JSON response ───────────────────────────────────
+  const parsed = safeParseJson(result.text);
+
+  if (!parsed) {
+    console.warn(`[aiSummarizer] Provider "${result.provider}" model "${result.model}" returned invalid JSON for ${scriptLabel}, falling back.`);
+    return generateDeterministicSummary(ann);
+  }
+
+  const normalized = normalizeAnalysisOutput(parsed);
+  if (!normalized) {
+    console.warn(`[aiSummarizer] Provider "${result.provider}" model "${result.model}" returned invalid schema for ${scriptLabel}, falling back.`);
+    return generateDeterministicSummary(ann);
+  }
+
+  console.log(`[aiSummarizer] ✅ Successfully generated analysis using ${result.provider}/"${result.model}" for ${scriptLabel}`);
+  return {
+    _model: result.model,
+    _provider: result.provider,
+    analysis: normalized,
+  };
 }
 
 /**
- * Deterministic synthesis fallback when Google Gemini free tier rate limits (429/503) are hit.
+ * Deterministic synthesis fallback when all AI providers fail.
  */
 function generateDeterministicSummary(ann) {
   const category = ann.category || 'Company Update';
@@ -254,7 +219,8 @@ function generateDeterministicSummary(ann) {
   if (ann.pdfUrl) highlights.push(`Statutory filing PDF verified on BSE/NSE exchange portal.`);
 
   return {
-    _model: 'gemini-resilient-synthesizer',
+    _model: 'deterministic-synthesizer',
+    _provider: 'fallback',
     analysis: {
       executiveSummary: `${scriptName} has submitted an official corporate filing regarding "${subject.length > 90 ? subject.substring(0, 90) + '...' : subject}" on ${date}. The filing has been recorded with the exchange under ${inferredCategory}.`,
       announcementCategory: inferredCategory,
@@ -298,4 +264,5 @@ module.exports = {
   safeParseJson,
   normalizeAnalysisOutput,
   downloadPdfAsBase64,
+  getRouterStatus,
 };
