@@ -40,6 +40,7 @@
 | date-fns | 3.0.0 | Date utilities |
 | clsx | 2.0.0 | Conditional classnames |
 | react-dropzone | 14.2.3 | Drag & drop file upload |
+| @vercel/analytics | ^1.4.1 | Vercel Web Analytics & page tracking |
 
 ### Backend
 | Technology | Version | Purpose |
@@ -671,6 +672,7 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 | 2026-09-27 | Company Data Resolution (Live OHLC, Fundamentals, Financials & Shareholding): Fixed `/api/bse/company` parser to extract LTP from `CurrRate.LTP`, OHLC from `Header`, and company name from `Cmpname.FullN`. Restructured `TabResults_PAR/w?tabtype=RESULTS` parsing to handle `resultinCr` format (`Revenue`, `Net Profit`, `EPS`). Added dynamic Market Cap calculation (`(Equity / FaceValue) * LTP`), merged `peerFund` fields (P/E, EPS, Cash EPS, OPM, NPM, RONW, Face Value), and mapped `TabResults_PAR/w?tabtype=SHP` into `holding` breakdown | `backend/routes/bseRoutes.js`, `backend/lib/apiClients.js` |
 | 2026-09-27 | Result Calendar Page & BSE Forthcoming Results Proxy: Implemented `/result-calendar` page and `GET /api/bse/results-calendar` endpoint backed by BSE `Corpforthresults/w` API. Features default forthcoming results query, custom and preset date range filtering (Today, Next 7 Days, Next 30 Days), real-time company/code search, watchlist filtering, stat cards, sorting, status badges (Today, Tomorrow, Relative days), links to Company Data and BSE, responsive table and mobile views, and 1-click Excel export (`.xlsx`). Added navigation items to Sidebar and mobile bottom navbar right after AGM Updates | `backend/routes/bseRoutes.js`, `frontend/src/components/ResultCalendar/ResultCalendarPage.jsx` (new), `frontend/src/App.jsx`, `frontend/src/components/Layout/Sidebar.jsx`, `frontend/src/components/Layout/AppLayout.jsx`, `frontend/src/components/Common/CommandPalette.jsx` |
 | 2026-09-27 | Declared Financial Results Integration & Dynamic Mode Switch: Added `GET /api/bse/financial-results` endpoint backed by `Corp_FinanceResult_ng_new/w` with in-memory TTL caching. Upgraded `ResultCalendarPage.jsx` with an interactive Mode Switcher ("See Financial Results" ↔ "Show Result Calendar"), audit/nature/industry filter bar, formatted quarter badges (`Q1 FY27`, `Q4 FY26`, `H1 FY26`), audited verification chips, and dedicated stat cards. Renamed navigation item in Sidebar to "Financial Results" and mobile bottom nav to "Financials" | `backend/routes/bseRoutes.js`, `frontend/src/components/ResultCalendar/ResultCalendarPage.jsx`, `frontend/src/components/Layout/Sidebar.jsx`, `frontend/src/components/Layout/AppLayout.jsx`, `frontend/src/components/Common/CommandPalette.jsx` |
+| 2026-09-28 | Web Analytics & Firebase Analytics Integration: Installed `@vercel/analytics` and mounted `<Analytics />` in `App.jsx`. Enhanced `firebase.js` with client-safe, adblocker-resilient `trackPageView` and `logFirebaseEvent` helpers using measurement ID `G-XQFHRJ94SM`. Added `FirebaseAnalyticsTracker` in `App.jsx` to automatically log all page routes and titles on navigation | `frontend/package.json`, `frontend/src/App.jsx`, `frontend/src/services/firebase.js` |
 
 
 ---

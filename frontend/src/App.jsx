@@ -1,8 +1,11 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
+import { Analytics } from '@vercel/analytics/react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { WatchlistProvider } from './contexts/WatchlistContext'
 import { AnnouncementsProvider } from './contexts/AnnouncementsContext'
+import { trackPageView } from './services/firebase'
 import LoginPage from './components/Auth/LoginPage'
 import DashboardPage from './components/Dashboard/DashboardPage'
 import WatchlistPage from './components/Watchlist/WatchlistPage'
@@ -30,6 +33,16 @@ import OfflineBanner from './components/Common/OfflineBanner'
 
 import { Preloader } from './components/Common/Preloader'
 
+function FirebaseAnalyticsTracker() {
+  const location = useLocation()
+
+  useEffect(() => {
+    trackPageView(location.pathname + location.search, document.title)
+  }, [location])
+
+  return null
+}
+
 function ProtectedRoute({ children }) {
   const { currentUser, loading } = useAuth()
   if (loading) {
@@ -51,6 +64,8 @@ function PublicRoute({ children }) {
 function AppRoutes() {
   return (
     <>
+      <Analytics />
+      <FirebaseAnalyticsTracker />
       <OfflineBanner />
       <CommandPalette />
       <Routes>

@@ -20,6 +20,7 @@ let _auth = null
 let _db = null
 let _googleProvider = null
 let _analytics = null
+let _analyticsPromise = null
 
 if (FIREBASE_ENABLED) {
   const app = initializeApp(firebaseConfig)
@@ -28,16 +29,43 @@ if (FIREBASE_ENABLED) {
   _googleProvider = new GoogleAuthProvider()
   
   if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
-    // Dynamically import analytics so adblockers (ERR_BLOCKED_BY_CLIENT) don't crash the entire app in dev mode
-    import('firebase/analytics').then(({ getAnalytics, isSupported }) => {
-      isSupported().then(supported => {
-        if (supported) _analytics = getAnalytics(app)
-      })
-    }).catch(e => console.warn('Firebase Analytics blocked by adblocker', e))
+    // Dynamically import analytics so adblockers don't crash the app
+    _analyticsPromise = import('firebase/analytics').then(async ({ getAnalytics, isSupported, logEvent }) => {
+      const supported = await isSupported().catch(() => false)
+      if (supported) {
+        _analytics = getAnalytics(app)
+        return { analytics: _analytics, logEvent }
+      }
+      return null
+    }).catch(e => {
+      console.warn('[Firebase Analytics] Blocked by client or unsupported:', e.message)
+      return null
+    })
   }
+}
+
+export async function logFirebaseEvent(eventName, eventParams = {}) {
+  try {
+    if (!_analyticsPromise) return
+    const res = await _analyticsPromise
+    if (res?.analytics && res?.logEvent) {
+      res.logEvent(res.analytics, eventName, eventParams)
+    }
+  } catch (err) {
+    // Silently ignore analytics errors to keep app flawless
+  }
+}
+
+export async function trackPageView(pagePath, pageTitle) {
+  return logFirebaseEvent('page_view', {
+    page_path: pagePath || (typeof window !== 'undefined' ? window.location.pathname : '/'),
+    page_title: pageTitle || (typeof document !== 'undefined' ? document.title : ''),
+    page_location: typeof window !== 'undefined' ? window.location.href : '',
+  })
 }
 
 export const auth = _auth
 export const db = _db
 export const googleProvider = _googleProvider
 export const analytics = _analytics
+
