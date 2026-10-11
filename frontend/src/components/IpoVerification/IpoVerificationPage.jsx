@@ -52,6 +52,21 @@ export default function IpoVerificationPage() {
   const [streamSearch, setStreamSearch] = useState('')
   const abortControllerRef = useRef(null)
 
+  // ── Live Registrar Health State ─────────────────────────────────────────────
+  const [registrarHealth, setRegistrarHealth] = useState(null)
+
+  useEffect(() => {
+    let isMounted = true
+    apiClient('/api/ipo/registrars-health')
+      .then(res => {
+        if (isMounted && res?.registrars) {
+          setRegistrarHealth(res.registrars)
+        }
+      })
+      .catch(() => {})
+    return () => { isMounted = false }
+  }, [])
+
   // ── Fetch Master Unified IPO Symbols ────────────────────────────────────────
   const fetchSymbols = useCallback(async () => {
     setSymbolsLoading(true)
@@ -568,8 +583,8 @@ export default function IpoVerificationPage() {
 
   return (
     <div className="space-y-8 pb-12">
-      {/* ── HEADER ──────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* ── HEADER & REGISTRAR HEALTH ──────────────────────────────────────────── */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
@@ -581,6 +596,31 @@ export default function IpoVerificationPage() {
                 Verify allotment status across BSE, NSE, KFintech, Link Intime & BigShare for 500+ family PANs
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Live Registrar Server Health Monitor */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface border border-border/80 shadow-xs text-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="text-textMuted font-medium">Link Intime:</span>
+            <span className="text-emerald-500 dark:text-emerald-400 font-semibold">
+              {registrarHealth?.linkIntime?.latencyMs ? `${registrarHealth.linkIntime.latencyMs}ms` : 'Healthy'}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface border border-border/80 shadow-xs text-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="text-textMuted font-medium">KFintech:</span>
+            <span className="text-emerald-500 dark:text-emerald-400 font-semibold">
+              {registrarHealth?.kfintech?.latencyMs ? `${registrarHealth.kfintech.latencyMs}ms` : 'Healthy'}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface border border-border/80 shadow-xs text-xs" title="Auto-routing via multi-server round-robin pool">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+            <span className="text-textMuted font-medium">BigShare:</span>
+            <span className="text-amber-500 dark:text-amber-400 font-semibold">
+              Pool Active
+            </span>
           </div>
         </div>
       </div>

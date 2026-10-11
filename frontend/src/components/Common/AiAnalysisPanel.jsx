@@ -4,7 +4,8 @@ import {
   TrendingUp, TrendingDown, Minus,
   Info, Target, Lightbulb, BarChart3, Building2,
   Telescope, Handshake, MessageSquareQuote, ShieldAlert,
-  AlertTriangle, CheckCircle2, Banknote, ArrowRightLeft
+  AlertTriangle, CheckCircle2, Banknote, ArrowRightLeft,
+  Copy, Check, Printer
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -157,8 +158,9 @@ function Section({ icon: Icon, title, children, iconColor = 'text-primary', bord
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
-export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
+export default function AiAnalysisPanel({ analysis, generatedAt, cached, announcement }) {
   const [expanded, setExpanded] = useState(true)
+  const [copied, setCopied] = useState(false)
   const [mounted, setMounted] = useState(true)
   useEffect(() => { setMounted(true) }, [])
 
@@ -199,6 +201,64 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
 
   const hasMargins = fin.marginAnalysis &&
     Object.values(fin.marginAnalysis).some(v => hasVal(v))
+
+  const copyBrief = (e) => {
+    e.stopPropagation()
+    const lines = []
+    lines.push(`📊 *TATVARTH AI EQUITY RESEARCH BRIEF*`)
+    const company = announcement?.scriptName || announcement?.companyName || a.companyName
+    if (company) lines.push(`🏢 *Entity:* ${company}`)
+    if (a.headline) lines.push(`📢 *Headline:* ${a.headline}`)
+    lines.push(`🎯 *Sentiment:* ${a.sentiment || 'Neutral'} | *Impact:* ${a.importance || 'Medium'}`)
+    if (hasVal(fin.period)) lines.push(`📅 *Period:* ${fin.period}`)
+    lines.push('')
+
+    // Executive summary
+    const summaryItems = Array.isArray(a.summary) && a.summary.some(s => hasVal(s))
+      ? a.summary.filter(hasVal)
+      : (hasVal(a.executiveSummary) ? [a.executiveSummary] : [])
+    if (summaryItems.length > 0) {
+      lines.push(`*Key Summary:*`)
+      summaryItems.forEach(s => lines.push(`• ${s}`))
+      lines.push('')
+    }
+
+    // Financial Highlights
+    if (hasFinancials) {
+      lines.push(`*Financials:*`)
+      if (hasVal(fin.revenue?.current)) lines.push(`• Revenue: ${fin.revenue.current} (YoY: ${fin.revenue.yoyPercent || '—'}, QoQ: ${fin.revenue.qoqPercent || '—'})`)
+      if (hasVal(fin.netProfit?.current)) lines.push(`• Net Profit (PAT): ${fin.netProfit.current} (YoY: ${fin.netProfit.yoyPercent || '—'}, QoQ: ${fin.netProfit.qoqPercent || '—'})`)
+      if (hasVal(fin.ebitda?.current)) lines.push(`• EBITDA: ${fin.ebitda.current}`)
+      if (hasVal(fin.eps?.current)) lines.push(`• EPS: ${fin.eps.current}`)
+      lines.push('')
+    }
+
+    // Corporate actions
+    if (corporateActionsExist) {
+      lines.push(`*Corporate Actions:*`)
+      if (hasVal(a.corporateActions?.dividend)) lines.push(`• Dividend: ${a.corporateActions.dividend}`)
+      if (hasVal(a.corporateActions?.bonusIssue)) lines.push(`• Bonus: ${a.corporateActions.bonusIssue}`)
+      if (hasVal(a.corporateActions?.stockSplit)) lines.push(`• Split: ${a.corporateActions.stockSplit}`)
+      lines.push('')
+    }
+
+    if (announcement?.pdfUrl) {
+      lines.push(`📄 *Filing Document:* ${announcement.pdfUrl}`)
+    }
+    lines.push(`_Source: Tatvarth StockWatch AI Research Terminal_`)
+
+    navigator.clipboard.writeText(lines.join('\n'))
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2500)
+      })
+      .catch(() => {})
+  }
+
+  const printBrief = (e) => {
+    e.stopPropagation()
+    window.print()
+  }
 
   const generatedLabel = (() => {
     if (!generatedAt) return null
@@ -267,25 +327,49 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached }) {
           onClick={(e) => e.stopPropagation()}
         >
 
-          {/* Badges Row */}
-          <div className="flex items-center gap-2 flex-wrap pt-4">
-            <SentimentBadge value={a.sentiment} />
-            <ImportanceBadge value={a.importance} />
-            {hasVal(a.announcementCategory) && (
-              <span className="text-xs px-2.5 py-1 rounded-full bg-surface border border-border text-textMuted font-medium">
-                {a.announcementCategory}
-              </span>
-            )}
-            {hasVal(a.announcementType) && (
-              <span className="text-xs px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 font-medium">
-                {a.announcementType}
-              </span>
-            )}
-            {hasVal(fin.period) && (
-              <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-medium">
-                📅 {fin.period}
-              </span>
-            )}
+          {/* Badges & Action Controls Row */}
+          <div className="flex items-center justify-between gap-3 flex-wrap pt-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              <SentimentBadge value={a.sentiment} />
+              <ImportanceBadge value={a.importance} />
+              {hasVal(a.announcementCategory) && (
+                <span className="text-xs px-2.5 py-1 rounded-full bg-surface border border-border text-textMuted font-medium">
+                  {a.announcementCategory}
+                </span>
+              )}
+              {hasVal(a.announcementType) && (
+                <span className="text-xs px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 font-medium">
+                  {a.announcementType}
+                </span>
+              )}
+              {hasVal(fin.period) && (
+                <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-medium">
+                  📅 {fin.period}
+                </span>
+              )}
+            </div>
+
+            {/* Quick Export / Share Controls */}
+            <div className="flex items-center gap-1.5 ml-auto">
+              <button
+                type="button"
+                onClick={copyBrief}
+                title="Copy formatted brief for WhatsApp, Telegram, or Notion"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-surface hover:bg-surfaceHover border border-border text-textPrimary transition-all active:scale-95 shadow-2xs"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-primary" />}
+                <span>{copied ? 'Copied Brief!' : 'Copy Brief'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={printBrief}
+                title="Export or print PDF report"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-surface hover:bg-surfaceHover border border-border text-textMuted hover:text-textPrimary transition-all active:scale-95 shadow-2xs"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Print / PDF</span>
+              </button>
+            </div>
           </div>
 
           {/* Executive Summary */}

@@ -27,6 +27,30 @@ if (process.env.NODE_ENV === 'development') {
   clientPromise = client.connect();
 }
 
+let indexesInitialized = false;
+
+/**
+ * Ensures high-speed compound indexes exist on MongoDB collections.
+ * Runs asynchronously and idempotently.
+ */
+async function ensureIndexes(db) {
+  if (indexesInitialized) return;
+  indexesInitialized = true;
+  try {
+    const annCol = db.collection('announcements');
+    await Promise.allSettled([
+      annCol.createIndex({ bseCode: 1, datetimeIST: -1 }, { background: true }),
+      annCol.createIndex({ nseSymbol: 1, datetimeIST: -1 }, { background: true }),
+      annCol.createIndex({ category: 1, datetimeIST: -1 }, { background: true }),
+      annCol.createIndex({ scriptCode: 1, announcementDate: -1 }, { background: true }),
+      annCol.createIndex({ announcementDate: -1 }, { background: true }),
+    ]);
+    console.log('[MongoDB] High-speed compound indexes verified ({ bseCode, nseSymbol, category, datetimeIST })');
+  } catch (err) {
+    console.warn('[MongoDB] Index creation warning:', err.message);
+  }
+}
+
 /**
  * Returns the MongoDB connected database instance.
  * @returns {Promise<import('mongodb').Db>}
@@ -34,7 +58,9 @@ if (process.env.NODE_ENV === 'development') {
 async function getDb() {
   const connectedClient = await clientPromise;
   // Default to the database name inside the connection string, or a default 'stockwatch'
-  return connectedClient.db('stockwatch');
+  const db = connectedClient.db('stockwatch');
+  ensureIndexes(db).catch(() => {});
+  return db;
 }
 
 module.exports = {

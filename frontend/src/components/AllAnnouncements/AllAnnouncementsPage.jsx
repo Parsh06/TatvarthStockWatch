@@ -565,10 +565,10 @@ export default function AllAnnouncementsPage() {
                         const cardAi = aiAnalysisMap.get(String(a.id || a._id))
                         const dbAi   = a.aiAnalysis?.generated ? a.aiAnalysis : null
                         if (cardAi) {
-                          return <AiAnalysisPanel analysis={cardAi.analysis} generatedAt={cardAi.generatedAt} cached={cardAi.cached} />
+                          return <AiAnalysisPanel analysis={cardAi.analysis} generatedAt={cardAi.generatedAt} cached={cardAi.cached} announcement={a} />
                         }
                         if (dbAi?.analysis) {
-                          return <AiAnalysisPanel analysis={dbAi.analysis} generatedAt={dbAi.generatedAt} cached={true} />
+                          return <AiAnalysisPanel analysis={dbAi.analysis} generatedAt={dbAi.generatedAt} cached={true} announcement={a} />
                         }
                         return null
                       })()}

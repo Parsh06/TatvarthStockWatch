@@ -4,11 +4,10 @@ import clsx from 'clsx'
 import { analyzeAnnouncement } from '../../services/announcementService'
 
 const LOADING_STAGES = [
-  'Reading PDF…',
-  'Extracting financial data…',
-  'Understanding the filing…',
-  'Generating investment analysis…',
-  'Almost ready…',
+  '📄 Downloading Statutory PDF (BSE/NSE CDN)...',
+  '🔍 Multimodal Vision OCR: Examining balance sheets, tables & notes...',
+  '📊 Extracting YoY / QoQ Growth, EBITDA Margins & Forward Guidance...',
+  '✨ Finalizing Institutional Brief...',
 ]
 
 /**
@@ -141,21 +140,26 @@ export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysi
     const progressPct = ((stageIdx + 1) / LOADING_STAGES.length) * 100
     return (
       <div
-        className="inline-flex flex-col gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/25
-                   cursor-default w-full max-w-[240px] sm:w-auto sm:max-w-none"
+        className="inline-flex flex-col gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/25
+                   cursor-default w-full max-w-[280px] sm:w-auto sm:max-w-none shadow-xs"
         onClick={(e) => e.stopPropagation()}
       >
         {keyframeStyles}
-        <div className="flex items-center gap-2 min-w-0">
-          <RefreshCw className="w-3.5 h-3.5 text-primary animate-spin flex-shrink-0" />
-          <span key={stageIdx} className="text-xs text-primary font-medium truncate" style={{ animation: 'tswStageFade 0.4s ease-out' }}>
-            {LOADING_STAGES[stageIdx]}
+        <div className="flex items-center justify-between gap-3 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <RefreshCw className="w-3.5 h-3.5 text-primary animate-spin flex-shrink-0" />
+            <span key={stageIdx} className="text-xs text-primary font-semibold truncate" style={{ animation: 'tswStageFade 0.4s ease-out' }}>
+              {LOADING_STAGES[stageIdx]}
+            </span>
+          </div>
+          <span className="text-[10px] text-primary/70 font-mono font-bold flex-shrink-0">
+            {stageIdx + 1}/{LOADING_STAGES.length}
           </span>
         </div>
         {/* Stage progress — gives a real sense of "how close", not just spinning text */}
-        <div className="h-[3px] w-full sm:w-32 bg-primary/10 rounded-full overflow-hidden">
+        <div className="h-[3px] w-full sm:w-44 bg-primary/15 rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-primary/70 to-primary rounded-full transition-all duration-700 ease-out"
+            className="h-full bg-gradient-to-r from-violet-500 via-primary to-emerald-400 rounded-full transition-all duration-700 ease-out"
             style={{ width: `${progressPct}%` }}
           />
         </div>

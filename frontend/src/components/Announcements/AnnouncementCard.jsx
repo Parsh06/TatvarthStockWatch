@@ -109,6 +109,7 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
             analysis={aiAnalysis}
             generatedAt={aiMeta?.generatedAt}
             cached={aiMeta?.cached}
+            announcement={announcement}
           />
         )}
         {/* Show cached panel from DB if present and button not yet clicked */}
@@ -117,6 +118,7 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
             analysis={initialAnalysis.analysis}
             generatedAt={initialAnalysis.generatedAt}
             cached={true}
+            announcement={announcement}
           />
         )}
 
