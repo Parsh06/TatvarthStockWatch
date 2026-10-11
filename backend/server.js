@@ -33,7 +33,7 @@ const ALLOWED_ORIGINS = [
 
 app.use(cors({
   origin(origin, cb) {
-    if (!origin || ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.web.app') || origin.endsWith('.firebaseapp.com') || origin.endsWith('.vercel.app')) {
+    if (!origin || ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.web.app') || origin.endsWith('.firebaseapp.com') || origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) {
       return cb(null, true);
     }
     return cb(new Error('Not allowed by CORS'));

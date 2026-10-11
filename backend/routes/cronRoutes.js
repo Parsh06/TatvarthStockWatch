@@ -19,7 +19,8 @@ function verifyCronSecret(req, res, next) {
  */
 router.all('/trigger', verifyCronSecret, async (req, res) => {
   try {
-    const result = await runGlobalCronTick();
+    const force = req.query.force === 'true' || req.query.force === '1';
+    const result = await runGlobalCronTick({ force });
     res.json(result);
   } catch (err) {
     console.error('[CronRoute /trigger] Error:', err);

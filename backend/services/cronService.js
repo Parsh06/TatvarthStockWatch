@@ -13,9 +13,11 @@ const { saveIpoSymbols, reconcileMissingIpos } = require('../lib/ipoStore');
 const { processIpoClosingQueueTick } = require('../lib/ipoClosingNotificationService');
 const { checkAndNotifyNewMufgIpos } = require('../lib/mufgNotificationService');
 const { checkAndNotifyNewBigshareIpos } = require('../lib/bigshareNotificationService');
+const { getMarketCadence } = require('../lib/time/istTime');
 
 // In-memory cache for announcements (for fast preview/stats)
 const _cache = { announcements: [] };
+let _lastHeavyScrapeTime = 0;
 
 function getAnnouncementsMemoryCache() {
   return _cache.announcements;
@@ -86,12 +88,58 @@ async function performMidnightWipeIfNeeded() {
 
 /**
  * Full execution cycle of the global scheduled cron tick.
+ * @param {{ force?: boolean }} [options={}]
  */
-async function runGlobalCronTick() {
-  // 1. Midnight Wipe (IST) check
-  await performMidnightWipeIfNeeded();
+async function runGlobalCronTick(options = {}) {
+  const force = Boolean(options.force);
 
-  // 2. Fetch all announcements from BSE & NSE
+  // 1. Midnight Wipe (IST) check - ALWAYS runs first regardless of cadence
+  const wipeResult = await performMidnightWipeIfNeeded();
+
+  // 2. Market Hours Guard: evaluate trading cadence in IST
+  const now = new Date();
+  const cadence = getMarketCadence(now);
+
+  if (!force && cadence.minIntervalMinutes > 0) {
+    let lastScrape = _lastHeavyScrapeTime;
+    if (!lastScrape) {
+      try {
+        const admin = require('firebase-admin');
+        const dbAdmin = admin.firestore();
+        const metaSnap = await dbAdmin.collection('system_meta').doc('cron_status').get();
+        if (metaSnap.exists && metaSnap.data().lastHeavyScrapeAt) {
+          lastScrape = new Date(metaSnap.data().lastHeavyScrapeAt).getTime();
+          _lastHeavyScrapeTime = lastScrape;
+        }
+      } catch (e) {
+        // Silently proceed if Firestore check fails
+      }
+    }
+
+    if (lastScrape > 0) {
+      const elapsedMinutes = (Date.now() - lastScrape) / (60 * 1000);
+      if (elapsedMinutes < cadence.minIntervalMinutes) {
+        const waitRemaining = Math.max(1, Math.ceil(cadence.minIntervalMinutes - elapsedMinutes));
+        console.log(`[Market Guard] ${cadence.description}. Throttled (${Math.floor(elapsedMinutes)}m elapsed < ${cadence.minIntervalMinutes}m). Skipping heavy scrape.`);
+        return {
+          started: false,
+          throttled: true,
+          window: cadence.window,
+          description: cadence.description,
+          waitRemainingMinutes: waitRemaining,
+          cadenceMinutes: cadence.minIntervalMinutes,
+          lastHeavyScrapeAt: new Date(lastScrape).toISOString(),
+          wipeResult,
+        };
+      }
+    }
+  }
+
+  // Update last heavy scrape timestamp
+  _lastHeavyScrapeTime = Date.now();
+  const heavyScrapeIso = new Date(_lastHeavyScrapeTime).toISOString();
+
+  // 3. Fetch all announcements from BSE & NSE
   const [bseAll, nseAll] = await Promise.all([
     fetchAllBSEAnnouncements(),
     fetchAllNSEAnnouncements(new Map()),
@@ -180,7 +228,9 @@ async function runGlobalCronTick() {
     const admin = require('firebase-admin');
     const db = admin.firestore();
     await db.collection('system_meta').doc('cron_status').set({
-      lastRun: new Date().toISOString(),
+      lastRun: heavyScrapeIso,
+      lastHeavyScrapeAt: heavyScrapeIso,
+      marketCadence: cadence.window,
       fetchedBSE: bseAll.length,
       fetchedNSE: nseAll.length,
       newAnnouncements: newAnnouncements.length,
@@ -195,6 +245,8 @@ async function runGlobalCronTick() {
 
   return {
     started: true,
+    throttled: false,
+    window: cadence.window,
     bseFetched: bseAll.length,
     nseFetched: nseAll.length,
     totalFetched: allFetched.length,

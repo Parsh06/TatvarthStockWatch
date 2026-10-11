@@ -83,10 +83,94 @@ function isWithinIpoDispatchWindow(date = new Date()) {
   return istHour >= 11 && istHour < 13;
 }
 
+/**
+ * Returns day of week in Asia/Kolkata (0 = Sunday, 1 = Monday, ..., 6 = Saturday).
+ */
+function getISTDayOfWeek(date = new Date()) {
+  const options = { timeZone: 'Asia/Kolkata', weekday: 'short' };
+  const dayStr = new Intl.DateTimeFormat('en-US', options).format(date);
+  const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return map[dayStr] !== undefined ? map[dayStr] : 0;
+}
+
+/**
+ * Evaluates Indian Market Cadence based on IST day and hour:
+ * - Unrestricted Mode: if DISABLE_CADENCE_GUARD=true, always 0 min (runs every tick)
+ * - Active Weekday Filings (Mon-Fri 08:00 - 22:00 IST): 0 min (runs on every tick, zero delay)
+ * - Saturday Board Outcomes (Sat 09:00 - 20:00 IST): 0 min (runs on every tick, zero delay)
+ * - Late Evening (Mon-Fri 22:00 - 23:00 IST): 5 min minimum interval
+ * - Deep Night (23:00 - 08:00 IST) & Sunday: 30 min minimum interval
+ */
+function getMarketCadence(date = new Date()) {
+  if (process.env.DISABLE_CADENCE_GUARD === 'true') {
+    return {
+      window: 'UNRESTRICTED',
+      isWeekend: false,
+      minIntervalMinutes: 0,
+      description: 'Cadence guard disabled via environment: 0-min (full speed)',
+    };
+  }
+
+  const { istHour, istMinute } = getISTDateTime(date);
+  const dayOfWeek = getISTDayOfWeek(date); // 0 = Sun, 6 = Sat
+  const isSunday = dayOfWeek === 0;
+  const isSaturday = dayOfWeek === 6;
+
+  // Saturday daytime (09:00 - 20:00 IST): Board meetings, earnings, corporate actions
+  if (isSaturday && istHour >= 9 && istHour < 20) {
+    return {
+      window: 'SATURDAY_BOARD_MEETINGS',
+      isWeekend: true,
+      minIntervalMinutes: 0, // Zero delay for weekend corporate announcements
+      description: 'Saturday Corporate Filings & Board Outcomes (09:00 - 20:00 IST): Full speed (Zero delay)',
+    };
+  }
+
+  if (isSunday || (isSaturday && (istHour < 9 || istHour >= 20))) {
+    return {
+      window: 'WEEKEND',
+      isWeekend: true,
+      minIntervalMinutes: 30,
+      description: 'Weekend Off-Market: 30-min cadence',
+    };
+  }
+
+  // Weekdays (Mon-Fri): Active announcement window (08:00 - 22:00 IST)
+  // Pre-market, core trading, post-market results & board meeting outcomes
+  if (istHour >= 8 && istHour < 22) {
+    return {
+      window: 'ACTIVE_ANNOUNCEMENT_HOURS',
+      isWeekend: false,
+      minIntervalMinutes: 0, // Unrestricted, run every tick for zero delay!
+      description: 'Active Corporate Announcement Window (08:00 - 22:00 IST): Full speed (Zero delay)',
+    };
+  }
+
+  // Late Evening Allotment Window (22:00 - 23:00)
+  if (istHour >= 22 && istHour < 23) {
+    return {
+      window: 'LATE_EVENING_ALLOTMENTS',
+      isWeekend: false,
+      minIntervalMinutes: 5,
+      description: 'Late Evening Window (22:00 - 23:00 IST): 5-min cadence',
+    };
+  }
+
+  // Deep Night: 23:00 to 07:59
+  return {
+    window: 'DEEP_NIGHT',
+    isWeekend: false,
+    minIntervalMinutes: 30,
+    description: 'Deep Night (23:00 - 08:00 IST): 30-min cadence',
+  };
+}
+
 module.exports = {
   getISTDateTime,
   getISTDateString,
   getISTHour,
+  getISTDayOfWeek,
+  getMarketCadence,
   parseToISTDateString,
   isWithinIpoDispatchWindow,
 };
