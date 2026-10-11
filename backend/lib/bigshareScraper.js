@@ -47,13 +47,31 @@ async function scrapeBigshareCompanies(options = {}) {
   let lastErr;
   for (const baseUrl of BIGSHARE_BASE_URLS) {
     try {
-      const res = await axios.get(`${baseUrl}/ipo_status.html`, {
-        headers: {
-          'User-Agent': BIGSHARE_HEADERS['User-Agent'],
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-        timeout: 12000,
-      });
+      let currentUrl = `${baseUrl}/ipo_status.html`;
+      let res;
+
+      // Follow up to 3 redirects cleanly (handles 301, 302, 307 mirror routing)
+      for (let hop = 0; hop < 3; hop++) {
+        res = await axios.get(currentUrl, {
+          headers: {
+            'User-Agent': BIGSHARE_HEADERS['User-Agent'],
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Referer': `${baseUrl}/`,
+          },
+          timeout: 10000,
+          maxRedirects: 5,
+          validateStatus: (status) => (status >= 200 && status < 400),
+        });
+
+        if ([301, 302, 307, 308].includes(res.status) && res.headers.location) {
+          const loc = res.headers.location;
+          currentUrl = loc.startsWith('http') ? loc : new URL(loc, currentUrl).toString();
+          continue;
+        }
+        break;
+      }
+
+      if (!res || !res.data) continue;
 
       const $ = cheerio.load(res.data);
       const companies = [];
@@ -78,10 +96,24 @@ async function scrapeBigshareCompanies(options = {}) {
     }
   }
 
-  if (_bigshareSymbolCache.data) {
+  // 1. Fallback to memory cache if available
+  if (_bigshareSymbolCache.data && _bigshareSymbolCache.data.length > 0) {
     return _bigshareSymbolCache.data;
   }
-  throw lastErr || new Error('Failed to scrape BigShare company list');
+
+  // 2. Fallback to MongoDB active symbols so downstream never fails
+  try {
+    const { getActiveIpoSymbols } = require('./ipoStore');
+    const dbSymbols = await getActiveIpoSymbols('BIGSHARE');
+    if (Array.isArray(dbSymbols) && dbSymbols.length > 0) {
+      _bigshareSymbolCache = { data: dbSymbols, fetchedAt: now };
+      return dbSymbols;
+    }
+  } catch (dbErr) {
+    // Ignore fallback error
+  }
+
+  return [];
 }
 
 const { createWorker } = require('tesseract.js');

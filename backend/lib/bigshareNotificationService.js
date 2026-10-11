@@ -103,7 +103,7 @@ async function checkAndNotifyNewBigshareIpos() {
 
     return { checked: symbols.length, newIpos: newIpos.length };
   } catch (err) {
-    console.error('[BigShare Notification Service] Error:', err.message);
+    console.warn('[BigShare Notification Service] Transient check notice:', err.message);
     return { checked: 0, newIpos: 0, error: err.message };
   }
 }
