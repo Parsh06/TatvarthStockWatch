@@ -85,10 +85,9 @@ async function fetchAndCache(force = false) {
       };
     }
     _lastFetchedAt = Date.now();
-
     return _snapshot;
   } catch (e) {
-    console.error('[Volume Spurt] Fetch error:', e.message);
+    console.warn('[Volume Spurt] Fetch warning:', e.message || e.code || 'BSE Spurt service temporarily quiet');
     return _snapshot || {
       lastUpdated: new Date().toISOString(),
       exchange:    'BSE',

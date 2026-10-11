@@ -19,8 +19,10 @@ const axios = require('axios');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-// Groq model cascade — using currently available models (Sep 2026)
+// Groq model cascade — fast fallback
 const GROQ_MODELS = [
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant',
   'openai/gpt-oss-120b',     // Deep reasoning, 131k context, generous token budget
   'openai/gpt-oss-20b',      // Fast fallback, generous token budget
   'qwen/qwen3.8-27b',        // Fast, strong reasoning
@@ -210,9 +212,9 @@ Return ONLY valid JSON. No markdown. No explanations. No comments. No code block
  * @returns {Promise<{ success: boolean, text?: string, model?: string, provider: string, allRateLimited?: boolean, error?: string }>}
  */
 async function callGroq(prompt, _base64Pdf, options = {}) {
-  const apiKey = process.env.GROK_API_KEY; // env var name kept for backward compat
+  const apiKey = process.env.GROK_API_KEY || process.env.GROQ_API_KEY;
   if (!apiKey) {
-    return { success: false, provider: 'groq', error: 'GROK_API_KEY not configured' };
+    return { success: false, provider: 'groq', error: 'Neither GROK_API_KEY nor GROQ_API_KEY configured' };
   }
 
   const groqPrompt = budgetPromptForGroq(prompt);

@@ -73,11 +73,11 @@ function recordGeminiSuccess() {
  */
 async function routeRequest(prompt, base64Pdf, options = {}) {
   const hasGemini = Boolean(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
-  const hasGroq = Boolean(process.env.GROK_API_KEY);
+  const hasGroq = Boolean(process.env.GROK_API_KEY || process.env.GROQ_API_KEY);
 
   // ── Case: No providers configured ─────────────────────────────────────────
   if (!hasGemini && !hasGroq) {
-    console.warn('[ProviderRouter] No AI providers configured (neither GEMINI_API_KEY nor GROK_API_KEY)');
+    console.warn('[ProviderRouter] No AI providers configured (neither GEMINI_API_KEY nor GROQ_API_KEY / GROK_API_KEY)');
     return null;
   }
 
@@ -164,7 +164,7 @@ function getRouterStatus() {
     geminiConsecutiveFails,
     lastProviderUsed,
     hasGemini: Boolean(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY),
-    hasGroq: Boolean(process.env.GROK_API_KEY),
+    hasGroq: Boolean(process.env.GROK_API_KEY || process.env.GROQ_API_KEY),
   };
 }
 

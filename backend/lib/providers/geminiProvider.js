@@ -15,6 +15,10 @@ const axios = require('axios');
 
 // ── Active Gemini Model Cascade (Fast failover to Groq) ───────────────────
 const GEMINI_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-2.0-flash-lite',
   'gemini-3.1-flash-lite',
   'gemini-3.7-flash',
 ];
@@ -31,7 +35,7 @@ const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models
  * @param {number} [timeout=8000] - Request timeout in ms
  * @returns {Promise<{ success: boolean, text?: string, model: string, rateLimited?: boolean, error?: string }>}
  */
-async function callGeminiModel(apiKey, modelName, prompt, base64Pdf, timeout = 8000) {
+async function callGeminiModel(apiKey, modelName, prompt, base64Pdf, timeout = 25000) {
   try {
     const parts = [];
     if (base64Pdf) {
@@ -86,7 +90,7 @@ async function callGemini(prompt, base64Pdf, options = {}) {
   }
 
   const models = options.models || GEMINI_MODELS;
-  const timeout = options.timeout || (base64Pdf ? 9500 : 5000);
+  const timeout = options.timeout || (base64Pdf ? 25000 : 15000);
   let allRateLimited = true;
 
   for (let i = 0; i < models.length; i++) {
