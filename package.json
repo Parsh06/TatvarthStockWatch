@@ -1,0 +1,13 @@
+{
+  "name": "tatvarth-stockwatch",
+  "version": "1.0.0",
+  "description": "Tatvarth StockWatch Root Runner",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "build": "cd backend && npm install"
+  },
+  "engines": {
+    "node": ">=20.18.0"
+  }
+}

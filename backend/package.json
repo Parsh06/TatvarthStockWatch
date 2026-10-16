@@ -2,7 +2,10 @@
   "name": "stockwatch-backend",
   "version": "1.0.0",
   "description": "StockWatch BSE/NSE announcement tracker backend",
-  "main": "index.js",
+  "main": "server.js",
+  "engines": {
+    "node": ">=20.18.0"
+  },
   "scripts": {
     "dev": "vercel dev",
     "start": "node server.js"

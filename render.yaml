@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: stockwatch-worker
+    name: TatvarthStockWatch
     runtime: node
     plan: free
     region: singapore
@@ -11,6 +11,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 20.18.1
       - key: FRONTEND_URL
         value: https://tatvarthstockwatch.web.app
       - key: DISABLE_CADENCE_GUARD
