@@ -21,6 +21,7 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
   const { currentUser, loading: authLoading } = useAuth()
   const [announcements, setAnnouncements] = useState([])
   const [loading, setLoading]             = useState(false)
+  const [isRefreshing, setIsRefreshing]   = useState(false)
   const [error, setError]                 = useState(null)
   const [lastFetched, setLastFetched]     = useState(null)
   const [source, setSource]               = useState(null) // 'local' | 'db' | 'proxy'
@@ -56,7 +57,15 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
       return
     }
 
-    setLoading(true)
+    // SWR pattern: If we already have items, perform silent background refresh
+    setAnnouncements(prev => {
+      if (prev.length > 0) {
+        setIsRefreshing(true)
+      } else {
+        setLoading(true)
+      }
+      return prev
+    })
     setError(null)
 
     try {
@@ -122,9 +131,10 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
     } catch (err) {
       console.error('[useAnnouncements] Fetch failed:', err.message)
       setError(err.message)
-      setAnnouncements([])
+      // Do not clear existing announcements if we had data previously!
     } finally {
       setLoading(false)
+      setIsRefreshing(false)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -178,6 +188,8 @@ export function useAnnouncements({ watchlist = [], autoFetch = true } = {}) {
     announcements: annotatedAnnouncements,
     watchlistedAnnouncements: annotatedAnnouncements.filter((a) => a.isWatchlisted),
     loading,
+    isRefreshing,
+    isInitialLoading: loading && announcements.length === 0,
     error,
     lastFetched,
     source,

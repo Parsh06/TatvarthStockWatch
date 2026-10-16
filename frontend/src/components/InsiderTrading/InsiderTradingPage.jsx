@@ -35,22 +35,30 @@ const COLS = [
 export default function InsiderTradingPage() {
   const [fromDate,    setFromDate]    = useState('')
   const [toDate,      setToDate]      = useState('')
-  const [codeFilter,  setCodeFilter]  = useState('')
-  const [loading,     setLoading]     = useState(false)
-  const [downloading, setDownloading] = useState(false)
-  const [error,       setError]       = useState(null)
-  const [result,      setResult]      = useState(null)
-  const [search,      setSearch]      = useState('')
-  const [sortKey,     setSortKey]     = useState('')
-  const [sortDir,     setSortDir]     = useState('desc')
+  const [loading,      setLoading]      = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [downloading,  setDownloading]  = useState(false)
+  const [error,        setError]        = useState(null)
+  const [result,       setResult]       = useState(null)
+  const [search,       setSearch]       = useState('')
+  const [sortKey,      setSortKey]      = useState('')
+  const [sortDir,      setSortDir]      = useState('desc')
 
   function applyQuickRange(r) {
     setFromDate(r.from()); setToDate(r.to()); setError(null)
   }
 
-  async function fetchTrades() {
+  async function fetchTrades(isManualRefresh = false) {
     if (fromDate && toDate && fromDate > toDate) { setError('From date must not be after To date.'); return }
-    setLoading(true); setError(null); setSearch('')
+
+    if (result && (result.Table || result.data) && (result.Table?.length > 0 || result.data?.length > 0)) {
+      setIsRefreshing(true)
+    } else {
+      setLoading(true)
+    }
+    setError(null)
+    if (!isManualRefresh) setSearch('')
+
     try {
       const fromStr = fromDate ? toYYYYMMDD(fromDate) : ''
       const toStr = toDate ? toYYYYMMDD(toDate) : ''
@@ -63,7 +71,10 @@ export default function InsiderTradingPage() {
       }
       setResult(data)
     } catch (e) { setError(e.message) }
-    finally { setLoading(false) }
+    finally { 
+      setLoading(false)
+      setIsRefreshing(false)
+    }
   }
 
   async function handleDownloadCsv() {
@@ -285,13 +296,13 @@ export default function InsiderTradingPage() {
         </div>
 
         <div className="flex items-center gap-3 pt-1">
-          <button onClick={fetchTrades} disabled={loading}
+          <button onClick={() => fetchTrades(true)} disabled={loading || isRefreshing}
             className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-lg text-sm font-semibold transition">
-            <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
-            {loading ? 'Fetching…' : 'Fetch Data'}
+            <RefreshCw className={clsx('w-4 h-4', (loading || isRefreshing) && 'animate-spin')} />
+            {loading ? 'Fetching…' : isRefreshing ? 'Syncing…' : 'Fetch Data'}
           </button>
 
-          <button onClick={handleDownloadCsv} disabled={downloading || loading}
+          <button onClick={handleDownloadCsv} disabled={downloading || loading || isRefreshing}
             className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 rounded-lg text-sm font-semibold transition disabled:opacity-60 shadow-sm"
             title="Download Official BSE Insider Trading CSV">
             <Download className={clsx('w-4 h-4', downloading && 'animate-bounce')} />
@@ -299,6 +310,11 @@ export default function InsiderTradingPage() {
           </button>
         </div>
       </div>
+
+      {/* Top subtle syncing shimmer indicator */}
+      {isRefreshing && (
+        <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse rounded-full" />
+      )}
 
       {/* Error */}
       {error && (
@@ -322,12 +338,12 @@ export default function InsiderTradingPage() {
       )}
 
       {/* Loading */}
-      {loading && (
+      {loading && !result && (
         <Loader />
       )}
 
       {/* Results */}
-      {result && !loading && (
+      {result && (
         <div className="space-y-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted pointer-events-none" />

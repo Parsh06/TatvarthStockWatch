@@ -285,6 +285,7 @@ module.exports = {
   sendTelegramIpoAlert,
   sendTelegramIpoClosingAlert,
   sendTelegramTest, 
+  sendMessage,
   editTelegramMessage,
   isConfigured,
   buildAnnouncementBlock,

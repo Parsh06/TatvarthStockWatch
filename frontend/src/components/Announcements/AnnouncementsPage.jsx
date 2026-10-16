@@ -29,6 +29,8 @@ export default function AnnouncementsPage() {
   const announcements = globalAnnouncements.announcements || []
   const watchlistedAnnouncements = globalAnnouncements.watchlistedAnnouncements || []
   const loading = globalAnnouncements.loading || false
+  const isRefreshing = globalAnnouncements.isRefreshing || false
+  const isInitialLoading = globalAnnouncements.isInitialLoading || (loading && announcements.length === 0)
   const lastFetched = globalAnnouncements.lastFetched || null
   const fetch = globalAnnouncements.fetch || (() => {})
   const readIds = globalAnnouncements.readIds || new Set()
@@ -139,15 +141,20 @@ export default function AnnouncementsPage() {
               <CheckCheck className="w-3.5 h-3.5" /> Mark all read
             </button>
           )}
+          {isRefreshing && (
+            <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 bg-primary/10 border border-primary/20 text-primary text-xs font-medium rounded-full animate-pulse">
+              <RefreshCw className="w-3 h-3 animate-spin" /> Syncing…
+            </span>
+          )}
           {lastFetched && (
             <span className="text-xs text-textMuted">Updated {formatRelativeDate(lastFetched)}</span>
           )}
           <button
             onClick={() => fetch({ ...filters, refresh: true })}
-            disabled={loading}
+            disabled={loading || isRefreshing}
             className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-xl text-sm font-medium transition shadow-lg shadow-primary/20 hover:shadow-primary/30"
           >
-            <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
+            <RefreshCw className={clsx('w-4 h-4', (loading || isRefreshing) && 'animate-spin')} />
             Refresh
           </button>
           <button
@@ -162,6 +169,11 @@ export default function AnnouncementsPage() {
           </button>
         </div>
       </div>
+
+      {/* Top subtle syncing shimmer indicator */}
+      {isRefreshing && (
+        <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse rounded-full" />
+      )}
 
       {/* Hint before first trigger */}
       {!loading && announcements.length === 0 && (
@@ -183,7 +195,7 @@ export default function AnnouncementsPage() {
       </div>
 
       {/* Count summary */}
-      {!loading && announcements.length > 0 && (
+      {!isInitialLoading && announcements.length > 0 && (
         <div className="flex items-center gap-3">
           <p className="text-sm text-textMuted">
             Showing <span className="text-textPrimary font-medium">{filtered.length}</span> announcement{filtered.length !== 1 ? 's' : ''}
@@ -194,7 +206,7 @@ export default function AnnouncementsPage() {
       )}
 
       {/* List */}
-      {loading ? (
+      {isInitialLoading ? (
         <Loader />
       ) : filtered.length === 0 ? (
         <EmptyState

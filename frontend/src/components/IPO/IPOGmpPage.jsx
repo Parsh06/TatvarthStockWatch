@@ -25,18 +25,19 @@ function StatCard({ label, value, sub, color = 'text-textPrimary', icon: Icon, i
 }
 
 export default function IPOGmpPage() {
-  const [ipos, setIpos] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [ipos, setIpos]                   = useState([]);
+  const [loading, setLoading]             = useState(false);
+  const [isRefreshing, setIsRefreshing]   = useState(false);
+  const [error, setError]                 = useState(null);
+  const [searchQuery, setSearchQuery]     = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [lastFetched, setLastFetched] = useState(null);
-  const [activeFilter, setActiveFilter] = useState('ALL'); // 'ALL' | 'CT' | 'OPEN' | 'UPCOMING' | 'CLOSED'
+  const [lastFetched, setLastFetched]     = useState(null);
+  const [activeFilter, setActiveFilter]   = useState('ALL'); // 'ALL' | 'CT' | 'OPEN' | 'UPCOMING' | 'CLOSED'
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages]   = useState(1);
+  const [totalItems, setTotalItems]   = useState(0);
 
   // Debounce search
   useEffect(() => {
@@ -48,7 +49,12 @@ export default function IPOGmpPage() {
   }, [searchQuery]);
 
   const fetchData = async (isBackground = false) => {
-    if (!isBackground) setLoading(true);
+    if (!isBackground) {
+      if (ipos.length > 0) setIsRefreshing(true);
+      else setLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
     setError(null);
     try {
       const data = await apiClient(`/api/market/ipo-gmp?page=${currentPage}&search=${encodeURIComponent(debouncedSearch)}`);
@@ -62,7 +68,8 @@ export default function IPOGmpPage() {
       console.error(err);
       if (!isBackground) setError(err.message);
     } finally {
-      if (!isBackground) setLoading(false);
+      setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -171,11 +178,11 @@ export default function IPOGmpPage() {
         <div className="flex items-center gap-3 w-full md:w-auto">
           <button 
             onClick={() => fetchData(false)}
-            disabled={loading}
+            disabled={loading || isRefreshing}
             className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-colors shadow-sm"
           >
-            <RefreshCw className={clsx("w-4 h-4", loading && "animate-spin")} />
-            Refresh
+            <RefreshCw className={clsx("w-4 h-4", (loading || isRefreshing) && "animate-spin")} />
+            {loading ? 'Loading...' : isRefreshing ? 'Syncing...' : 'Refresh'}
           </button>
           <button 
             onClick={handleExport}
@@ -312,7 +319,10 @@ export default function IPOGmpPage() {
       )}
 
       {/* Main Table Card */}
-      <div className="glass-panel rounded-2xl overflow-hidden flex flex-col min-h-[400px]">
+      <div className="glass-panel rounded-2xl overflow-hidden flex flex-col min-h-[400px] relative">
+        {isRefreshing && (
+          <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse z-20" />
+        )}
         {loading && ipos.length === 0 ? (
           <div className="flex items-center justify-center py-20 flex-1">
             <Loader text="Loading live IPO market data..." />
@@ -358,7 +368,7 @@ export default function IPOGmpPage() {
 
                   return (
                     <tr 
-                      key={`${m.id || 'ipo'}-${idx}`} 
+                      key={`${m.id || m.company_name || 'ipo'}-${m.listing_date || idx}`} 
                       className={clsx(
                         "hover:bg-white/5 transition-colors group",
                         isCT && "bg-red-500/[0.02]"

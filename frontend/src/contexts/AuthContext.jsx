@@ -8,7 +8,7 @@ import {
   sendPasswordResetEmail,
   updateProfile,
 } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import { auth, db, googleProvider, FIREBASE_ENABLED } from '../services/firebase'
 
 const AuthContext = createContext({
@@ -17,6 +17,11 @@ const AuthContext = createContext({
   isDemo:         false,
   role:           'user',
   entitlements:   { read: false, write: false },
+  approvalStatus: 'approved',
+  rejectedReason: '',
+  isApproved:     true,
+  isPendingApproval: false,
+  isRejected:     false,
   isAdmin:        false,
   canAdminWrite:  false,
   login:          async () => {},
@@ -42,51 +47,115 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [role, setRole] = useState('user')
   const [entitlements, setEntitlements] = useState({ read: false, write: false })
+  const [approvalStatus, setApprovalStatus] = useState('approved')
+  const [rejectedReason, setRejectedReason] = useState('')
 
   /**
-   * Loads the admin role + entitlements from Firestore for a given Firebase user.
-   * Called on every auth state change and can be called manually to force-refresh.
+   * Loads the admin role + entitlements from Firestore for a given Firebase user (fallback/one-shot).
    */
   const loadAdminProfile = useCallback(async (user) => {
     if (!user || !FIREBASE_ENABLED || !db) {
       setRole('user')
       setEntitlements({ read: false, write: false })
+      setApprovalStatus('approved')
       return
     }
     try {
       const snap = await getDoc(doc(db, 'users', user.uid))
       if (snap.exists()) {
         const data = snap.data() || {}
-        setRole(data.role || 'user')
+        const userRole = data.role || 'user'
+        setRole(userRole)
         setEntitlements(data.entitlements || { read: false, write: false })
+        if (userRole === 'admin') {
+          setApprovalStatus('approved')
+        } else {
+          setApprovalStatus(data.approvalStatus || 'approved')
+        }
+        setRejectedReason(data.rejectedReason || '')
       } else {
         setRole('user')
         setEntitlements({ read: false, write: false })
+        setApprovalStatus('pending')
       }
     } catch (e) {
       console.warn('[AuthContext] Could not load admin profile:', e.message)
-      setRole('user')
-      setEntitlements({ read: false, write: false })
     }
   }, [])
 
   useEffect(() => {
-    const finishLoading = async (user) => {
-      setCurrentUser(user)
-      await loadAdminProfile(user)
-      setLoading(false)
-    }
-
     if (!FIREBASE_ENABLED) {
       setCurrentUser(DEMO_USER)
+      setRole('admin')
+      setEntitlements({ read: true, write: true })
+      setApprovalStatus('approved')
       setLoading(false)
       return
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      await finishLoading(user)
+    let unsubSnapshot = null
+
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      // Clean up previous Firestore listener if any
+      if (unsubSnapshot) {
+        unsubSnapshot()
+        unsubSnapshot = null
+      }
+
+      setCurrentUser(user)
+
+      if (!user) {
+        setRole('user')
+        setEntitlements({ read: false, write: false })
+        setApprovalStatus('approved')
+        setRejectedReason('')
+        setLoading(false)
+        return
+      }
+
+      // Attach real-time snapshot listener on the user's Firestore profile
+      if (db) {
+        try {
+          unsubSnapshot = onSnapshot(
+            doc(db, 'users', user.uid),
+            (snap) => {
+              if (snap.exists()) {
+                const data = snap.data() || {}
+                const userRole = data.role || 'user'
+                setRole(userRole)
+                setEntitlements(data.entitlements || { read: false, write: false })
+                if (userRole === 'admin') {
+                  setApprovalStatus('approved')
+                } else {
+                  setApprovalStatus(data.approvalStatus || 'approved')
+                }
+                setRejectedReason(data.rejectedReason || '')
+              } else {
+                // If profile hasn't been created yet, default to pending for safety
+                setRole('user')
+                setEntitlements({ read: false, write: false })
+                setApprovalStatus('pending')
+              }
+              setLoading(false)
+            },
+            (err) => {
+              console.warn('[AuthContext] Real-time profile snapshot error:', err.message)
+              loadAdminProfile(user).finally(() => setLoading(false))
+            }
+          )
+        } catch (e) {
+          console.warn('[AuthContext] Failed to attach profile snapshot:', e.message)
+          loadAdminProfile(user).finally(() => setLoading(false))
+        }
+      } else {
+        loadAdminProfile(user).finally(() => setLoading(false))
+      }
     })
-    return unsubscribe
+
+    return () => {
+      unsubAuth()
+      if (unsubSnapshot) unsubSnapshot()
+    }
   }, [loadAdminProfile])
 
   async function register(email, password, displayName) {
@@ -161,11 +230,16 @@ export function AuthProvider({ children }) {
 
   const isAdmin = role === 'admin' && entitlements?.read === true
   const canAdminWrite = role === 'admin' && entitlements?.write === true
+  const isApproved = role === 'admin' || approvalStatus === 'approved'
+  const isPendingApproval = role !== 'admin' && approvalStatus === 'pending'
+  const isRejected = role !== 'admin' && approvalStatus === 'rejected'
 
   return (
     <AuthContext.Provider value={{
       currentUser, loading,
       role, entitlements,
+      approvalStatus, rejectedReason,
+      isApproved, isPendingApproval, isRejected,
       isAdmin, canAdminWrite,
       login, register, loginWithGoogle, logout, resetPassword,
       refreshAdminProfile,

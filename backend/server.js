@@ -63,6 +63,7 @@ app.use('/api/bse',           require('./routes/bseRoutes')(verifyToken));
 app.use('/api/nse',           require('./routes/nseRoutes')(verifyToken));
 app.use('/api/market',        require('./routes/marketRoutes')(verifyToken));
 app.use('/api/admin',         require('./routes/adminRoutes')(verifyToken, requireAdmin));
+app.use('/api/baskets',       require('./routes/basketRoutes'));
 
 // ── Root Endpoint ─────────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
@@ -85,6 +86,64 @@ app.get('/api/telegram-status', verifyToken, (req, res, next) => {
 app.post('/api/telegram-test', verifyToken, (req, res, next) => {
   req.url = '/telegram-test';
   require('./routes/healthRoutes')(req, res, next);
+});
+
+// ── User Onboarding Access Request & Admin Notification ─────────────────────
+app.post('/api/auth/onboarding-request', verifyToken, async (req, res) => {
+  try {
+    const { db, admin } = require('./lib/firebaseAdmin');
+    const { notifyAdminsOfNewAccessRequest } = require('./lib/userApprovalNotificationService');
+    const userRef = db.collection('users').doc(req.uid);
+    const snap = await userRef.get();
+
+    const email = req.user?.email || req.body?.email || '';
+    const displayName = req.user?.name || req.body?.displayName || '';
+
+    if (snap.exists) {
+      const data = snap.data();
+      if (data.role === 'admin') {
+        if (data.approvalStatus !== 'approved') {
+          await userRef.set({ approvalStatus: 'approved' }, { merge: true });
+        }
+        return res.json({ success: true, approvalStatus: 'approved', role: 'admin' });
+      }
+
+      if (data.approvalStatus) {
+        return res.json({ success: true, approvalStatus: data.approvalStatus });
+      }
+
+      // First time setting approvalStatus for this account
+      await userRef.set({
+        approvalStatus: 'pending',
+        approvalRequestedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      // Notify admins via Web Push & Telegram asynchronously
+      notifyAdminsOfNewAccessRequest({ uid: req.uid, email, displayName }).catch(() => {});
+
+      return res.json({ success: true, approvalStatus: 'pending', isNewRequest: true });
+    }
+
+    // New user document creation
+    await userRef.set({
+      displayName,
+      email,
+      role: 'user',
+      entitlements: { read: false, write: false },
+      disabled: false,
+      approvalStatus: 'pending',
+      approvalRequestedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      prefs: { telegramEnabled: true, inAppEnabled: true, frequency: 'realtime' },
+    });
+
+    notifyAdminsOfNewAccessRequest({ uid: req.uid, email, displayName }).catch(() => {});
+
+    res.json({ success: true, approvalStatus: 'pending', isNewRequest: true });
+  } catch (err) {
+    console.error('[Onboarding Request Error]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // User-authenticated manual data refresh

@@ -8,6 +8,8 @@ import PageTransition from '../Common/PageTransition'
 import Loader, { Spinner } from '../Common/Loader'
 import { normalizeBseData, normalizeNseData } from '../../utils/normalizeGainersLosers'
 
+import { useScrollPreserver } from '../../hooks/useScrollPreserver'
+
 const TABLE_COLUMNS = {
   BSE: [
     'Security Code',
@@ -48,7 +50,8 @@ export default function GainersLosersPage() {
   const [type, setType] = useState('gainer') // 'gainer' or 'loser'
   const [nseCategory, setNseCategory] = useState('allSec')
   const [data, setData] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true) // Initial screen load only
+  const [isRefreshing, setIsRefreshing] = useState(false) // Silent background updates
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState(null)
   const [lastRefreshed, setLastRefreshed] = useState(new Date())
@@ -56,7 +59,17 @@ export default function GainersLosersPage() {
   // Ref to track active AbortController for race condition prevention
   const abortControllerRef = useRef(null)
 
-  const fetchData = async () => {
+  // Scroll preservation hook to anchor user position across updates
+  const {
+    containerRef,
+    handleScroll,
+    handleMouseEnter,
+    handleMouseLeave,
+    snapshotScroll,
+    isInteractingRef
+  } = useScrollPreserver(data)
+
+  const fetchData = async (isInitial = false) => {
     // Abort previous in-flight request if user rapidly toggled options
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
@@ -64,9 +77,15 @@ export default function GainersLosersPage() {
     const controller = new AbortController()
     abortControllerRef.current = controller
 
-    setLoading(true)
+    if (isInitial || data.length === 0) {
+      setLoading(true)
+    } else {
+      setIsRefreshing(true)
+    }
     setError(null)
-    setData([]) // Immediately clear old dataset to avoid showing stale data under new headers
+
+    // Capture exact scroll position right before data changes
+    snapshotScroll()
 
     try {
       if (exchange === 'BSE') {
@@ -129,13 +148,14 @@ export default function GainersLosersPage() {
     } finally {
       if (!controller.signal.aborted) {
         setLoading(false)
+        setIsRefreshing(false)
       }
     }
   }
 
   // Refetch when exchange, type, or nseCategory changes
   useEffect(() => {
-    fetchData()
+    fetchData(true)
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
@@ -144,13 +164,16 @@ export default function GainersLosersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exchange, type, nseCategory])
 
-  // Polling every 60 seconds
+  // Polling every 60 seconds with user interaction awareness
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchData()
+      // If user is actively hovering or scrolling, defer silent update to next tick
+      if (!isInteractingRef.current) {
+        fetchData(false)
+      }
     }, 60000)
     return () => clearInterval(interval)
-  }, [exchange, type, nseCategory])
+  }, [exchange, type, nseCategory, isInteractingRef])
 
   const handleDownloadCsv = async () => {
     setDownloading(true)
@@ -235,11 +258,15 @@ export default function GainersLosersPage() {
         <div className="flex items-center gap-4 w-full md:w-auto">
           {/* Refresh Button */}
           <button 
-            onClick={fetchData}
-            disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 bg-surface hover:bg-surfaceHover border border-border rounded-lg text-sm font-medium transition-colors"
+            onClick={() => fetchData(false)}
+            disabled={loading && data.length === 0}
+            className="flex items-center gap-2 px-3.5 py-2 bg-surface hover:bg-surfaceHover border border-border rounded-xl text-sm font-medium transition-colors"
+            title="Refresh market movers"
           >
-            <RefreshCw className={clsx("w-4 h-4", loading && "animate-spin")} />
+            <RefreshCw className={clsx("w-4 h-4", (loading || isRefreshing) && "animate-spin text-primary")} />
+            <span className="text-xs text-textMuted hidden sm:inline">
+              {isRefreshing ? 'Updating…' : 'Refresh'}
+            </span>
           </button>
         </div>
       </div>
@@ -324,19 +351,34 @@ export default function GainersLosersPage() {
 
       {/* Main Content Area - Dynamic Table Card */}
       <div className="relative mt-6">
-        {loading && (
-          <div className="absolute inset-0 bg-[#050811]/80 backdrop-blur-md z-30 flex items-center justify-center rounded-2xl">
+        {/* Initial blocking loader: ONLY shown when table has zero data */}
+        {loading && data.length === 0 && (
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-md z-30 flex items-center justify-center rounded-2xl min-h-[350px]">
             <Loader text="Fetching top market movers..." />
           </div>
         )}
 
-        <div key={`table-${exchange}-${type}-${nseCategory}`} className="glass-panel rounded-2xl overflow-hidden flex flex-col h-[500px]">
+        <div className="glass-panel rounded-2xl overflow-hidden flex flex-col h-[520px] relative">
+          {/* Subtle non-blocking background revalidation bar */}
+          {isRefreshing && (
+            <div className="absolute top-0 inset-x-0 h-1 bg-primary/20 overflow-hidden z-30">
+              <div className="h-full bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse w-full" />
+            </div>
+          )}
           
           {/* Card Header with Dynamic Title & Single Download Button */}
           <div className="bg-white/5 border-b border-white/5 px-6 py-4 font-semibold flex items-center justify-between sticky top-0 z-20">
-            <span className="text-textPrimary tracking-tight font-semibold">
-              {exchange} {type === 'gainer' ? 'Gainers' : 'Losers'} {exchange === 'NSE' ? `(${activeCategoryLabel})` : ''}
-            </span>
+            <div className="flex items-center gap-2.5">
+              <span className="text-textPrimary tracking-tight font-semibold">
+                {exchange} {type === 'gainer' ? 'Gainers' : 'Losers'} {exchange === 'NSE' ? `(${activeCategoryLabel})` : ''}
+              </span>
+              {isRefreshing && (
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
+                  Live Syncing…
+                </span>
+              )}
+            </div>
             <button
               onClick={handleDownloadCsv}
               disabled={downloading || data.length === 0}
@@ -348,8 +390,14 @@ export default function GainersLosersPage() {
             </button>
           </div>
 
-          {/* Dynamic Table Body matching Canonical Column Headers */}
-          <div className="overflow-y-auto overflow-x-auto flex-1 relative scrollbar-hide">
+          {/* Dynamic Table Body with Scroll Preservation */}
+          <div
+            ref={containerRef}
+            onScroll={handleScroll}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+            className="overflow-y-auto overflow-x-auto flex-1 relative scrollbar-hide"
+          >
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
                 <tr>
@@ -370,7 +418,7 @@ export default function GainersLosersPage() {
               <tbody className="divide-y divide-white/5">
                 {exchange === 'BSE' ? (
                   data.map((item, idx) => (
-                    <tr key={`${item.securityCode}-${idx}`} className="hover:bg-white/5 transition-colors group">
+                    <tr key={item.securityCode ? `bse-${item.securityCode}` : idx} className="hover:bg-white/5 transition-colors group">
                       <td className="px-4 py-3 font-medium">{item.securityCode}</td>
                       <td className="px-4 py-3 font-medium">
                         {item.rawUrl ? (
@@ -397,7 +445,7 @@ export default function GainersLosersPage() {
                   ))
                 ) : (
                   data.map((item, idx) => (
-                    <tr key={`${item.symbol}-${idx}`} className="hover:bg-white/5 transition-colors group">
+                    <tr key={item.symbol ? `nse-${item.symbol}` : idx} className="hover:bg-white/5 transition-colors group">
                       <td className="px-4 py-3 font-medium text-textPrimary">{item.symbol}</td>
                       <td className="px-4 py-3 text-textMuted">{item.open?.toFixed(2)}</td>
                       <td className="px-4 py-3 text-textMuted text-right">{item.high?.toFixed(2)}</td>

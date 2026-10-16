@@ -105,6 +105,11 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       lastSignInAt: authUser.metadata?.lastSignInTime || null,
       role: profileData.role || 'user',
       entitlements: profileData.entitlements || { read: false, write: false },
+      approvalStatus: profileData.approvalStatus || (profileData.role === 'admin' ? 'approved' : 'approved'),
+      approvalRequestedAt: profileData.approvalRequestedAt?.toDate?.()?.toISOString() || profileData.approvalRequestedAt || null,
+      approvedAt: profileData.approvedAt?.toDate?.()?.toISOString() || profileData.approvedAt || null,
+      rejectedAt: profileData.rejectedAt?.toDate?.()?.toISOString() || profileData.rejectedAt || null,
+      rejectedReason: profileData.rejectedReason || null,
       prefs: profileData.prefs || {},
       watchlistCount,
     };
@@ -388,6 +393,99 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
     } catch (err) {
       console.error('[Admin] /enable error:', err.message);
       res.status(500).json({ success: false, error: 'Failed to enable account' });
+    }
+  });
+
+  // ── PATCH /api/admin/users/:uid/approve ──────────────────────────────────
+  router.patch('/users/:uid/approve', verifyToken, requireAdmin('write'), async (req, res) => {
+    try {
+      const { uid } = req.params;
+      const actorUid = req.uid;
+
+      await db.collection('users').doc(uid).set({
+        approvalStatus: 'approved',
+        approvedAt: new Date(),
+        approvedBy: actorUid,
+        rejectedReason: null,
+      }, { merge: true });
+
+      await invalidateEntitlementCache(uid);
+
+      await writeAuditLog({
+        actorUid,
+        actorEmail: req.user?.email,
+        action: 'USER_ACCESS_APPROVED',
+        targetUid: uid,
+        payload: {},
+      });
+
+      res.json({ success: true, message: 'User access approved successfully', approvalStatus: 'approved' });
+    } catch (err) {
+      console.error('[Admin] /approve error:', err.message);
+      res.status(500).json({ success: false, error: 'Failed to approve account' });
+    }
+  });
+
+  // ── PATCH /api/admin/users/:uid/reject ───────────────────────────────────
+  router.patch('/users/:uid/reject', verifyToken, requireAdmin('write'), async (req, res) => {
+    try {
+      const { uid } = req.params;
+      const { reason } = req.body || {};
+      const actorUid = req.uid;
+
+      await db.collection('users').doc(uid).set({
+        approvalStatus: 'rejected',
+        rejectedAt: new Date(),
+        rejectedBy: actorUid,
+        rejectedReason: reason || 'Access request declined by administrator',
+      }, { merge: true });
+
+      // Revoke active sessions immediately
+      await admin.auth().revokeRefreshTokens(uid).catch(() => {});
+      await invalidateEntitlementCache(uid);
+
+      await writeAuditLog({
+        actorUid,
+        actorEmail: req.user?.email,
+        action: 'USER_ACCESS_REJECTED',
+        targetUid: uid,
+        payload: { reason: reason || 'Access request declined by administrator' },
+      });
+
+      res.json({ success: true, message: 'User access request rejected', approvalStatus: 'rejected' });
+    } catch (err) {
+      console.error('[Admin] /reject error:', err.message);
+      res.status(500).json({ success: false, error: 'Failed to reject account' });
+    }
+  });
+
+  // ── PATCH /api/admin/users/:uid/re-allow ─────────────────────────────────
+  router.patch('/users/:uid/re-allow', verifyToken, requireAdmin('write'), async (req, res) => {
+    try {
+      const { uid } = req.params;
+      const actorUid = req.uid;
+
+      await db.collection('users').doc(uid).set({
+        approvalStatus: 'approved',
+        reAllowedAt: new Date(),
+        reAllowedBy: actorUid,
+        rejectedReason: null,
+      }, { merge: true });
+
+      await invalidateEntitlementCache(uid);
+
+      await writeAuditLog({
+        actorUid,
+        actorEmail: req.user?.email,
+        action: 'USER_ACCESS_REALLOWED',
+        targetUid: uid,
+        payload: {},
+      });
+
+      res.json({ success: true, message: 'User account re-allowed and approved', approvalStatus: 'approved' });
+    } catch (err) {
+      console.error('[Admin] /re-allow error:', err.message);
+      res.status(500).json({ success: false, error: 'Failed to re-allow account' });
     }
   });
 
@@ -1272,6 +1370,37 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       });
     } catch (err) {
       console.error('[Admin] /system/export-backup error:', err.message);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // ── POST /api/admin/ipo/trigger-auto-check ─────────────────────────────────
+  router.post('/ipo/trigger-auto-check', verifyToken, requireAdmin('write'), async (req, res) => {
+    try {
+      const { symbol, registrar, ipoName, force } = req.body || {};
+      if (!symbol) {
+        return res.status(400).json({ success: false, error: 'symbol is required' });
+      }
+
+      const { triggerAutoAllotmentCheck } = require('../lib/ipoAutoVerificationService');
+      const result = await triggerAutoAllotmentCheck({
+        symbol,
+        registrar: registrar || 'KFINTECH',
+        ipoName: ipoName || symbol,
+        force: Boolean(force),
+      });
+
+      await writeAuditLog({
+        actorUid: req.uid,
+        actorEmail: req.user?.email,
+        action: 'IPO_AUTO_CHECK_TRIGGERED',
+        targetUid: 'system',
+        payload: { symbol, registrar, ipoName, result },
+      });
+
+      res.json({ success: true, result });
+    } catch (err) {
+      console.error('[Admin] trigger-auto-check error:', err.message);
       res.status(500).json({ success: false, error: err.message });
     }
   });

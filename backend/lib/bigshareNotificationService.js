@@ -73,28 +73,20 @@ async function checkAndNotifyNewBigshareIpos() {
       console.error('[BigShare Notification] Error scanning users:', scanErr.message);
     }
 
-    // Dispatch notification for each truly new IPO
+    // Dispatch auto-verification & notification for each truly new IPO
+    const { triggerAutoAllotmentCheck } = require('./ipoAutoVerificationService');
     for (const newIpo of newIpos) {
       if (newIpo.notificationSent) continue;
 
-      const payload = buildBigshareAllotmentPayload(newIpo);
-
-      for (const uid of uids) {
-        try {
-          await sendWebPushToUser(uid, payload);
-        } catch {
-          // ignore individual push errors
-        }
-
-        try {
-          const userPrefs = await prefsStore.getPrefs(uid);
-          if (userPrefs?.telegramChatId) {
-            const tgMsg = `🔔 *IPO Allotment Live*\n\n*${newIpo.symbol}* allotment is now live!\n\n👉 [Check Family Allotment Status](https://tatvarthstockwatch.web.app/ipo-check)`;
-            await sendTelegram(userPrefs.telegramChatId, tgMsg);
-          }
-        } catch {
-          // ignore telegram failure
-        }
+      // 1. Run automated family PAN checking & personalized tiered notifications
+      try {
+        await triggerAutoAllotmentCheck({
+          symbol: newIpo.clientId || newIpo.symbol,
+          registrar: 'BIGSHARE',
+          ipoName: newIpo.name || newIpo.symbol,
+        });
+      } catch (autoErr) {
+        console.error('[BigShare Notification] Auto-verification error:', autoErr.message);
       }
 
       // Mark notification as permanently sent in MongoDB

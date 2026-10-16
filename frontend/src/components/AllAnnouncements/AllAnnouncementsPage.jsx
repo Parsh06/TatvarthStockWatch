@@ -87,10 +87,11 @@ export default function AllAnnouncementsPage() {
   const [codeLabel,  setCodeLabel]  = useState('')
   const [search,     setSearch]     = useState('')
   const [exchange,   setExchange]   = useState('BOTH') // 'BSE', 'NSE', 'BOTH'
-  const [loading,    setLoading]    = useState(false)
-  const [error,      setError]      = useState(null)
-  const [result,     setResult]     = useState(null)
-  const [page,       setPage]       = useState(1)
+  const [loading,      setLoading]      = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [error,        setError]        = useState(null)
+  const [result,       setResult]       = useState(null)
+  const [page,         setPage]         = useState(1)
   const [onlyWatchlist, setOnlyWatchlist] = useState(false)
   const [showAllCategories, setShowAllCategories] = useState(false)
   // Per-card AI analysis results: Map<announcementId, { analysis, generatedAt, cached }>
@@ -112,7 +113,17 @@ export default function AllAnnouncementsPage() {
   async function fetchAnnouncements(isManualRefresh = false) {
     if (!fromDate || !toDate) { setError('Select valid From and To dates.'); return }
     if (fromDate > toDate)    { setError('From date must not be after To date.'); return }
-    setLoading(true); setError(null); setPage(1); setSearch('')
+
+    if (result && result.announcements && result.announcements.length > 0) {
+      setIsRefreshing(true)
+    } else {
+      setLoading(true)
+    }
+    setError(null)
+    if (!isManualRefresh) {
+      setPage(1)
+    }
+
     try {
       if (fromDate === today() && toDate === today()) {
         // Read directly from MongoDB Atlas cache for sub-200ms load
@@ -130,8 +141,12 @@ export default function AllAnnouncementsPage() {
         const data = await apiClient(`/api/bse/announcements?${params}`)
         setResult(data)
       }
-    } catch (e) { setError(e.message) }
-    finally { setLoading(false) }
+    } catch (e) { 
+      setError(e.message) 
+    } finally { 
+      setLoading(false)
+      setIsRefreshing(false)
+    }
   }
 
   // Fetch automatically on mount
@@ -299,10 +314,10 @@ export default function AllAnnouncementsPage() {
 
         <div className="flex items-center gap-4 flex-wrap justify-between mt-2">
           <div className="flex items-center gap-4 flex-wrap w-full lg:w-auto">
-            <button onClick={fetchAnnouncements} disabled={loading}
+            <button onClick={() => fetchAnnouncements(true)} disabled={loading || isRefreshing}
               className="flex items-center justify-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/30 transition w-full sm:w-auto">
-              <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
-              {loading ? 'Fetching…' : 'Fetch Announcements'}
+              <RefreshCw className={clsx('w-4 h-4', (loading || isRefreshing) && 'animate-spin')} />
+              {loading ? 'Fetching…' : isRefreshing ? 'Syncing…' : 'Fetch Announcements'}
             </button>
             
             {/* Exchange Switch */}
@@ -355,6 +370,11 @@ export default function AllAnnouncementsPage() {
         </div>
       </div>
 
+      {/* Top subtle syncing shimmer indicator */}
+      {isRefreshing && (
+        <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse rounded-full" />
+      )}
+
       {/* ── Error ── */}
       {error && (
         <div className="flex items-center gap-3 px-4 py-3 bg-danger/10 border border-danger/30 rounded-xl text-sm text-danger">
@@ -362,11 +382,11 @@ export default function AllAnnouncementsPage() {
         </div>
       )}
 
-      {/* ── Loading state ── */}
-      {loading && <Loader />}
+      {/* ── Initial Loading state ── */}
+      {loading && !result && <Loader />}
 
       {/* ── Results ── */}
-      {result && !loading && (
+      {result && (
         <div className="space-y-4">
           {/* Company scope banner — shown when a specific script is selected */}
           {companyFiltered && (

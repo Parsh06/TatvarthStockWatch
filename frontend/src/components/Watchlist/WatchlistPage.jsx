@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Upload, Search, Trash2, Star, Zap, X, ExternalLink, FileText, Mail, RefreshCw, TrendingUp, Clock, Download } from 'lucide-react'
+import { Plus, Upload, Search, Trash2, Star, Zap, X, ExternalLink, FileText, Mail, RefreshCw, TrendingUp, Clock, Download, Share2 } from 'lucide-react'
 import clsx from 'clsx'
 import { useWatchlist } from '../../hooks/useWatchlist'
 import { useAnnouncements } from '../../hooks/useAnnouncements'
@@ -10,6 +10,7 @@ import { getCategoryColor } from '../../utils/formatters'
 import ScriptCard from './ScriptCard'
 import AddScriptModal from './AddScriptModal'
 import BulkUploadModal from './BulkUploadModal'
+import ShareBasketModal from './ShareBasketModal'
 import ScriptDrawer from './ScriptDrawer'
 import EmptyState from '../Common/EmptyState'
 import { SkeletonCard } from '../Common/Loader'
@@ -80,6 +81,7 @@ export default function WatchlistPage() {
   const [sort, setSort]               = useState('recent')
   const [addOpen, setAddOpen]         = useState(false)
   const [bulkOpen, setBulkOpen]       = useState(false)
+  const [shareBasketOpen, setShareBasketOpen] = useState(false)
   const [drawerScript, setDrawerScript]   = useState(null)
   const [bulkMode, setBulkMode]       = useState(false)
   const [selected, setSelected]       = useState(new Set())
@@ -269,6 +271,13 @@ export default function WatchlistPage() {
               <Upload className="w-4 h-4" />
               <span className="hidden sm:inline">Bulk Add</span>
             </button>
+            <button onClick={() => setShareBasketOpen(true)}
+              disabled={watchlist.length === 0}
+              title="Share curated basket via viral public link"
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 rounded-lg text-sm font-medium transition disabled:opacity-50">
+              <Share2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Share Basket</span>
+            </button>
             <button onClick={() => setAddOpen(true)}
               className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium transition">
               <Plus className="w-4 h-4" />
@@ -425,6 +434,7 @@ export default function WatchlistPage() {
 
       <AddScriptModal isOpen={addOpen} onClose={() => setAddOpen(false)} />
       <BulkUploadModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
+      <ShareBasketModal isOpen={shareBasketOpen} onClose={() => setShareBasketOpen(false)} watchlist={watchlist} />
       <ScriptDrawer script={drawerScript} onClose={() => setDrawerScript(null)} />
 
       <ConfirmDialog isOpen={bulkRemoveConfirm} title="Remove Scripts"

@@ -31,6 +31,10 @@ import CommandPalette from './components/Common/CommandPalette'
 import OfflineBanner from './components/Common/OfflineBanner'
 import AdminRoute from './components/Admin/AdminRoute'
 import AdminPage from './components/Admin/AdminPage'
+import PublicBasketPage from './components/Watchlist/PublicBasketPage'
+
+import PendingApprovalPage from './components/Auth/PendingApprovalPage'
+import AccessRejectedPage from './components/Auth/AccessRejectedPage'
 
 import { Preloader } from './components/Common/Preloader'
 
@@ -45,20 +49,41 @@ function FirebaseAnalyticsTracker() {
 }
 
 function ProtectedRoute({ children }) {
-  const { currentUser, loading } = useAuth()
+  const { currentUser, loading, role, approvalStatus, rejectedReason } = useAuth()
   if (loading) {
     return <Preloader />
   }
   if (!currentUser) return <Navigate to="/login" replace />
+
+  // Admins bypass approval gate
+  if (role === 'admin') {
+    return children
+  }
+
+  // Account waiting for admin approval
+  if (approvalStatus === 'pending') {
+    return <PendingApprovalPage />
+  }
+
+  // Account access rejected by admin
+  if (approvalStatus === 'rejected') {
+    return <AccessRejectedPage reason={rejectedReason} />
+  }
+
   return children
 }
 
 function PublicRoute({ children }) {
   const { currentUser, loading } = useAuth()
+  const location = useLocation()
   if (loading) {
     return <Preloader />
   }
-  if (currentUser) return <Navigate to="/dashboard" replace />
+  if (currentUser) {
+    const params = new URLSearchParams(location.search)
+    const redirectUrl = params.get('redirect') || '/dashboard'
+    return <Navigate to={redirectUrl} replace />
+  }
   return children
 }
 
@@ -268,6 +293,9 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      {/* ── Public Shareable Curated Watchlist Basket Route ── */}
+      <Route path="/basket/:slug" element={<PublicBasketPage />} />
+
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
     </>

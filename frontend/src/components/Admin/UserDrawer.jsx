@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  X, Star, Bell, Smartphone, Tag, Loader2, Trash2, RefreshCw
+  X, Star, Bell, Smartphone, Tag, Loader2, Trash2, RefreshCw,
+  CheckCircle2, UserCheck, ShieldAlert
 } from 'lucide-react'
 import { apiClient } from '../../services/apiClient'
 import { useAdminAuth } from '../../hooks/useAdminAuth'
+import RejectUserModal from './RejectUserModal'
 import clsx from 'clsx'
 import toast from 'react-hot-toast'
 
@@ -154,6 +156,7 @@ function AlertsSubPanel({ uid }) {
 export default function UserDrawer({ user, onClose, onUpdate }) {
   const { canWrite } = useAdminAuth()
   const [activeTab, setActiveTab] = useState('watchlist')
+  const [showRejectModal, setShowRejectModal] = useState(false)
 
   if (!user) return null
 
@@ -206,6 +209,19 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
                   )}>
                     {user.role || 'user'}
                   </span>
+                  {/* Approval status badge */}
+                  {user.role !== 'admin' && (
+                    <span className={clsx(
+                      'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider',
+                      user.approvalStatus === 'pending'
+                        ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                        : user.approvalStatus === 'rejected'
+                          ? 'bg-danger/15 text-danger border-danger/30'
+                          : 'bg-success/15 text-success border-success/30'
+                    )}>
+                      {user.approvalStatus === 'pending' ? '⏳ Pending' : user.approvalStatus === 'rejected' ? '⛔ Declined' : '✓ Approved'}
+                    </span>
+                  )}
                   {/* Account status */}
                   <span className={clsx(
                     'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider',
@@ -225,6 +241,81 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Approval Quick Action Bar */}
+            {canWrite && user.role !== 'admin' && (
+              <div className="mt-4 p-3 rounded-2xl bg-surface/80 border border-border flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-textPrimary">Access Gate Authorization</p>
+                  <p className="text-[11px] text-textMuted truncate">
+                    Status: <span className="font-semibold">{user.approvalStatus || 'approved'}</span>
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {user.approvalStatus === 'pending' && (
+                    <>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await apiClient(`/api/admin/users/${user.uid}/approve`, { method: 'PATCH' })
+                            toast.success('Access approved for user')
+                            onUpdate?.()
+                          } catch (e) {
+                            toast.error(e.message || 'Failed to approve')
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-sm"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Approve</span>
+                      </button>
+                      <button
+                        onClick={() => setShowRejectModal(true)}
+                        className="px-2.5 py-1.5 rounded-xl border border-danger/30 bg-danger/10 hover:bg-danger/20 text-danger font-semibold text-xs transition"
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
+
+                  {user.approvalStatus === 'rejected' && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await apiClient(`/api/admin/users/${user.uid}/re-allow`, { method: 'PATCH' })
+                          toast.success('Account re-allowed and approved')
+                          onUpdate?.()
+                        } catch (e) {
+                          toast.error(e.message || 'Failed to re-allow')
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/40 font-bold text-xs transition flex items-center gap-1.5"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>Re-Allow Access</span>
+                    </button>
+                  )}
+
+                  {(user.approvalStatus === 'approved' || !user.approvalStatus) && (
+                    <button
+                      onClick={() => setShowRejectModal(true)}
+                      className="px-2.5 py-1.5 rounded-xl border border-danger/30 bg-danger/10 hover:bg-danger/20 text-danger font-semibold text-xs transition flex items-center gap-1"
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      <span>Revoke Access</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Rejection reason banner */}
+            {user.approvalStatus === 'rejected' && user.rejectedReason && (
+              <div className="mt-3 px-3 py-2 rounded-xl bg-danger/10 border border-danger/20 text-xs text-danger">
+                <span className="font-semibold">Rejection Reason:</span> {user.rejectedReason}
+              </div>
+            )}
 
             {/* Meta grid */}
             <div className="grid grid-cols-3 gap-3 mt-4">
@@ -319,6 +410,16 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
           )}
         </motion.div>
       </div>
+
+      {showRejectModal && (
+        <RejectUserModal
+          user={user}
+          onClose={() => setShowRejectModal(false)}
+          onSuccess={() => {
+            onUpdate?.()
+          }}
+        />
+      )}
     </AnimatePresence>
   )
 }

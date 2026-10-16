@@ -358,6 +358,44 @@ export default function AdminPage() {
     }
   }
 
+  const handleApproveUser = async (targetUser) => {
+    if (!canWrite) {
+      toast.error('Write entitlement required to approve access')
+      return
+    }
+    try {
+      await apiClient(`/api/admin/users/${targetUser.uid}/approve`, { method: 'PATCH' })
+      toast.success(`Access approved for ${targetUser.displayName || targetUser.email || targetUser.uid}`)
+      fetchUsers()
+      fetchStats()
+      fetchAuditLogs()
+    } catch (err) {
+      toast.error(err.message || 'Failed to approve account')
+    }
+  }
+
+  const handleRejectUser = async () => {
+    fetchUsers()
+    fetchStats()
+    fetchAuditLogs()
+  }
+
+  const handleReAllowUser = async (targetUser) => {
+    if (!canWrite) {
+      toast.error('Write entitlement required to re-allow access')
+      return
+    }
+    try {
+      await apiClient(`/api/admin/users/${targetUser.uid}/re-allow`, { method: 'PATCH' })
+      toast.success(`Account re-allowed and approved for ${targetUser.displayName || targetUser.email || targetUser.uid}`)
+      fetchUsers()
+      fetchStats()
+      fetchAuditLogs()
+    } catch (err) {
+      toast.error(err.message || 'Failed to re-allow account')
+    }
+  }
+
   // ── Compute High-Level Health Status ────────────────────────────────────────
   const servicesList = servicesData ? Object.entries(servicesData) : []
   const failingCount = servicesList.filter(([_, s]) => s.status === 'down').length
@@ -451,10 +489,20 @@ export default function AdminPage() {
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
               <span>{tab.label}</span>
-              {tab.id === 'users' && users.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-primary/20 text-primary">
-                  {users.length}
-                </span>
+              {tab.id === 'users' && (
+                <div className="flex items-center gap-1.5">
+                  {users.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-primary/20 text-primary">
+                      {users.length}
+                    </span>
+                  )}
+                  {users.some(u => u.approvalStatus === 'pending' && u.role !== 'admin') && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 border border-amber-500/40 text-amber-400 animate-pulse flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      {users.filter(u => u.approvalStatus === 'pending' && u.role !== 'admin').length} pending
+                    </span>
+                  )}
+                </div>
               )}
               {tab.id === 'system' && (failingCount > 0 || degradedCount > 0) && (
                 <span className={clsx(
@@ -1301,6 +1349,9 @@ export default function AdminPage() {
             onEditRole={(u) => setRoleModalUser(u)}
             onDisable={(u) => setDisableModalUser(u)}
             onEnable={handleEnableUser}
+            onApprove={handleApproveUser}
+            onReject={handleRejectUser}
+            onReAllow={handleReAllowUser}
             onRefresh={fetchUsers}
           />
         </div>
@@ -1485,6 +1536,11 @@ export default function AdminPage() {
             user={drawerUser}
             canWrite={canWrite}
             onClose={() => setDrawerUser(null)}
+            onUpdate={() => {
+              fetchUsers()
+              fetchStats()
+              fetchAuditLogs()
+            }}
             onDeleteWatchlist={() => {
               fetchUsers()
               fetchStats()

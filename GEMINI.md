@@ -1,3 +1,4 @@
+
 # StockWatch — GEMINI.md (Master Project Context)
 
 > **PURPOSE**: This file is the single source of truth for any AI assistant working on this codebase.
@@ -11,68 +12,71 @@
 
 ## 1. Project Identity
 
-| Field | Value |
-|---|---|
-| **Name** | StockWatch (Tatvarth StockWatch) |
-| **Purpose** | Full-stack web app for tracking BSE/NSE corporate announcements, board meetings, volume spurts, block deals, IPO allotments, insider trading, and market analytics |
-| **Live URL** | `https://tatvarthstockwatch.web.app` |
-| **Repo** | `Parsh06/TatvarthStockWatch` |
-| **Owner** | Parsh Jain (Arth Projects Company) |
+| Field              | Value                                                                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Name**     | StockWatch (Tatvarth StockWatch)                                                                                                                                   |
+| **Purpose**  | Full-stack web app for tracking BSE/NSE corporate announcements, board meetings, volume spurts, block deals, IPO allotments, insider trading, and market analytics |
+| **Live URL** | `https://tatvarthstockwatch.web.app`                                                                                                                             |
+| **Repo**     | `Parsh06/TatvarthStockWatch`                                                                                                                                     |
+| **Owner**    | Parsh Jain (Arth Projects Company)                                                                                                                                 |
 
 ---
 
 ## 2. Tech Stack (Exact Versions)
 
 ### Frontend
-| Technology | Version | Purpose |
-|---|---|---|
-| React | 18.2.0 | UI framework |
-| Vite | 5.0.0 | Build tool / dev server |
-| Tailwind CSS | 3.4.0 | Utility-first CSS (with custom design tokens) |
-| Framer Motion | 12.42.2 | Animations |
-| React Router DOM | 6.21.0 | Client-side routing |
-| Lucide React | 0.383.0 | Icon library |
-| React Hot Toast | 2.4.1 | Toast notifications |
-| Recharts | 2.10.0 | Data visualization charts |
-| Firebase (client) | 10.7.0 | Auth + Firestore (client SDK) |
-| PapaParse | 5.4.1 | CSV parsing |
-| SheetJS (xlsx) | 0.18.5 | Excel file parsing |
-| date-fns | 3.0.0 | Date utilities |
-| clsx | 2.0.0 | Conditional classnames |
-| react-dropzone | 14.2.3 | Drag & drop file upload |
-| @vercel/analytics | ^1.4.1 | Vercel Web Analytics & page tracking |
+
+| Technology        | Version | Purpose                                       |
+| ----------------- | ------- | --------------------------------------------- |
+| React             | 18.2.0  | UI framework                                  |
+| Vite              | 5.0.0   | Build tool / dev server                       |
+| Tailwind CSS      | 3.4.0   | Utility-first CSS (with custom design tokens) |
+| Framer Motion     | 12.42.2 | Animations                                    |
+| React Router DOM  | 6.21.0  | Client-side routing                           |
+| Lucide React      | 0.383.0 | Icon library                                  |
+| React Hot Toast   | 2.4.1   | Toast notifications                           |
+| Recharts          | 2.10.0  | Data visualization charts                     |
+| Firebase (client) | 10.7.0  | Auth + Firestore (client SDK)                 |
+| PapaParse         | 5.4.1   | CSV parsing                                   |
+| SheetJS (xlsx)    | 0.18.5  | Excel file parsing                            |
+| date-fns          | 3.0.0   | Date utilities                                |
+| clsx              | 2.0.0   | Conditional classnames                        |
+| react-dropzone    | 14.2.3  | Drag & drop file upload                       |
+| @vercel/analytics | ^1.4.1  | Vercel Web Analytics & page tracking          |
 
 ### Backend
-| Technology | Version | Purpose |
-|---|---|---|
-| Node.js | — | Runtime |
-| Express | 4.18.2 | HTTP framework |
-| Helmet | 8.0.0 | HTTP Security Headers |
-| Firebase Admin | 12.0.0 | Server-side auth + Firestore |
-| MongoDB driver | 6.21.0 | MongoDB Atlas connection |
-| @google/genai | 2.10.0 | Gemini AI (announcement summarization) |
-| Groq API (REST) | — | Groq LPU inference (AI failover via providerRouter) |
-| @upstash/redis | 1.38.0 | Distributed rate limiting & rates cache |
-| Axios | 1.6.2 | HTTP client for scraping BSE/NSE/KFintech |
-| Cheerio | 1.0.0-rc.12 | HTML parsing (scraping) |
-| web-push | 3.6.7 | VAPID push notifications |
-| Nodemailer | 6.9.7 | Email sending (Gmail SMTP) |
-| xml2js | 0.6.2 | XML parsing |
-| tesseract.js | 7.0.0 | Offline OCR captcha solving (zero API quota) |
-| pdf-parse | 2.4.5 | In-memory PDF text layer extraction for institutional AI analysis |
-| dotenv | 16.3.1 | Env var loading |
-| cors | 2.8.5 | CORS middleware |
+
+| Technology      | Version     | Purpose                                                           |
+| --------------- | ----------- | ----------------------------------------------------------------- |
+| Node.js         | —          | Runtime                                                           |
+| Express         | 4.18.2      | HTTP framework                                                    |
+| Helmet          | 8.0.0       | HTTP Security Headers                                             |
+| Firebase Admin  | 12.0.0      | Server-side auth + Firestore                                      |
+| MongoDB driver  | 6.21.0      | MongoDB Atlas connection                                          |
+| @google/genai   | 2.10.0      | Gemini AI (announcement summarization)                            |
+| Groq API (REST) | —          | Groq LPU inference (AI failover via providerRouter)               |
+| @upstash/redis  | 1.38.0      | Distributed rate limiting & rates cache                           |
+| Axios           | 1.6.2       | HTTP client for scraping BSE/NSE/KFintech                         |
+| Cheerio         | 1.0.0-rc.12 | HTML parsing (scraping)                                           |
+| web-push        | 3.6.7       | VAPID push notifications                                          |
+| Nodemailer      | 6.9.7       | Email sending (Gmail SMTP)                                        |
+| xml2js          | 0.6.2       | XML parsing                                                       |
+| tesseract.js    | 7.0.0       | Offline OCR captcha solving (zero API quota)                      |
+| pdf-parse       | 2.4.5       | In-memory PDF text layer extraction for institutional AI analysis |
+| dotenv          | 16.3.1      | Env var loading                                                   |
+| cors            | 2.8.5       | CORS middleware                                                   |
 
 ### Infrastructure
-| Service | Purpose |
-|---|---|
-| **Firebase Hosting** | Frontend static deployment |
-| **Vercel Serverless** | Backend API (Node.js functions) |
-| **MongoDB Atlas** | Transient data (today's announcements, wiped daily) |
+
+| Service                          | Purpose                                                                    |
+| -------------------------------- | -------------------------------------------------------------------------- |
+| **Firebase Hosting**       | Frontend static deployment                                                 |
+| **Vercel Serverless**      | Backend API (Node.js functions)                                            |
+| **MongoDB Atlas**          | Transient data (today's announcements, wiped daily)                        |
 | **Google Cloud Firestore** | Persistent user data (watchlists, prefs, push devices, alerts, applicants) |
-| **Upstash Redis** | Distributed rate limiting + live rates cache |
-| **Firebase Auth** | Google OAuth + Email/Password authentication |
-| **KFintech API** | IPO allotment verification (proxied through backend) |
+| **Upstash Redis**          | Distributed rate limiting + live rates cache                               |
+| **Firebase Auth**          | Google OAuth + Email/Password authentication                               |
+| **KFintech API**           | IPO allotment verification (proxied through backend)                       |
 
 ---
 
@@ -105,11 +109,11 @@ stockwatch/
 │   │   ├── announcements/
 │   │   └── search/
 │   │
-│   ├── routes/                        ← Domain-specific Express route modules
 │   │   ├── adminRoutes.js             ← Admin user management, stats, audit log & controls
 │   │   ├── alertRoutes.js             ← Historical alert logs CRUD
 │   │   ├── analyzeRoute.js            ← AI analysis endpoint
 │   │   ├── announcementRoutes.js      ← Market announcements feed & stats
+│   │   ├── basketRoutes.js            ← Shareable curated watchlist baskets CRUD & 1-tap import
 │   │   ├── bseRoutes.js               ← BSE proxy routes & movers
 │   │   ├── cronRoutes.js              ← Scheduled & manual cron triggers
 │   │   ├── dashboardRoutes.js         ← Dashboard overview
@@ -147,6 +151,8 @@ stockwatch/
 │   │   ├── ipoClosingStore.js        ← MongoDB Atlas today's closing IPOs store
 │   │   ├── ipoUtils.js               ← IPO helper functions
 │   │   ├── ipoClosingNotificationService.js
+│   │   ├── ipoAutoVerificationService.js  ← Event-driven automated family PAN allotment check & 3-tier alerts
+│   │   ├── userApprovalNotificationService.js ← Automated Web Push & Telegram alerts to admins on new access requests
 │   │   ├── aiSummarizer.js            ← Dual AI integration (Gemini + Groq via providerRouter)
 │   │   ├── prompts.js                 ← AI prompt templates (23KB)
 │   │   ├── providers/                 ← AI provider modules
@@ -209,14 +215,18 @@ stockwatch/
         │   │   ├── AdminStatCard.jsx  ← Elevated glass-panel stat card with trends
         │   │   ├── AdminAuditTable.jsx← Immutable audit trail table with action/user filters
         │   │   ├── DisableUserModal.jsx← Confirmation modal with reason & token revocation
+        │   │   ├── RejectUserModal.jsx ← Confirmation modal to decline user access with custom reason
         │   │   ├── ReadOnlyBadge.jsx  ← Header indicator when write entitlement is locked
         │   │   ├── RoleEditModal.jsx  ← Role & read/write entitlement configuration modal
         │   │   ├── UserDrawer.jsx     ← Slide-over drawer with user profile, watchlist, devices, alerts
-        │   │   └── UserTable.jsx      ← Searchable, sortable user directory with inline actions
+        │   │   └── UserTable.jsx      ← Searchable, sortable user directory with inline actions & approval tabs
         │   ├── AGMUpdates/            ← AGM tracking page
         │   ├── AllAnnouncements/      ← Full announcement feed + AI analysis
         │   ├── Announcements/         ← Watchlist-filtered announcements
-        │   ├── Auth/                  ← LoginPage
+        │   ├── Auth/                  ← Login, Approval Gate & Access Denied Views
+        │   │   ├── LoginPage.jsx      ← Login page
+        │   │   ├── PendingApprovalPage.jsx ← Luxury real-time pending approval view with live Firestore sync
+        │   │   └── AccessRejectedPage.jsx  ← Dedicated account declined screen with admin reason & appeal link
         │   ├── BoardMeetings/         ← Board meeting tracking
         │   ├── BulkBlock/             ← Bulk & Block deals
         │   ├── Common/                ← ★ SHARED UI COMPONENTS
@@ -250,7 +260,7 @@ stockwatch/
         │   ├── SecurityGuard/         ← Client-side security
         │   ├── Settings/              ← User preferences
         │   ├── VolumeSpurt/           ← Volume spurt tracker
-        │   └── Watchlist/             ← Watchlist CRUD + bulk upload
+        │   └── Watchlist/             ← Watchlist CRUD, bulk upload, ShareBasketModal & PublicBasketPage
         │
         ├── contexts/
         │   ├── AuthContext.jsx        ← Firebase auth state provider
@@ -263,6 +273,7 @@ stockwatch/
         │   ├── useCronStatus.js       ← Cron status polling
         │   ├── useDashboardOverview.js ← Dashboard data hook
         │   ├── useNetworkStatus.js    ← Real-time online/offline and connection quality hook
+        │   ├── useScrollPreserver.js  ← Pre-paint scroll preservation, interaction lock & layout shift immunity hook
         │   ├── useWatchlist.js        ← Watchlist CRUD operations
         │   └── useWebPush.js          ← Web push subscription management
         │
@@ -289,60 +300,66 @@ stockwatch/
 
 ### Frontend Routes (App.jsx)
 
-| Path | Component | Auth | Description |
-|---|---|---|---|
-| `/` | → redirect | — | Redirects to `/dashboard` |
-| `/login` | `LoginPage` | Public | Login (redirects to dashboard if authed) |
-| `/dashboard` | `DashboardPage` | 🔒 | Main dashboard + market overview |
-| `/watchlist` | `WatchlistPage` | 🔒 | Script watchlist management |
-| `/announcements` | `AnnouncementsPage` | 🔒 | Watchlist-filtered announcements |
-| `/all-announcements` | `AllAnnouncementsPage` | 🔒 | All market announcements + AI |
-| `/board-meetings` | `BoardMeetingsPage` | 🔒 | Board meeting tracker |
-| `/agm-updates` | `AGMUpdatesPage` | 🔒 | AGM tracking |
-| `/result-calendar` | `ResultCalendarPage` | 🔒 | Forthcoming financial results calendar |
-| `/ipo-gmp` | `IPOGmpPage` | 🔒 | IPO Grey Market Premium |
-| `/ofs` | `OFSPage` | 🔒 | OFS Live Tracker & Bid Book |
-| `/ipo-check` | `IpoVerificationPage` | 🔒 | IPO allotment verification |
-| `/news` | `NewsPage` | 🔒 | Market news feed |
-| `/gainers-losers` | `GainersLosersPage` | 🔒 | Top movers |
-| `/volume-spurt` | `VolumeSpurtPage` | 🔒 | Volume spurt tracker |
-| `/bulk-block` | `BulkBlockPage` | 🔒 | Bulk & Block deals |
-| `/company-data` | `CompanyDataPage` | 🔒 | Company information |
-| `/settings` | `SettingsPage` | 🔒 | User preferences |
-| `/calendar` | `CorporateCalendarPage` | 🔒 | Economic calendar |
-| `/insider` | `InsiderTradingPage` | 🔒 | Insider trading tracker |
-| `/admin` | `AdminPage` | 🔒 Admin | Admin control center, user directory, analytics, audit log & controls |
-| `*` | → redirect | — | Catch-all → `/dashboard` |
+| Path                   | Component                 | Auth     | Description                                                           |
+| ---------------------- | ------------------------- | -------- | --------------------------------------------------------------------- |
+| `/`                  | → redirect               | —       | Redirects to `/dashboard`                                           |
+| `/login`             | `LoginPage`             | Public   | Login (redirects to dashboard if authed)                              |
+| `/dashboard`         | `DashboardPage`         | 🔒       | Main dashboard + market overview                                      |
+| `/watchlist`         | `WatchlistPage`         | 🔒       | Script watchlist management                                           |
+| `/announcements`     | `AnnouncementsPage`     | 🔒       | Watchlist-filtered announcements                                      |
+| `/all-announcements` | `AllAnnouncementsPage`  | 🔒       | All market announcements + AI                                         |
+| `/board-meetings`    | `BoardMeetingsPage`     | 🔒       | Board meeting tracker                                                 |
+| `/agm-updates`       | `AGMUpdatesPage`        | 🔒       | AGM tracking                                                          |
+| `/result-calendar`   | `ResultCalendarPage`    | 🔒       | Forthcoming financial results calendar                                |
+| `/ipo-gmp`           | `IPOGmpPage`            | 🔒       | IPO Grey Market Premium                                               |
+| `/ofs`               | `OFSPage`               | 🔒       | OFS Live Tracker & Bid Book                                           |
+| `/ipo-check`         | `IpoVerificationPage`   | 🔒       | IPO allotment verification                                            |
+| `/news`              | `NewsPage`              | 🔒       | Market news feed                                                      |
+| `/gainers-losers`    | `GainersLosersPage`     | 🔒       | Top movers                                                            |
+| `/volume-spurt`      | `VolumeSpurtPage`       | 🔒       | Volume spurt tracker                                                  |
+| `/bulk-block`        | `BulkBlockPage`         | 🔒       | Bulk & Block deals                                                    |
+| `/company-data`      | `CompanyDataPage`       | 🔒       | Company information                                                   |
+| `/settings`          | `SettingsPage`          | 🔒       | User preferences                                                      |
+| `/calendar`          | `CorporateCalendarPage` | 🔒       | Economic calendar                                                     |
+| `/insider`           | `InsiderTradingPage`    | 🔒       | Insider trading tracker                                               |
+| `/basket/:slug`      | `PublicBasketPage`      | Public   | Curated Watchlist Basket with live filings & 1-tap import             |
+| `/admin`             | `AdminPage`             | 🔒 Admin | Admin control center, user directory, analytics, audit log & controls |
+| `*`                  | → redirect               | —       | Catch-all → `/dashboard`                                           |
 
 ### Backend API Routes (server.js)
 
-| Method | Path | Auth | Handler/Router |
-|---|---|---|---|
-| GET | `/api/health` | Open | `healthRoutes.js` |
-| GET | `/api/health/notification` | Open | `healthRoutes.js` |
-| GET/POST | `/api/health/telegram-*` | 🔒 | `healthRoutes.js` |
-| GET | `/api/dashboard/overview` | 🔒 | `dashboardRoutes.js` |
-| ALL | `/api/cron/trigger` | Secret | `cronRoutes.js` |
-| ALL | `/api/cron/ipo-closing` | Secret | `cronRoutes.js` |
-| POST | `/api/trigger` | 🔒 | `server.js` → `cronService.js` |
-| GET | `/api/announcements` | Open | `announcementRoutes.js` |
-| GET | `/api/announcements/my-count` | 🔒 | `announcementRoutes.js` |
-| GET | `/api/announcements/stats` | Open | `announcementRoutes.js` |
-| POST | `/api/announcements/fetch-nse` | 🔒 | `announcementRoutes.js` |
-| POST | `/api/announcements/:id/analyze` | 🔒 | `analyzeRoute.js` |
-| GET/POST/PATCH | `/api/prefs` | 🔒 | `prefRoutes.js` |
-| GET/POST/DELETE/PATCH | `/api/watchlist/*` | 🔒 | `watchlistRoutes.js` |
-| GET/POST/DELETE | `/api/ipo/applicants` | 🔒 | `ipoVerificationRoutes.js` |
-| GET | `/api/ipo/symbols` | 🔒 | `ipoVerificationRoutes.js` |
-| GET | `/api/ipo/registrars-health` | 🔒 | `ipoVerificationRoutes.js` |
-| POST | `/api/ipo/verify` | 🔒 | `ipoVerificationRoutes.js` |
-| POST | `/api/ipo/verify-bulk` | 🔒 | `ipoVerificationRoutes.js` |
-| GET/POST | `/api/push/*` | 🔒 / Open | `pushRoutes.js` |
-| GET/DELETE | `/api/alerts/*` | 🔒 | `alertRoutes.js` |
-| GET | `/api/bse/*` | 🔒 / Open | `bseRoutes.js` |
-| GET | `/api/nse/*` | 🔒 | `nseRoutes.js` |
-| GET | `/api/market/*` | 🔒 | `marketRoutes.js` |
-| ALL | `/api/admin/*` | 🔒 Admin | `adminRoutes.js` (requireAdmin 'read' / 'write') |
+| Method                | Path                                  | Auth      | Handler/Router                                                               |
+| --------------------- | ------------------------------------- | --------- | ---------------------------------------------------------------------------- |
+| GET                   | `/api/health`                       | Open      | `healthRoutes.js`                                                          |
+| GET                   | `/api/health/notification`          | Open      | `healthRoutes.js`                                                          |
+| GET/POST              | `/api/health/telegram-*`            | 🔒        | `healthRoutes.js`                                                          |
+| GET                   | `/api/dashboard/overview`           | 🔒        | `dashboardRoutes.js`                                                       |
+| ALL                   | `/api/cron/trigger`                 | Secret    | `cronRoutes.js`                                                            |
+| ALL                   | `/api/cron/ipo-closing`             | Secret    | `cronRoutes.js`                                                            |
+| POST                  | `/api/trigger`                      | 🔒        | `server.js` → `cronService.js`                                          |
+| GET                   | `/api/announcements`                | Open      | `announcementRoutes.js`                                                    |
+| GET                   | `/api/announcements/my-count`       | 🔒        | `announcementRoutes.js`                                                    |
+| GET                   | `/api/announcements/stats`          | Open      | `announcementRoutes.js`                                                    |
+| POST                  | `/api/announcements/fetch-nse`      | 🔒        | `announcementRoutes.js`                                                    |
+| POST                  | `/api/announcements/:id/analyze`    | 🔒        | `analyzeRoute.js`                                                          |
+| GET/POST/PATCH        | `/api/prefs`                        | 🔒        | `prefRoutes.js`                                                            |
+| GET/POST/DELETE/PATCH | `/api/watchlist/*`                  | 🔒        | `watchlistRoutes.js`                                                       |
+| GET                   | `/api/baskets/:slug`                | Open      | `basketRoutes.js` (Public basket details & live filings)                   |
+| POST                  | `/api/baskets`                      | 🔒        | `basketRoutes.js` (Create/publish curated basket)                          |
+| POST                  | `/api/baskets/:slug/import`         | 🔒        | `basketRoutes.js` (1-Tap import to watchlist)                              |
+| GET                   | `/api/baskets/user/my`              | 🔒        | `basketRoutes.js` (Caller's baskets)                                       |
+| GET/POST/DELETE       | `/api/ipo/applicants`               | 🔒        | `ipoVerificationRoutes.js`                                                 |
+| GET                   | `/api/ipo/symbols`                  | 🔒        | `ipoVerificationRoutes.js`                                                 |
+| GET                   | `/api/ipo/registrars-health`        | 🔒        | `ipoVerificationRoutes.js`                                                 |
+| POST                  | `/api/ipo/verify`                   | 🔒        | `ipoVerificationRoutes.js`                                                 |
+| POST                  | `/api/ipo/verify-bulk`              | 🔒        | `ipoVerificationRoutes.js`                                                 |
+| GET/POST              | `/api/push/*`                       | 🔒 / Open | `pushRoutes.js`                                                            |
+| GET/DELETE            | `/api/alerts/*`                     | 🔒        | `alertRoutes.js`                                                           |
+| GET                   | `/api/bse/*`                        | 🔒 / Open | `bseRoutes.js`                                                             |
+| GET                   | `/api/nse/*`                        | 🔒        | `nseRoutes.js`                                                             |
+| GET                   | `/api/market/*`                     | 🔒        | `marketRoutes.js`                                                          |
+| POST                  | `/api/admin/ipo/trigger-auto-check` | 🔒 Admin  | `adminRoutes.js` (Manual trigger for automated family PAN allotment check) |
+| ALL                   | `/api/admin/*`                      | 🔒 Admin  | `adminRoutes.js` (requireAdmin 'read' / 'write')                           |
 
 ---
 
@@ -350,29 +367,31 @@ stockwatch/
 
 ### MongoDB Atlas (Transient — wiped daily at midnight IST)
 
-| Collection | Key Field | Purpose |
-|---|---|---|
-| `announcements` | `id` (NEWSID, unique index) | Today's BSE+NSE announcements |
+| Collection                 | Key Field                              | Purpose                                                               |
+| -------------------------- | -------------------------------------- | --------------------------------------------------------------------- |
+| `announcements`          | `id` (NEWSID, unique index)          | Today's BSE+NSE announcements                                         |
+| `ipo_auto_verifications` | `_id` (`{reg}_{symbol}_{dateIST}`) | 24-Hour ephemeral lock & stats for automated IPO checks (TTL: 86400s) |
 
 ### Firestore (Persistent)
 
-| Collection Path | Purpose |
-|---|---|
-| `users/{uid}` | User profile + `.prefs` + `.role` ('admin'\|'user') + `.entitlements` ({read: bool, write: bool}) + `.disabled` (bool) |
-| `users/{uid}/watchlist/{docId}` | User's monitored scripts |
-| `users/{uid}/applicants/{docId}` | Encrypted family members (AES-256-GCM PAN) |
-| `users/{uid}/pushDevices/{deviceId}` | Web Push subscriptions |
-| `users/{uid}/alerts/{newsId}` | Historical alert log |
-| `users/{uid}/alert_dedup_locks/{newsId}` | Ephemeral dedup locks (wiped daily) |
-| `admin_audit_log/{logId}` | Immutable administrative audit trail (actor, action, target, payload) |
-| `system_meta/cron_status` | Global cron state (last run, last wipe) |
+| Collection Path                            | Purpose                                                                                                                        |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `users/{uid}`                            | User profile + `.prefs` + `.role` ('admin'\|'user') + `.entitlements` ({read: bool, write: bool}) + `.disabled` (bool) |
+| `users/{uid}/watchlist/{docId}`          | User's monitored scripts                                                                                                       |
+| `users/{uid}/applicants/{docId}`         | Encrypted family members (AES-256-GCM PAN)                                                                                     |
+| `users/{uid}/pushDevices/{deviceId}`     | Web Push subscriptions                                                                                                         |
+| `public_baskets/{slug}`                  | Curated shareable watchlist baskets (scripts, author, views, imports)                                                          |
+| `users/{uid}/alerts/{newsId}`            | Historical alert log                                                                                                           |
+| `users/{uid}/alert_dedup_locks/{newsId}` | Ephemeral dedup locks (wiped daily)                                                                                            |
+| `admin_audit_log/{logId}`                | Immutable administrative audit trail (actor, action, target, payload)                                                          |
+| `system_meta/cron_status`                | Global cron state (last run, last wipe)                                                                                        |
 
 ### Upstash Redis (Cache)
 
-| Key Pattern | TTL | Purpose |
-|---|---|---|
-| `rates:*` | varies | Live BSE rates cache |
-| `ratelimit:*` | 60s | Distributed rate limit counters |
+| Key Pattern     | TTL    | Purpose                         |
+| --------------- | ------ | ------------------------------- |
+| `rates:*`     | varies | Live BSE rates cache            |
+| `ratelimit:*` | 60s    | Distributed rate limit counters |
 
 ---
 
@@ -401,41 +420,41 @@ stockwatch/
 
 ### Tailwind Tokens (defined in `tailwind.config.js`)
 
-| Token | Usage |
-|---|---|
-| `bg-background` | Page background |
-| `bg-surface` | Card/panel backgrounds |
-| `bg-surfaceHover` | Hover states |
-| `text-textPrimary` | Main text |
-| `text-textMuted` | Secondary text |
-| `border-border` | Border color |
-| `text-primary` | Brand blue (#3B82F6) |
-| `text-success` | Green (#10B981) |
-| `text-warning` | Amber (#F59E0B) |
-| `text-danger` | Rose (#F43F5E) |
-| `shadow-premium` | Elevated card shadow |
-| `font-sans` | Inter |
-| `font-mono` | JetBrains Mono |
-| `font-display` | Space Grotesk |
+| Token                | Usage                  |
+| -------------------- | ---------------------- |
+| `bg-background`    | Page background        |
+| `bg-surface`       | Card/panel backgrounds |
+| `bg-surfaceHover`  | Hover states           |
+| `text-textPrimary` | Main text              |
+| `text-textMuted`   | Secondary text         |
+| `border-border`    | Border color           |
+| `text-primary`     | Brand blue (#3B82F6)   |
+| `text-success`     | Green (#10B981)        |
+| `text-warning`     | Amber (#F59E0B)        |
+| `text-danger`      | Rose (#F43F5E)         |
+| `shadow-premium`   | Elevated card shadow   |
+| `font-sans`        | Inter                  |
+| `font-mono`        | JetBrains Mono         |
+| `font-display`     | Space Grotesk          |
 
 ### CSS Component Classes
 
-| Class | Purpose |
-|---|---|
-| `.glass-panel` | Glassmorphic card (blur + border + shadow) |
+| Class                         | Purpose                                    |
+| ----------------------------- | ------------------------------------------ |
+| `.glass-panel`              | Glassmorphic card (blur + border + shadow) |
 | `.glass-panel--interactive` | Hoverable glass card (translateY + shadow) |
-| `.skeleton` | Loading skeleton with shimmer |
-| `.auth-grid-bg` | Grid pattern background for auth pages |
-| `.scrollbar-hide` | Hide scrollbars (Tailwind plugin) |
+| `.skeleton`                 | Loading skeleton with shimmer              |
+| `.auth-grid-bg`             | Grid pattern background for auth pages     |
+| `.scrollbar-hide`           | Hide scrollbars (Tailwind plugin)          |
 
 ### Animation Tokens
 
-| Animation | Usage |
-|---|---|
-| `animate-fade-in-up` | Entry animation (0.5s ease-out) |
-| `animate-flash-green` | Price up flash |
-| `animate-flash-red` | Price down flash |
-| `animate-float` | Gentle floating (3s infinite) |
+| Animation               | Usage                           |
+| ----------------------- | ------------------------------- |
+| `animate-fade-in-up`  | Entry animation (0.5s ease-out) |
+| `animate-flash-green` | Price up flash                  |
+| `animate-flash-red`   | Price down flash                |
+| `animate-float`       | Gentle floating (3s infinite)   |
 
 ### MANDATORY STYLING RULES
 
@@ -452,37 +471,37 @@ stockwatch/
 
 ### Frontend Patterns
 
-| Pattern | Convention |
-|---|---|
-| **Component structure** | Feature-based folders: `components/{Feature}/{FeaturePage}.jsx` |
-| **New page** | Create folder in `components/`, add route in `App.jsx`, wrap with `<ProtectedRoute><AppLayout>` |
-| **State management** | React Context (`AuthContext`, `WatchlistContext`, `AnnouncementsContext`) |
-| **Data fetching** | Custom hooks in `hooks/` → call services in `services/` → use `apiClient.js` |
-| **API calls** | ALWAYS use `apiClient.js` (auto-attaches Firebase Bearer token) |
-| **Icons** | Import from `lucide-react` |
-| **Toasts** | `import toast from 'react-hot-toast'` |
-| **Loading states** | Use `<Loader />` or `.skeleton` class |
-| **Page transitions** | Wrap page content with `<PageTransition>` (Framer Motion) |
-| **Error handling** | Top-level `<ErrorBoundary>` + per-component try/catch |
-| **Array sorting** | ALWAYS clone first: `[...data].sort(...)` — NEVER mutate state directly |
-| **Env vars** | Prefixed with `VITE_` for Vite build-time injection |
+| Pattern                       | Convention                                                                                            |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **Component structure** | Feature-based folders: `components/{Feature}/{FeaturePage}.jsx`                                     |
+| **New page**            | Create folder in `components/`, add route in `App.jsx`, wrap with `<ProtectedRoute><AppLayout>` |
+| **State management**    | React Context (`AuthContext`, `WatchlistContext`, `AnnouncementsContext`)                       |
+| **Data fetching**       | Custom hooks in `hooks/` → call services in `services/` → use `apiClient.js`                  |
+| **API calls**           | ALWAYS use `apiClient.js` (auto-attaches Firebase Bearer token)                                     |
+| **Icons**               | Import from `lucide-react`                                                                          |
+| **Toasts**              | `import toast from 'react-hot-toast'`                                                               |
+| **Loading states**      | Use `<Loader />` or `.skeleton` class                                                             |
+| **Page transitions**    | Wrap page content with `<PageTransition>` (Framer Motion)                                           |
+| **Error handling**      | Top-level `<ErrorBoundary>` + per-component try/catch                                               |
+| **Array sorting**       | ALWAYS clone first: `[...data].sort(...)` — NEVER mutate state directly                            |
+| **Env vars**            | Prefixed with `VITE_` for Vite build-time injection                                                 |
 
 ### Backend Patterns
 
-| Pattern | Convention |
-|---|---|
-| **Module system** | CommonJS (`require`/`module.exports`) |
-| **Route handler** | `app.get('/api/...', verifyToken, handler)` or use Router in `routes/` |
-| **Auth middleware** | `verifyToken` from `middleware/authenticateFirebase.js` (sets `req.uid`, `req.user`) |
-| **Rate limiting** | `globalRateLimiter` (120/min), `strictRateLimiter` (15/min), `userMutationRateLimiter` (60/min) |
-| **Error responses** | `{ success: false, error: '...', code: 'ERROR_CODE' }` |
-| **Success responses** | `{ success: true, data: ... }` or direct data array |
-| **Firestore ops** | Through `lib/*Store.js` modules (never call Firestore directly from routes) |
-| **MongoDB ops** | Through `lib/announcementStore.js` and `lib/mongoClient.js` |
-| **External APIs** | ALWAYS proxy through backend — NEVER call BSE/NSE/KFintech from frontend |
-| **Env vars** | Loaded via `dotenv` from `backend/.env` |
-| **Logging** | Use `secureLogger` to avoid PII leaks |
-| **Cache** | 5-min in-memory Map for BSE/NSE responses |
+| Pattern                     | Convention                                                                                            |
+| --------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **Module system**     | CommonJS (`require`/`module.exports`)                                                             |
+| **Route handler**     | `app.get('/api/...', verifyToken, handler)` or use Router in `routes/`                            |
+| **Auth middleware**   | `verifyToken` from `middleware/authenticateFirebase.js` (sets `req.uid`, `req.user`)          |
+| **Rate limiting**     | `globalRateLimiter` (120/min), `strictRateLimiter` (15/min), `userMutationRateLimiter` (60/min) |
+| **Error responses**   | `{ success: false, error: '...', code: 'ERROR_CODE' }`                                              |
+| **Success responses** | `{ success: true, data: ... }` or direct data array                                                 |
+| **Firestore ops**     | Through `lib/*Store.js` modules (never call Firestore directly from routes)                         |
+| **MongoDB ops**       | Through `lib/announcementStore.js` and `lib/mongoClient.js`                                       |
+| **External APIs**     | ALWAYS proxy through backend — NEVER call BSE/NSE/KFintech from frontend                             |
+| **Env vars**          | Loaded via `dotenv` from `backend/.env`                                                           |
+| **Logging**           | Use `secureLogger` to avoid PII leaks                                                               |
+| **Cache**             | 5-min in-memory Map for BSE/NSE responses                                                             |
 
 ---
 
@@ -490,44 +509,45 @@ stockwatch/
 
 ### Backend (`backend/.env`)
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Yes* | Full service account JSON (for Vercel) |
-| `FIREBASE_PROJECT_ID` | Yes* | Firebase project ID |
-| `FIREBASE_CLIENT_EMAIL` | Yes* | Firebase admin email |
-| `FIREBASE_PRIVATE_KEY` | Yes* | Firebase private key |
-| `GMAIL_USER` | Yes | Gmail sender address |
-| `GMAIL_APP_PASSWORD` | Yes | Gmail app password |
-| `NOTIFY_EMAIL` | Yes | Alert recipient email |
-| `UPSTASH_REDIS_REST_URL` | Recommended | Redis URL for distributed rate limiting |
-| `UPSTASH_REDIS_REST_TOKEN` | Recommended | Redis auth token |
-| `CRON_SECRET` | Recommended | Cron trigger auth |
-| `VAPID_PUBLIC_KEY` | For push | Web Push VAPID public key |
-| `VAPID_PRIVATE_KEY` | For push | Web Push VAPID private key |
-| `VAPID_SUBJECT` | For push | VAPID subject (mailto:) |
-| `FRONTEND_URL` | Yes | CORS allowed origin |
-| `PORT` | No | Local dev port (default: 3000) |
+| Variable                          | Required    | Purpose                                 |
+| --------------------------------- | ----------- | --------------------------------------- |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Yes*        | Full service account JSON (for Vercel)  |
+| `FIREBASE_PROJECT_ID`           | Yes*        | Firebase project ID                     |
+| `FIREBASE_CLIENT_EMAIL`         | Yes*        | Firebase admin email                    |
+| `FIREBASE_PRIVATE_KEY`          | Yes*        | Firebase private key                    |
+| `GMAIL_USER`                    | Yes         | Gmail sender address                    |
+| `GMAIL_APP_PASSWORD`            | Yes         | Gmail app password                      |
+| `NOTIFY_EMAIL`                  | Yes         | Alert recipient email                   |
+| `UPSTASH_REDIS_REST_URL`        | Recommended | Redis URL for distributed rate limiting |
+| `UPSTASH_REDIS_REST_TOKEN`      | Recommended | Redis auth token                        |
+| `CRON_SECRET`                   | Recommended | Cron trigger auth                       |
+| `VAPID_PUBLIC_KEY`              | For push    | Web Push VAPID public key               |
+| `VAPID_PRIVATE_KEY`             | For push    | Web Push VAPID private key              |
+| `VAPID_SUBJECT`                 | For push    | VAPID subject (mailto:)                 |
+| `FRONTEND_URL`                  | Yes         | CORS allowed origin                     |
+| `PORT`                          | No          | Local dev port (default: 3000)          |
 
 *Either `FIREBASE_SERVICE_ACCOUNT_JSON` OR the individual vars.
 
 ### Frontend (`frontend/.env`)
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `VITE_FIREBASE_API_KEY` | Yes | Firebase client API key |
-| `VITE_FIREBASE_AUTH_DOMAIN` | Yes | Firebase auth domain |
-| `VITE_FIREBASE_PROJECT_ID` | Yes | Firebase project ID |
-| `VITE_FIREBASE_STORAGE_BUCKET` | Yes | Firebase storage bucket |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Yes | FCM sender ID |
-| `VITE_FIREBASE_APP_ID` | Yes | Firebase app ID |
-| `VITE_FIREBASE_MEASUREMENT_ID` | No | Google Analytics |
-| `VITE_BACKEND_URL` | Yes | Backend API base URL |
+| Variable                              | Required | Purpose                 |
+| ------------------------------------- | -------- | ----------------------- |
+| `VITE_FIREBASE_API_KEY`             | Yes      | Firebase client API key |
+| `VITE_FIREBASE_AUTH_DOMAIN`         | Yes      | Firebase auth domain    |
+| `VITE_FIREBASE_PROJECT_ID`          | Yes      | Firebase project ID     |
+| `VITE_FIREBASE_STORAGE_BUCKET`      | Yes      | Firebase storage bucket |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Yes      | FCM sender ID           |
+| `VITE_FIREBASE_APP_ID`              | Yes      | Firebase app ID         |
+| `VITE_FIREBASE_MEASUREMENT_ID`      | No       | Google Analytics        |
+| `VITE_BACKEND_URL`                  | Yes      | Backend API base URL    |
 
 ---
 
 ## 9. Deployment
 
 ### Frontend → Firebase Hosting
+
 ```bash
 cd frontend && npm run build
 npx firebase deploy --only hosting
@@ -535,6 +555,7 @@ npx firebase deploy --only hosting
 ```
 
 ### Backend → Vercel Serverless
+
 ```bash
 cd backend
 vercel --prod
@@ -542,12 +563,14 @@ vercel --prod
 ```
 
 ### One-Click Deploy
+
 ```powershell
 .\deploy.ps1 -msg "commit message"
 # Stages → Commits → Pushes → Builds frontend → Deploys to Firebase
 ```
 
 ### Local Development
+
 ```bash
 # Terminal 1: Backend
 cd backend && npm start     # or: npm run dev (vercel dev)
@@ -563,40 +586,50 @@ cd frontend && npm run dev
 ## 10. Critical Rules (MUST FOLLOW)
 
 ### 🚨 Rule 1: Category Sync
+
 If you add/remove an announcement category, you MUST update BOTH:
+
 - `frontend/src/utils/bseCategories.js`
 - `backend/lib/alertCategories.js`
-They must be IDENTICAL.
+  They must be IDENTICAL.
 
 ### 🚨 Rule 2: No Direct External API Calls from Frontend
+
 NEVER call `api.bseindia.com`, `www.nseindia.com`, or KFintech directly from React.
 Browser CORS + Akamai bot protection will block it.
 ALWAYS create a proxy route in `backend/routes/` and call `/api/...` from frontend.
 
 ### 🚨 Rule 3: Fail-Safe Preferences
+
 When fetching user preferences in backend, if Firestore fails → THROW error.
 NEVER default to empty prefs — this causes spam for blocked categories.
 
 ### 🚨 Rule 4: Array Immutability in React
-ALWAYS: `[...data].sort(...)` 
+
+ALWAYS: `[...data].sort(...)`
 NEVER: `data.sort(...)` (mutates state, breaks re-rendering)
 
 ### 🚨 Rule 5: Use Tailwind Tokens
+
 ALWAYS: `bg-surface`, `text-textPrimary`, `border-border`
 NEVER: `bg-slate-900`, `text-gray-500`, hardcoded hex in classNames
 
 ### 🚨 Rule 6: Auth on API Routes
+
 Every new API route MUST use `verifyToken` middleware (except `/api/health` and `/api/cron/trigger`).
 
 ### 🚨 Rule 7: Store Pattern
+
 All Firestore/MongoDB operations go through `lib/*Store.js` files.
 Routes should call store functions — never import `firebase-admin` or `mongodb` directly.
 
 ### 🚨 Rule 8: API Client
+
 Frontend MUST use `apiClient.js` for all backend calls (auto-attaches Bearer token).
 NEVER use raw `fetch` or `axios` in frontend components.
 
 ### 🚨 Rule 9: Update This File
+
 After ANY structural change (new file, new route, new component, new dependency, config change),
 this `GEMINI.md` file MUST be updated to reflect the change.
 
@@ -605,36 +638,43 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 ## 11. Common Change Recipes
 
 ### Add a New Page
+
 1. Create `frontend/src/components/{PageName}/{PageName}Page.jsx`
 2. Import in `App.jsx` and add `<Route path="/{path}" element={<ProtectedRoute><AppLayout><PageNamePage /></AppLayout></ProtectedRoute>} />`
 3. Add nav link in `Layout/Sidebar.jsx` (import icon from `lucide-react`)
 4. Update Section 3 (file map) and Section 4 (routing map) in this file
 
 ### Add a New Backend API Route
+
 1. Create or edit a router in `backend/routes/`
 2. Mount in `server.js`: `app.use('/api/{prefix}', verifyToken, routerModule)`
 3. Update Section 4 (API routes) in this file
 
 ### Add a New Backend Library Module
+
 1. Create `backend/lib/{moduleName}.js`
 2. Export functions and import in routes/server.js
 3. Update Section 3 (file map) in this file
 
 ### Add a New Frontend Hook
+
 1. Create `frontend/src/hooks/use{HookName}.js`
 2. Use `apiClient.js` for API calls
 3. Update Section 3 (file map) in this file
 
 ### Add a New Frontend Service
+
 1. Create `frontend/src/services/{serviceName}Service.js`
 2. Use `apiClient.js` for API calls
 3. Update Section 3 (file map) in this file
 
 ### Add a New NPM Dependency
+
 1. `cd frontend` or `cd backend` → `npm install {package}`
 2. Update Section 2 (tech stack) in this file
 
 ### Modify Tailwind Design Tokens
+
 1. Edit `frontend/tailwind.config.js`
 2. If new CSS variable → add to `frontend/src/index.css` (both `:root` and `.dark`)
 3. Update Section 6 (design system) in this file
@@ -643,29 +683,28 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 
 ## 12. Changelog
 
-| Date | Change | Files Affected |
-|---|---|---|
-| 2026-08-23 | Initial GEMINI.md created | `GEMINI.md` (new), `.agents/AGENTS.md` (new) |
-| 2026-08-23 | Premium redesign of Login + Register pages; new MarketPulse component | `Auth/LoginPage.jsx`, `Auth/RegisterPage.jsx`, `Common/MarketPulse.jsx` (new) |
-| 2026-08-23 | Backend security upgrade: implemented Helmet.js | `backend/server.js`, `backend/package.json` |
-| 2026-08-24 | Fixed IPO closing cron route registration bug and added Vercel crons config | `backend/server.js`, `backend/vercel.json` |
-| 2026-08-24 | Enhanced IPO closing push notification format with IPO name, GMP, and Gain % | `backend/lib/ipoClosingNotificationService.js` |
-| 2026-08-24 | Per-IPO queue-based notifications: rewrote ipoClosingNotificationService.js, added Redis queue functions to redisNotificationStore.js and redisKeys.js, embedded tick in /api/cron/trigger, removed dedicated Vercel cron entry | `backend/lib/ipoClosingNotificationService.js`, `backend/lib/redis/redisKeys.js`, `backend/lib/redis/redisNotificationStore.js`, `backend/server.js`, `backend/vercel.json` |
-| 2026-08-24 | Increased global cron frequency to every 1 minute | `backend/vercel.json` |
-| 2026-08-26 | Implemented live OFS (Offer for Sale) Tracker page and real-time bid book scraper | `backend/lib/ofsScraper.js` (new), `backend/routes/marketRoutes.js`, `frontend/src/components/OFS/OFSPage.jsx` (new), `frontend/src/App.jsx`, `frontend/src/components/Layout/Sidebar.jsx` |
-| 2026-08-26 | OFS Tracker UI Redesign & 60-second background poller integration for pre-fetching list & bid books | `backend/lib/ofsScraper.js`, `backend/server.js`, `frontend/src/components/OFS/OFSPage.jsx` |
-| 2026-08-26 | Added Volume Matching & Demand Equilibrium box and dynamic Cut-off row highlighting to OFS Order Book modal | `frontend/src/components/OFS/OFSPage.jsx` |
-| 2026-08-26 | Enhanced Cut-off Price row to display actual numeric rate (e.g. ₹540.55 Cut-off) alongside allotment status | `frontend/src/components/OFS/OFSPage.jsx` |
-| 2026-08-26 | Fixed & Hardened notification recipient-isolation architecture: implemented stable ID guards, canonical instrument key normalization, account onboarding safeguards, dual-channel dispatch (Push+Telegram), and comprehensive test suite | `backend/lib/notification/notificationRouter.js`, `backend/lib/notificationEngine.js`, `backend/tests/test_recipient_isolation.js` |
-| 2026-08-26 | Implemented Enterprise Production Hardening for IPO Closing Notification Pipeline: atomic Redis Lua state machine (PENDING -> PROCESSING -> COMPLETED / FAILED), owner-token validation, 30s lease heartbeats, stale recovery, classified delivery retries, transport & schema source-health policy, fail-closed locks, dynamic capacity catch-up, post-1 PM grace window, and queue status diagnostics | `backend/lib/time/istTime.js` (new), `backend/services/ipoService.js`, `backend/lib/redis/redisKeys.js`, `backend/lib/redis/redisNotificationStore.js`, `backend/lib/ipoClosingNotificationService.js`, `backend/tests/test_ipo_closing_hardened.js` (new) |
-| 2026-08-27 | Implemented MongoDB-Backed IPO Closing Notification Architecture: persistent MongoDB Atlas collection `ipo_closing_today` with 12:00 AM IST midnight wipe & pre-seeding, live 11:00 AM scraping refresh for current market GMP & Gain %, atomic PENDING -> DISPATCHING -> COMPLETED state transitions, sequential 1-by-1 delivery sorted by live GMP%, dual-channel alerting (Web Push to all registered devices in Firestore + Telegram), per-user dedup tracking, and auto-recovery | `backend/lib/ipoClosingStore.js` (new), `backend/lib/telegramNotifier.js`, `backend/lib/ipoClosingNotificationService.js`, `backend/server.js`, `backend/tests/test_ipo_closing_mongodb.js` (new) |
-| 2026-08-27 | Enhanced IPO Sorting & Display Hierarchy: strictly prioritizes Closing Today (CT) first, then Open for Bidding (OPEN), then Upcoming, then Closed across both Dashboard IpoActivityWidget (with scrollable sub-sections & badges) and IPO GMP Tracker page (with stat cards, status filter pills, and grouped rows) | `frontend/src/components/Dashboard/IpoActivityWidget.jsx`, `frontend/src/components/IPO/IPOGmpPage.jsx`, `backend/services/dashboardService.js`, `backend/services/ipoService.js` |
-| 2026-08-30 | Luxury Framer Motion Preloader: Architectural gold & cyan corner brackets, ambient radial gold/cyan glow, concentric animated emblem radar rings with `/logo2.png`, metallic gradient 'TATVARTH' wordmark, diamond geometric divider, dynamic BSE/NSE market status cycler, and live data ticker progress bar | `frontend/src/components/Common/Preloader.jsx`, `frontend/src/contexts/AuthContext.jsx` |
-| 2026-08-30 | Luxury In-Page & Fullscreen Loader redesign: Gold & cyan multi-color conic spinner, Tatvarth emblem pods, metallic wordmarks, geometric dividers, and enhanced glowing skeleton loaders | `frontend/src/components/Common/Loader.jsx` |
-| 2026-08-30 | Mobile Responsive Table Loader Centering: Elevated loading states outside horizontally overflowing `overflow-x-auto` table wrappers across IPO GMP, Board Meetings, AGM Updates, OFS, and Volume Spurt to guarantee 100% viewport centering on mobile devices | `frontend/src/components/IPO/IPOGmpPage.jsx`, `frontend/src/components/BoardMeetings/BoardMeetingsPage.jsx`, `frontend/src/components/AGMUpdates/AGMUpdatesPage.jsx`, `frontend/src/components/OFS/OFSPage.jsx`, `frontend/src/components/VolumeSpurt/VolumeSpurtSection.jsx` |
-| 2026-08-30 | Corporate Calendar Theme & Navbar Fix: Removed hardcoded pitch-black hex codes (`#111318`, `#1A1C23`, `#15171C`) and fixed height constraints (`h-[calc(100vh-6rem)]`) in `CorporateCalendarPage.jsx`. Replaced with adaptive Tailwind design tokens (`bg-surface`, `border-border`, `text-textPrimary`, `text-textMuted`) for seamless light/dark mode support and proper mobile bottom navbar rendering | `frontend/src/components/CorporateCalendar/CorporateCalendarPage.jsx` |
-| 2026-09-03 | IPO Closing Notification Deduplication & Canonical Key Architecture: Added `getCanonicalIpoKey()` to `ipoUtils.js` (strips corporate suffixes — Ltd, Limited, Pvt, Travels, Technologies, etc.). Rewrote `getIposClosingToday()` in `ipoService.js` to deduplicate both MainboardGMP + Investorgain entries into a single canonical Map (merging best live GMP, subscription, fire rating). Hardened `ipoClosingStore.js` to use canonical key as MongoDB `_id` with atomic `$setOnInsert` upsert preventing any duplicate document insertion. Fixed notification payload builder to show "At Par (₹0)" instead of vague "GMP updated". Added notification exchange tag `[NSE & BSE]` to push title. Created 32-test integration suite covering key normalization, dedup, GMP merging, and payload formatting. Result: 8 raw documents → 4 canonical documents, 0 duplicate notifications | `backend/lib/ipoUtils.js`, `backend/services/ipoService.js`, `backend/lib/ipoClosingStore.js`, `backend/lib/ipoClosingNotificationService.js`, `backend/tests/test_ipo_closing_dedup.js` (new) |
-
+| Date       | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Files Affected                                                                                                                                                                                                                                                                          |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-23 | Initial GEMINI.md created                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `GEMINI.md` (new), `.agents/AGENTS.md` (new)                                                                                                                                                                                                                                        |
+| 2026-08-23 | Premium redesign of Login + Register pages; new MarketPulse component                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `Auth/LoginPage.jsx`, `Auth/RegisterPage.jsx`, `Common/MarketPulse.jsx` (new)                                                                                                                                                                                                     |
+| 2026-08-23 | Backend security upgrade: implemented Helmet.js                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `backend/server.js`, `backend/package.json`                                                                                                                                                                                                                                         |
+| 2026-08-24 | Fixed IPO closing cron route registration bug and added Vercel crons config                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `backend/server.js`, `backend/vercel.json`                                                                                                                                                                                                                                          |
+| 2026-08-24 | Enhanced IPO closing push notification format with IPO name, GMP, and Gain %                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `backend/lib/ipoClosingNotificationService.js`                                                                                                                                                                                                                                        |
+| 2026-08-24 | Per-IPO queue-based notifications: rewrote ipoClosingNotificationService.js, added Redis queue functions to redisNotificationStore.js and redisKeys.js, embedded tick in /api/cron/trigger, removed dedicated Vercel cron entry                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `backend/lib/ipoClosingNotificationService.js`, `backend/lib/redis/redisKeys.js`, `backend/lib/redis/redisNotificationStore.js`, `backend/server.js`, `backend/vercel.json`                                                                                                   |
+| 2026-08-24 | Increased global cron frequency to every 1 minute                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `backend/vercel.json`                                                                                                                                                                                                                                                                 |
+| 2026-08-26 | Implemented live OFS (Offer for Sale) Tracker page and real-time bid book scraper                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `backend/lib/ofsScraper.js` (new), `backend/routes/marketRoutes.js`, `frontend/src/components/OFS/OFSPage.jsx` (new), `frontend/src/App.jsx`, `frontend/src/components/Layout/Sidebar.jsx`                                                                                    |
+| 2026-08-26 | OFS Tracker UI Redesign & 60-second background poller integration for pre-fetching list & bid books                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `backend/lib/ofsScraper.js`, `backend/server.js`, `frontend/src/components/OFS/OFSPage.jsx`                                                                                                                                                                                       |
+| 2026-08-26 | Added Volume Matching & Demand Equilibrium box and dynamic Cut-off row highlighting to OFS Order Book modal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `frontend/src/components/OFS/OFSPage.jsx`                                                                                                                                                                                                                                             |
+| 2026-08-26 | Enhanced Cut-off Price row to display actual numeric rate (e.g. ₹540.55 Cut-off) alongside allotment status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `frontend/src/components/OFS/OFSPage.jsx`                                                                                                                                                                                                                                             |
+| 2026-08-26 | Fixed & Hardened notification recipient-isolation architecture: implemented stable ID guards, canonical instrument key normalization, account onboarding safeguards, dual-channel dispatch (Push+Telegram), and comprehensive test suite                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `backend/lib/notification/notificationRouter.js`, `backend/lib/notificationEngine.js`, `backend/tests/test_recipient_isolation.js`                                                                                                                                                |
+| 2026-08-26 | Implemented Enterprise Production Hardening for IPO Closing Notification Pipeline: atomic Redis Lua state machine (PENDING -> PROCESSING -> COMPLETED / FAILED), owner-token validation, 30s lease heartbeats, stale recovery, classified delivery retries, transport & schema source-health policy, fail-closed locks, dynamic capacity catch-up, post-1 PM grace window, and queue status diagnostics                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `backend/lib/time/istTime.js` (new), `backend/services/ipoService.js`, `backend/lib/redis/redisKeys.js`, `backend/lib/redis/redisNotificationStore.js`, `backend/lib/ipoClosingNotificationService.js`, `backend/tests/test_ipo_closing_hardened.js` (new)                  |
+| 2026-08-27 | Implemented MongoDB-Backed IPO Closing Notification Architecture: persistent MongoDB Atlas collection `ipo_closing_today` with 12:00 AM IST midnight wipe & pre-seeding, live 11:00 AM scraping refresh for current market GMP & Gain %, atomic PENDING -> DISPATCHING -> COMPLETED state transitions, sequential 1-by-1 delivery sorted by live GMP%, dual-channel alerting (Web Push to all registered devices in Firestore + Telegram), per-user dedup tracking, and auto-recovery                                                                                                                                                                                                                                                                                                                                                                                                                      | `backend/lib/ipoClosingStore.js` (new), `backend/lib/telegramNotifier.js`, `backend/lib/ipoClosingNotificationService.js`, `backend/server.js`, `backend/tests/test_ipo_closing_mongodb.js` (new)                                                                             |
+| 2026-08-27 | Enhanced IPO Sorting & Display Hierarchy: strictly prioritizes Closing Today (CT) first, then Open for Bidding (OPEN), then Upcoming, then Closed across both Dashboard IpoActivityWidget (with scrollable sub-sections & badges) and IPO GMP Tracker page (with stat cards, status filter pills, and grouped rows)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `frontend/src/components/Dashboard/IpoActivityWidget.jsx`, `frontend/src/components/IPO/IPOGmpPage.jsx`, `backend/services/dashboardService.js`, `backend/services/ipoService.js`                                                                                               |
+| 2026-08-30 | Luxury Framer Motion Preloader: Architectural gold & cyan corner brackets, ambient radial gold/cyan glow, concentric animated emblem radar rings with `/logo2.png`, metallic gradient 'TATVARTH' wordmark, diamond geometric divider, dynamic BSE/NSE market status cycler, and live data ticker progress bar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `frontend/src/components/Common/Preloader.jsx`, `frontend/src/contexts/AuthContext.jsx`                                                                                                                                                                                             |
+| 2026-08-30 | Luxury In-Page & Fullscreen Loader redesign: Gold & cyan multi-color conic spinner, Tatvarth emblem pods, metallic wordmarks, geometric dividers, and enhanced glowing skeleton loaders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `frontend/src/components/Common/Loader.jsx`                                                                                                                                                                                                                                           |
+| 2026-08-30 | Mobile Responsive Table Loader Centering: Elevated loading states outside horizontally overflowing `overflow-x-auto` table wrappers across IPO GMP, Board Meetings, AGM Updates, OFS, and Volume Spurt to guarantee 100% viewport centering on mobile devices                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `frontend/src/components/IPO/IPOGmpPage.jsx`, `frontend/src/components/BoardMeetings/BoardMeetingsPage.jsx`, `frontend/src/components/AGMUpdates/AGMUpdatesPage.jsx`, `frontend/src/components/OFS/OFSPage.jsx`, `frontend/src/components/VolumeSpurt/VolumeSpurtSection.jsx` |
+| 2026-08-30 | Corporate Calendar Theme & Navbar Fix: Removed hardcoded pitch-black hex codes (`#111318`, `#1A1C23`, `#15171C`) and fixed height constraints (`h-[calc(100vh-6rem)]`) in `CorporateCalendarPage.jsx`. Replaced with adaptive Tailwind design tokens (`bg-surface`, `border-border`, `text-textPrimary`, `text-textMuted`) for seamless light/dark mode support and proper mobile bottom navbar rendering                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `frontend/src/components/CorporateCalendar/CorporateCalendarPage.jsx`                                                                                                                                                                                                                 |
+| 2026-09-03 | IPO Closing Notification Deduplication & Canonical Key Architecture: Added `getCanonicalIpoKey()` to `ipoUtils.js` (strips corporate suffixes — Ltd, Limited, Pvt, Travels, Technologies, etc.). Rewrote `getIposClosingToday()` in `ipoService.js` to deduplicate both MainboardGMP + Investorgain entries into a single canonical Map (merging best live GMP, subscription, fire rating). Hardened `ipoClosingStore.js` to use canonical key as MongoDB `_id` with atomic `$setOnInsert` upsert preventing any duplicate document insertion. Fixed notification payload builder to show "At Par (₹0)" instead of vague "GMP updated". Added notification exchange tag `[NSE & BSE]` to push title. Created 32-test integration suite covering key normalization, dedup, GMP merging, and payload formatting. Result: 8 raw documents → 4 canonical documents, 0 duplicate notifications | `backend/lib/ipoUtils.js`, `backend/services/ipoService.js`, `backend/lib/ipoClosingStore.js`, `backend/lib/ipoClosingNotificationService.js`, `backend/tests/test_ipo_closing_dedup.js` (new)                                                                                |
 
 | 2026-09-03 | Hybrid 3-Pass IPO Deduplication (Fingerprint + Fuzzy): Added `computeIpoFingerprint(closeDateISO, issuePrice)` and `computeNameSimilarity(nameA, nameB)` (Sørensen-Dice token-set coefficient) to `ipoUtils.js`. Rewrote `getIposClosingToday()` in `ipoService.js` with 3-pass dedup: Pass 1 = business fingerprint (catches "Credent Connect N Care Ltd" vs "Credent Connect" at ₹189), Pass 2 = fuzzy for entries missing price/date, Pass 3 = cross-fingerprint fuzzy for price-band mismatches (₹179 vs ₹189). Added `_mergeEntry()` and `FUZZY_THRESHOLD=0.72` at module scope. Updated 59-test suite. Architecture: zero hardcoded lists, zero maintenance forever | `backend/lib/ipoUtils.js`, `backend/services/ipoService.js`, `backend/tests/test_ipo_closing_dedup.js` |
 | 2026-09-03 | Link Intime (MUFG) IPO Allotment Verification & Live Alert Integration: Added `mufgScraper.js` for AES-128-CBC session token handshake, active IPO scraping, and allotment query against `in.mpms.mufg.com`. Added `normalizeMufgResponse` and `normalizeMufgRecord` in `ipoUtils.js` for XML-to-JSON normalization (applied shares, allotted shares, refund amount, DP ID, HNI/Retail category). Updated `ipoVerificationRoutes.js` (`/symbols`, `/verify`, `/verify-bulk`) to support multi-registrar (`MUFG` & `KFINTECH`). Added `mufgNotificationService.js` and hooked into global cron for automatic push & Telegram alerts when new IPO allotments go live on Link Intime. Enhanced frontend `IpoVerificationPage.jsx` with Registrar Switcher tabs, dynamic dropdowns, and enriched allotment cards. Verified locally with live PAN `COAPJ9504C` (20/20 tests passed) | `backend/lib/mufgScraper.js` (new), `backend/lib/mufgNotificationService.js` (new), `backend/lib/ipoUtils.js`, `backend/routes/ipoVerificationRoutes.js`, `backend/server.js`, `frontend/src/components/IpoVerification/IpoVerificationPage.jsx`, `backend/tests/test_mufg_verification.js` (new) |
@@ -713,16 +752,10 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 | 2026-10-16 | Render Deployment Automation & Deploy Hook Integration: Added `.github/workflows/deploy-render.yml` to automatically trigger Render Deploy Hook on git push to `main`. Enhanced `deploy.bat`, `deploy-backend.bat`, and `deploy.ps1` to detect `.render_hook` or `RENDER_DEPLOY_HOOK_URL` and instantly ping Render's deployment webhook. Fixed Firebase CLI working directory bug in deployment scripts (`cd /d "%~dp0"`) and added `--non-interactive` flag. Committed `render.yaml` with `autoDeploy: true`, `branch: main`, and `NODE_VERSION: 20.18.1`. Added `.render_hook` to `.gitignore` | `deploy.bat`, `deploy-backend.bat`, `deploy.ps1`, `render.yaml`, `.github/workflows/deploy-render.yml` (new), `.render_hook.example` (new), `.gitignore`, `GEMINI.md` |
 | 2026-10-16 | Render Instant Auto-Deploy Wire-up & Monorepo Root Directory Resolution: Wired user's live Render Deploy Hook (`https://api.render.com/deploy/srv-db8sq3navr4c73c7jjf0?key=vIFx_6LAyXc`) into `.github/workflows/deploy-render.yml` and local `.render_hook`. Resolved Render's `rootDir: backend` behavior where commits touching root files (`package.json`, `render.yaml`, etc.) were skipped by Render's native filter. Verified live deployment `dep-db9222jbc2fs73cjb79g` succeeded and `/api/admin/stats` and `/api/admin/system/services-status` are active and returning HTTP 401 (secured) | `.github/workflows/deploy-render.yml`, `.render_hook`, `GEMINI.md` |
 | 2026-10-16 | Global Web Push Broadcast & Database Backup Export Resolution: Implemented `broadcastWebPushToAll` in `webPushNotifier.js` leveraging Firestore `collectionGroup('pushDevices')` to dispatch instant push notifications to all registered devices when global announcement banners are published. Resolved `ReferenceError: logAdminAudit is not defined` causing 500 error on `/api/admin/system/export-backup` and `/api/admin/system/test-push` with robust `writeAuditLog` integration and safe date serialization. Enhanced `flush-cache` to purge `ratelimit:*`, `rates:*`, and `admin:entitlement:*` Redis keys. Added push notification checkbox and live device count toasts in `AdminPage.jsx` | `backend/lib/webPushNotifier.js`, `backend/routes/adminRoutes.js`, `frontend/src/components/Admin/AdminPage.jsx`, `GEMINI.md` |
+| 2026-10-17 | Event-Driven Automated IPO Allotment Family PAN Verification & Shareable Curated Watchlist Baskets: 1. Automated IPO Allotment Engine: Created `backend/lib/ipoAutoVerificationService.js` implementing event-driven multi-registrar verification for all saved family PANs (`collectionGroup('familyPans')`) whenever an IPO allotment goes live on Link Intime / MUFG, KFintech, or BigShare without running continuous 24/7 pollers. Employs 24-hour ephemeral execution locks in MongoDB `ipo_auto_verifications` with native TTL auto-purge (`expireAfterSeconds: 86400`) and midnight cleanup for zero storage bloat. Multi-tiered notifications automatically distinguish Tier 1: Allotted (🎉 Celebratory Web Push + Telegram alert with shares, DP/Client ID, application number), Tier 2: Applied, Not Allotted (📋 Informative notification with refund instructions), and Tier 3: Not Applied (Record Not Found: subtle digest or silent skip based on user preferences). Wired into `mufgNotificationService.js`, `bigshareNotificationService.js`, and `notificationEngine.js`, with an on-demand admin trigger `POST /api/admin/ipo/trigger-auto-check`. 2. Shareable Curated Watchlist Baskets: Built social viral investing engine allowing users to publish curated baskets with unique public links (e.g. `/basket/:slug`). Implemented `backend/routes/basketRoutes.js` (`GET /api/baskets/:slug` public with live quotes & filings, `POST /api/baskets` create, `POST /api/baskets/:slug/import` 1-tap import with auto-deduplication, `GET /api/baskets/user/my`). Built `ShareBasketModal.jsx` in `WatchlistPage.jsx` with 1-click WhatsApp, X/Twitter, and Telegram viral share buttons, and `PublicBasketPage.jsx` public landing page with live disclosures and guest conversion onboarding modal. Verified with `test_ipo_auto_and_baskets.js` and production Vite build | `backend/lib/ipoAutoVerificationService.js` (new), `backend/routes/basketRoutes.js` (new), `backend/tests/test_ipo_auto_and_baskets.js` (new), `backend/routes/adminRoutes.js`, `backend/server.js`, `backend/lib/mufgNotificationService.js`, `backend/lib/bigshareNotificationService.js`, `backend/lib/notificationEngine.js`, `frontend/src/App.jsx`, `frontend/src/components/Watchlist/WatchlistPage.jsx`, `frontend/src/components/Watchlist/ShareBasketModal.jsx` (new), `frontend/src/components/Watchlist/PublicBasketPage.jsx` (new), `GEMINI.md` |
+| 2026-10-17 | User Onboarding Admin Approval Gate & Seamless Watchlist Basket Import Flow: 1. User Approval Gate: New user signups default to `approvalStatus: 'pending'`. Created `backend/lib/userApprovalNotificationService.js` to automatically dispatch instant multi-device Web Push and Telegram bot alerts to all system administrators whenever a user registers and is waiting for authorization. Implemented backend endpoints `PATCH /api/admin/users/:uid/approve` (sets `approvalStatus: 'approved'`), `PATCH /api/admin/users/:uid/reject` (sets `approvalStatus: 'rejected'`, revokes active session tokens via `revokeRefreshTokens`), and `PATCH /api/admin/users/:uid/re-allow` (re-authorizes access), logging immutable audit trail entries to `admin_audit_log`. Updated `AuthContext.jsx` with real-time `onSnapshot(doc(db, 'users', uid))` subscription so client access updates instantly in real time without page refresh. Created dedicated user-facing views: `PendingApprovalPage.jsx` (luxury glassmorphic waitlist screen with radar pulse, user details, status breakdown, and signout) and `AccessRejectedPage.jsx` (restricted view with admin reason and support appeal). Enhanced `ProtectedRoute` in `App.jsx` to intercept pending/rejected accounts while allowing admins instant pass-through. Upgraded `UserTable.jsx` and `UserDrawer.jsx` with status tabs (`All`, `Pending Review (N)` with glowing badge, `Approved`, `Rejected`), and 1-click Approve, Reject (with `RejectUserModal.jsx` custom reason input), and Re-Allow action controls. 2. Seamless Watchlist Basket Import: Updated `PublicRoute` and `PublicBasketPage.jsx` so unauthenticated visitors clicking 'Import' are guided through login (`/login?redirect=...`) and automatically receive the basket imported into their watchlist upon successful sign in and approval | `backend/lib/userApprovalNotificationService.js` (new), `backend/server.js`, `backend/routes/adminRoutes.js`, `frontend/src/contexts/AuthContext.jsx`, `frontend/src/App.jsx`, `frontend/src/components/Auth/PendingApprovalPage.jsx` (new), `frontend/src/components/Auth/AccessRejectedPage.jsx` (new), `frontend/src/components/Admin/RejectUserModal.jsx` (new), `frontend/src/components/Admin/UserTable.jsx`, `frontend/src/components/Admin/UserDrawer.jsx`, `frontend/src/components/Admin/AdminPage.jsx`, `frontend/src/components/Watchlist/PublicBasketPage.jsx`, `frontend/src/services/alertService.js`, `GEMINI.md` |
+| 2026-10-17 | Institutional Scroll Preservation & SWR Zero-Flicker Revalidation Engine: Resolved client UX issue where frequent data re-fetching or background polling reset scroll positions back to top. 1. Hook: Implemented `useScrollPreserver.js` with pre-paint `useLayoutEffect` scroll restoration, user interaction lock (`isInteractingRef` during mouse hover/scroll), and automatic scroll snapshots. 2. Top Gainers & Losers: Eliminated `setData([])` container collapse, removed wrapper key unmounting, added stable keys (`bse-${code}`, `nse-${symbol}`), and added 2px top gradient shimmer bar and live syncing pill. 3. Announcements & Feeds: Upgraded `useAnnouncements.js`, `AnnouncementsContext.jsx`, and `AnnouncementsPage.jsx` with SWR `isRefreshing` vs `isInitialLoading` distinction, keeping existing card lists mounted and height stable during background worker cron ticks (100% window scroll immunity). 4. All Announcements: Replaced full-page unmounting with silent revalidation, persistent search/filters, and top shimmer progress. 5. Volume Spurt: Wired `useScrollPreserver` to `VolumeSpurtTable.jsx`, removed blocking opacity/pointer-events overlay in `VolumeSpurtSection.jsx`, and added subtle syncing pill. 6. Financial Calendars & Deals: Upgraded `BoardMeetingsPage.jsx`, `AGMUpdatesPage.jsx`, `ResultCalendarPage.jsx`, `BulkBlockPage.jsx`, `InsiderTradingPage.jsx`, and `IPOGmpPage.jsx` with SWR revalidation, stable row keys, and persistent table mounting | `frontend/src/hooks/useScrollPreserver.js` (new), `frontend/src/components/GainersLosers/GainersLosersPage.jsx`, `frontend/src/hooks/useAnnouncements.js`, `frontend/src/contexts/AnnouncementsContext.jsx`, `frontend/src/components/Announcements/AnnouncementsPage.jsx`, `frontend/src/components/AllAnnouncements/AllAnnouncementsPage.jsx`, `frontend/src/components/VolumeSpurt/VolumeSpurtSection.jsx`, `frontend/src/components/VolumeSpurt/VolumeSpurtTable.jsx`, `frontend/src/components/BoardMeetings/BoardMeetingsPage.jsx`, `frontend/src/components/AGMUpdates/AGMUpdatesPage.jsx`, `frontend/src/components/ResultCalendar/ResultCalendarPage.jsx`, `frontend/src/components/BulkBlock/BulkBlockPage.jsx`, `frontend/src/components/InsiderTrading/InsiderTradingPage.jsx`, `frontend/src/components/IPO/IPOGmpPage.jsx`, `GEMINI.md` |
 
 ---
 
 > **REMEMBER**: This file is your compass. Read it first, change code second, update this file third.
-
-
-
-
-
-
-
-
-

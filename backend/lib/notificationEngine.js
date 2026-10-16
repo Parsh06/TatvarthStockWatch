@@ -438,7 +438,21 @@ async function processNewIpos(newIpos) {
     const { sendTelegramIpoAlert, isConfigured: isTelegramOk } = require('./telegramNotifier');
     const { sendWebPushToUser } = require('./webPushNotifier');
     const { acquireDedupLock } = require('./notificationDedup');
+    const { triggerAutoAllotmentCheck } = require('./ipoAutoVerificationService');
     const db = await getDb();
+
+    // Trigger automated family PAN check & tiered notifications for new KFintech IPOs
+    for (const ipo of newIpos) {
+      try {
+        await triggerAutoAllotmentCheck({
+          symbol: ipo.clientId || ipo.symbol,
+          registrar: 'KFINTECH',
+          ipoName: ipo.name || ipo.symbol,
+        });
+      } catch (autoErr) {
+        console.error('[NotifEngine:IPO] KFin auto-verification error:', autoErr.message);
+      }
+    }
 
     let pageToken;
     do {

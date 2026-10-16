@@ -85,12 +85,20 @@ export async function ensureUserProfile(uid, { displayName, email }) {
         role:        'user',
         entitlements: { read: false, write: false },
         disabled:    false,
+        approvalStatus: 'pending',
+        approvalRequestedAt: serverTimestamp(),
         tier:        'free',
         createdAt:   serverTimestamp(),
         prefs: { telegramEnabled: true, inAppEnabled: true, frequency: 'realtime' },
         ltdCodesIndex: [],
       })
     }
+
+    // Ping backend onboarding endpoint to ensure admin is notified via Push/Telegram
+    try {
+      const { apiClient } = await import('./apiClient')
+      await apiClient.post('/api/auth/onboarding-request', { displayName, email })
+    } catch {}
   } catch (e) {
     console.error('[ensureUserProfile]', e.message)
   }

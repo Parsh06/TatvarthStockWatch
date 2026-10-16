@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { ArrowUpDown, ExternalLink } from 'lucide-react'
 import clsx from 'clsx'
+import { useScrollPreserver } from '../../hooks/useScrollPreserver'
 
 // ── SortIcon helper ───────────────────────────────────────────────────────────
 function SortIcon({ column, sortConfig }) {
@@ -16,7 +17,21 @@ function SortIcon({ column, sortConfig }) {
 export default function VolumeSpurtTable({ stocks, search }) {
   const [sortConfig, setSortConfig] = useState({ key: 'volMultiple', direction: 'desc' })
 
+  // Preserve scroll position when stocks data refreshes
+  const {
+    containerRef,
+    handleScroll,
+    handleMouseEnter,
+    handleMouseLeave,
+    snapshotScroll,
+  } = useScrollPreserver({
+    throttleMs: 100,
+    storageKey: 'volume_spurt_scroll_pos',
+    trackHover: true,
+  })
+
   const requestSort = (key) => {
+    snapshotScroll()
     setSortConfig(prev => ({
       key,
       direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc',
@@ -55,7 +70,13 @@ export default function VolumeSpurtTable({ stocks, search }) {
   )
 
   return (
-    <div className="overflow-x-auto overflow-y-auto max-h-[600px] scrollbar-hide">
+    <div
+      ref={containerRef}
+      onScroll={handleScroll}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      className="overflow-x-auto overflow-y-auto max-h-[600px] scrollbar-hide"
+    >
       <table className="w-full text-left text-sm whitespace-nowrap">
         <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
           <tr>

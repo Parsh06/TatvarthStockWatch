@@ -22,7 +22,7 @@ export function AnnouncementsProvider({ children }) {
 
   const shouldAutoFetch = !authLoading && !!currentUser
   // Fetch globally using the custom hook only when user is authenticated
-  const { announcements, watchlistedAnnouncements, loading, lastFetched, fetch } = useAnnouncements({
+  const { announcements, watchlistedAnnouncements, loading, isRefreshing, isInitialLoading, lastFetched, fetch } = useAnnouncements({
     watchlist,
     autoFetch: shouldAutoFetch
   })
@@ -56,6 +56,8 @@ export function AnnouncementsProvider({ children }) {
       announcements,
       watchlistedAnnouncements,
       loading,
+      isRefreshing,
+      isInitialLoading,
       lastFetched,
       fetch,
       readIds,

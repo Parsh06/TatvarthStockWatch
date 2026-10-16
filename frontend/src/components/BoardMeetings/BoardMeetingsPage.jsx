@@ -35,17 +35,22 @@ export default function BoardMeetingsPage() {
   const [toDate, setToDate] = useState(today())
   const [searchQuery, setSearchQuery] = useState('')
   
-  const [meetings, setMeetings] = useState([])
+  const [meetings, setMeetings]         = useState([])
   const [announcements, setAnnouncements] = useState([])
-  const [emailLogs, setEmailLogs] = useState({})
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const [emailLogs, setEmailLogs]       = useState({})
+  const [loading, setLoading]           = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [error, setError]               = useState(null)
   const [isSubscribed, setIsSubscribed] = useState(false)
   const [updatingPrefs, setUpdatingPrefs] = useState(false)
 
   // Fetch Board Meetings & Today's Announcements & Preferences
   const fetchData = async () => {
-    setLoading(true)
+    if (meetings.length > 0) {
+      setIsRefreshing(true)
+    } else {
+      setLoading(true)
+    }
     setError(null)
     try {
       // 0. Fetch user preferences
@@ -72,12 +77,12 @@ export default function BoardMeetingsPage() {
 
       // Removed non-existent email logs fetch to prevent 404 console errors
 
-
     } catch (err) {
       console.error(err)
       setError(err.message)
     } finally {
       setLoading(false)
+      setIsRefreshing(false)
     }
   }
 
@@ -174,11 +179,11 @@ export default function BoardMeetingsPage() {
         <div className="flex items-center gap-3 w-full md:w-auto">
           <button 
             onClick={fetchData}
-            disabled={loading}
+            disabled={loading || isRefreshing}
             className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-colors shadow-sm"
           >
-            <RefreshCw className={clsx("w-4 h-4", loading && "animate-spin")} />
-            Refresh
+            <RefreshCw className={clsx("w-4 h-4", (loading || isRefreshing) && "animate-spin")} />
+            {loading ? 'Loading...' : isRefreshing ? 'Syncing...' : 'Refresh'}
           </button>
           <button 
             onClick={handleExport}
@@ -243,8 +248,11 @@ export default function BoardMeetingsPage() {
       )}
 
       {/* Table */}
-      <div className="glass-panel rounded-2xl overflow-hidden flex flex-col min-h-[400px]">
-        {loading ? (
+      <div className="glass-panel rounded-2xl overflow-hidden flex flex-col min-h-[400px] relative">
+        {isRefreshing && (
+          <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse z-20" />
+        )}
+        {loading && meetings.length === 0 ? (
           <div className="flex items-center justify-center py-20 flex-1">
             <Loader text="Loading board meetings..." />
           </div>

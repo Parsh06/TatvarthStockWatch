@@ -47,6 +47,7 @@ export default function BulkBlockPage() {
   const [dealType,   setDealType]   = useState('both') // BSE: 'both', '1', '2' | NSE: 'bulk_deals', 'block_deals', 'short_deals'
   const [codeFilter, setCodeFilter] = useState('')
   const [loading,    setLoading]    = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [error,      setError]      = useState(null)
   const [result,     setResult]     = useState(null)
   const [search,     setSearch]     = useState('')
@@ -64,10 +65,17 @@ export default function BulkBlockPage() {
     setFromDate(r.from()); setToDate(r.to()); setResult(null); setError(null)
   }
 
-  async function fetchDeals() {
+  async function fetchDeals(isManualRefresh = false) {
     if (!fromDate || !toDate) { setError('Select valid From and To dates.'); return }
     if (fromDate > toDate)    { setError('From date must not be after To date.'); return }
-    setLoading(true); setError(null); setSearch('')
+
+    if (result && result.deals && result.deals.length > 0) {
+      setIsRefreshing(true)
+    } else {
+      setLoading(true)
+    }
+    setError(null)
+    if (!isManualRefresh) setSearch('')
     try {
       if (exchange === 'BSE') {
         const params = new URLSearchParams({ from: toYYYYMMDD(fromDate), to: toYYYYMMDD(toDate), dealType })
@@ -109,7 +117,10 @@ export default function BulkBlockPage() {
         setResult({ deals })
       }
     } catch (e) { setError(e.message) }
-    finally { setLoading(false) }
+    finally { 
+      setLoading(false)
+      setIsRefreshing(false)
+    }
   }
 
   // Fetch automatically on mount, exchange change, or dealType change
@@ -248,10 +259,10 @@ export default function BulkBlockPage() {
         </div>
 
         <div className="flex items-center gap-4 flex-wrap justify-between w-full mt-2">
-          <button onClick={fetchDeals} disabled={loading}
+          <button onClick={() => fetchDeals(true)} disabled={loading || isRefreshing}
             className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-xl text-sm font-semibold transition shadow-lg shadow-primary/20 hover:shadow-primary/30">
-            <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
-            {loading ? 'Fetching…' : 'Fetch Deals'}
+            <RefreshCw className={clsx('w-4 h-4', (loading || isRefreshing) && 'animate-spin')} />
+            {loading ? 'Fetching…' : isRefreshing ? 'Syncing…' : 'Fetch Deals'}
           </button>
           
           <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 shadow-inner">
@@ -277,6 +288,11 @@ export default function BulkBlockPage() {
         </div>
       </div>
 
+      {/* Top subtle syncing shimmer indicator */}
+      {isRefreshing && (
+        <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse rounded-full" />
+      )}
+
       {/* ── Error ── */}
       {error && (
         <div className="flex items-center gap-3 px-4 py-3 bg-danger/10 border border-danger/30 rounded-xl text-sm text-danger">
@@ -284,15 +300,15 @@ export default function BulkBlockPage() {
         </div>
       )}
 
-      {/* ── Loading ── */}
-      {loading && (
+      {/* ── Initial Loading ── */}
+      {loading && !result && (
         <div className="py-24">
           <Loader />
         </div>
       )}
 
       {/* ── Results ── */}
-      {result && !loading && (
+      {result && (
         <div className="space-y-4">
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">

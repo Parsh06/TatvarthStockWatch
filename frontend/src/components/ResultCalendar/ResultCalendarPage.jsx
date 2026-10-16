@@ -163,13 +163,15 @@ export default function ResultCalendarPage() {
   const { scripts: watchlistScripts } = useWatchlist()
 
   // State
-  const [calendarResults, setCalendarResults] = useState([])
-  const [declaredResults, setDeclaredResults] = useState([])
-  const [loadingCalendar, setLoadingCalendar] = useState(false)
-  const [loadingDeclared, setLoadingDeclared] = useState(false)
-  const [calendarError, setCalendarError] = useState(null)
-  const [declaredError, setDeclaredError] = useState(null)
-  const [lastUpdated, setLastUpdated] = useState(null)
+  const [calendarResults, setCalendarResults]       = useState([])
+  const [declaredResults, setDeclaredResults]       = useState([])
+  const [loadingCalendar, setLoadingCalendar]       = useState(false)
+  const [loadingDeclared, setLoadingDeclared]       = useState(false)
+  const [refreshingCalendar, setRefreshingCalendar] = useState(false)
+  const [refreshingDeclared, setRefreshingDeclared] = useState(false)
+  const [calendarError, setCalendarError]           = useState(null)
+  const [declaredError, setDeclaredError]           = useState(null)
+  const [lastUpdated, setLastUpdated]               = useState(null)
 
   // Watchlist lookup set
   const watchlistCodes = useMemo(() => {
@@ -183,7 +185,14 @@ export default function ResultCalendarPage() {
 
   // 1. Fetch Forthcoming Results Calendar
   const fetchCalendarData = useCallback(async (isRefresh = false) => {
-    setLoadingCalendar(true)
+    setCalendarResults(prev => {
+      if (isRefresh && prev.length > 0) {
+        setRefreshingCalendar(true)
+      } else {
+        setLoadingCalendar(true)
+      }
+      return prev
+    })
     setCalendarError(null)
     try {
       let url = '/api/bse/results-calendar'
@@ -214,12 +223,20 @@ export default function ResultCalendarPage() {
       setCalendarError(err.message || 'Failed to fetch result calendar from BSE.')
     } finally {
       setLoadingCalendar(false)
+      setRefreshingCalendar(false)
     }
   }, [fromDate, toDate])
 
   // 2. Fetch Declared Financial Results
   const fetchDeclaredData = useCallback(async (isRefresh = false) => {
-    setLoadingDeclared(true)
+    setDeclaredResults(prev => {
+      if (isRefresh && prev.length > 0) {
+        setRefreshingDeclared(true)
+      } else {
+        setLoadingDeclared(true)
+      }
+      return prev
+    })
     setDeclaredError(null)
     try {
       let url = '/api/bse/financial-results?segment=C&FlagDur=1'
@@ -250,6 +267,7 @@ export default function ResultCalendarPage() {
       setDeclaredError(err.message || 'Failed to fetch declared financial results.')
     } finally {
       setLoadingDeclared(false)
+      setRefreshingDeclared(false)
     }
   }, [])
 
@@ -440,7 +458,10 @@ export default function ResultCalendarPage() {
     }
   }
 
-  const isLoading = activeTab === 'calendar' ? loadingCalendar : loadingDeclared
+  const isRefreshing = activeTab === 'calendar' ? refreshingCalendar : refreshingDeclared
+  const isInitialLoading = activeTab === 'calendar'
+    ? (loadingCalendar && calendarResults.length === 0)
+    : (loadingDeclared && declaredResults.length === 0)
   const activeError = activeTab === 'calendar' ? calendarError : declaredError
 
   return (
@@ -459,6 +480,11 @@ export default function ResultCalendarPage() {
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                   BSE
                 </span>
+                {isRefreshing && (
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/25 animate-pulse ml-1">
+                    Syncing…
+                  </span>
+                )}
               </h1>
               <p className="text-xs md:text-sm text-textMuted mt-0.5">
                 {activeTab === 'calendar'
@@ -476,12 +502,12 @@ export default function ResultCalendarPage() {
               if (activeTab === 'calendar') fetchCalendarData(true)
               else fetchDeclaredData(true)
             }}
-            disabled={isLoading}
+            disabled={isInitialLoading || isRefreshing}
             className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs md:text-sm font-medium transition-all shadow-sm active:scale-95 disabled:opacity-50 text-textPrimary"
             title="Refresh from BSE"
           >
-            <RefreshCw className={clsx("w-4 h-4 text-textMuted", isLoading && "animate-spin text-primary")} />
-            <span>Refresh</span>
+            <RefreshCw className={clsx("w-4 h-4 text-textMuted", (isInitialLoading || isRefreshing) && "animate-spin text-primary")} />
+            <span>{isRefreshing ? 'Syncing...' : 'Refresh'}</span>
           </button>
           <button
             onClick={handleExport}
@@ -817,8 +843,11 @@ export default function ResultCalendarPage() {
       )}
 
       {/* Main Content Area */}
-      <div className="glass-panel rounded-2xl overflow-hidden flex flex-col min-h-[420px] shadow-sm">
-        {isLoading ? (
+      <div className="glass-panel rounded-2xl overflow-hidden flex flex-col min-h-[420px] shadow-sm relative">
+        {isRefreshing && (
+          <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse z-20" />
+        )}
+        {isInitialLoading ? (
           <div className="flex flex-col items-center justify-center py-24 flex-1">
             <Loader text={activeTab === 'calendar' ? "Fetching forthcoming results..." : "Fetching declared financial results..."} />
           </div>

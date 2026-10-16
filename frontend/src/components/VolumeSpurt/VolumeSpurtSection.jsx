@@ -37,13 +37,19 @@ function fmtTurnover(v) {
 
 // ── Main Section ──────────────────────────────────────────────────────────────
 export default function VolumeSpurtSection() {
-  const [stocks, setStocks]         = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [error, setError]           = useState(null)
-  const [lastUpdated, setLastUpdated] = useState(null)
-  const [search, setSearch]         = useState('')
+  const [stocks, setStocks]               = useState([])
+  const [loading, setLoading]             = useState(true)
+  const [isRefreshing, setIsRefreshing]   = useState(false)
+  const [error, setError]                 = useState(null)
+  const [lastUpdated, setLastUpdated]     = useState(null)
+  const [search, setSearch]               = useState('')
 
   const fetchData = useCallback(async (force = false) => {
+    setStocks(prev => {
+      if (prev.length > 0) setIsRefreshing(true)
+      else setLoading(true)
+      return prev
+    })
     try {
       const data = await apiClient(`/api/market/volume-spurt${force ? '?force=true' : ''}`)
       setStocks(data?.stocks || [])
@@ -53,6 +59,7 @@ export default function VolumeSpurtSection() {
       setError(e?.message || 'Failed to fetch volume spurt data.')
     } finally {
       setLoading(false)
+      setIsRefreshing(false)
     }
   }, [])
 
@@ -73,6 +80,11 @@ export default function VolumeSpurtSection() {
           <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
             <Zap className="w-5 h-5 text-orange-400" />
             Live High Volume — Volume Spurt
+            {isRefreshing && (
+              <span className="text-[11px] font-semibold text-primary px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 animate-pulse ml-2">
+                Syncing…
+              </span>
+            )}
           </h2>
           <p className="text-textMuted mt-1 text-sm">
             Stocks with unusually high trading volumes (BSE).{' '}
@@ -80,15 +92,12 @@ export default function VolumeSpurtSection() {
           </p>
         </div>
         <button
-          onClick={() => {
-            setLoading(true)
-            fetchData(true)
-          }}
-          disabled={loading}
+          onClick={() => fetchData(true)}
+          disabled={loading || isRefreshing}
           className="flex items-center gap-2 px-3 py-2 bg-surface hover:bg-surfaceHover border border-border rounded-lg text-sm font-medium transition-colors"
         >
-          <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
-          {loading ? 'Fetching Live...' : 'Refresh'}
+          <RefreshCw className={clsx('w-4 h-4', (loading || isRefreshing) && 'animate-spin')} />
+          {loading ? 'Fetching Live...' : isRefreshing ? 'Syncing...' : 'Refresh'}
         </button>
       </div>
 
@@ -131,6 +140,9 @@ export default function VolumeSpurtSection() {
 
       {/* Table */}
       <div className="glass-panel rounded-2xl overflow-hidden border border-border relative">
+        {isRefreshing && (
+          <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse z-20" />
+        )}
         {loading && stocks.length === 0 ? (
           <div className="flex items-center justify-center py-16">
             <Loader text="Tracking real-time volume spurts..." />
@@ -145,9 +157,7 @@ export default function VolumeSpurtSection() {
             </p>
           </div>
         ) : (
-          <div className={clsx("transition-opacity duration-300", loading ? "opacity-60 pointer-events-none" : "opacity-100")}>
-            <VolumeSpurtTable stocks={stocks} search={search} />
-          </div>
+          <VolumeSpurtTable stocks={stocks} search={search} />
         )}
       </div>
     </div>
