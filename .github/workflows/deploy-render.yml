@@ -4,19 +4,20 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - 'frontend/**'
-      - 'README.md'
-      - '.gitignore'
+    paths:
+      - 'backend/**'
+      - 'package.json'
+      - 'render.yaml'
+      - '.node-version'
+      - '.github/workflows/deploy-render.yml'
 
 jobs:
   trigger-render-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render Deploy Hook
-        if: ${{ env.RENDER_DEPLOY_HOOK_URL != '' }}
         env:
-          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL || 'https://api.render.com/deploy/srv-db8sq3navr4c73c7jjf0?key=vIFx_6LAyXc' }}
         run: |
           echo "Triggering instant Render deployment for Tatvarth StockWatch..."
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK_URL")
