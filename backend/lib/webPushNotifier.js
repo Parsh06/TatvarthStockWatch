@@ -169,8 +169,82 @@ async function sendWebPushToDevice(uid, deviceId, payload) {
   };
 }
 
+/**
+ * Broadcast a web push notification to ALL registered devices across ALL users in Firestore.
+ * @param {Object} payload - { title, body, url, tag, severity, ... }
+ * @returns {Promise<{ totalDevices: number, sent: number, failed: number, expired: number }>}
+ */
+async function broadcastWebPushToAll(payload) {
+  if (!initWebPush()) {
+    console.warn('[WebPush] Cannot broadcast: VAPID keys not configured');
+    return { totalDevices: 0, sent: 0, failed: 0, expired: 0, error: 'VAPID keys not configured' };
+  }
+
+  const { db } = require('./firebaseAdmin');
+  let snapshot;
+  try {
+    snapshot = await db.collectionGroup('pushDevices').get();
+  } catch (err) {
+    console.error('[WebPush] collectionGroup error:', err.message);
+    return { totalDevices: 0, sent: 0, failed: 0, expired: 0, error: err.message };
+  }
+
+  if (!snapshot || snapshot.empty) {
+    console.log('[WebPush] No push devices registered in database');
+    return { totalDevices: 0, sent: 0, failed: 0, expired: 0 };
+  }
+
+  const pushPayload = {
+    title: payload.title || 'StockWatch Alert',
+    body: payload.body || payload.message || 'New market announcement',
+    icon: '/logo2.png',
+    badge: '/logo2.png',
+    tag: payload.tag || `broadcast-${Date.now()}`,
+    data: {
+      version: 2,
+      type: 'ANNOUNCEMENT',
+      url: payload.url || 'https://tatvarthstockwatch.web.app',
+      timestamp: Date.now(),
+      severity: payload.severity || 'info',
+    },
+    actions: [
+      { action: 'view', title: 'Open App' },
+    ],
+  };
+
+  let sent = 0;
+  let failed = 0;
+  let expired = 0;
+
+  await Promise.all(snapshot.docs.map(async (doc) => {
+    const deviceData = doc.data();
+    if (!deviceData || !deviceData.subscription || !deviceData.subscription.endpoint) {
+      failed++;
+      return;
+    }
+
+    const result = await sendWebPush(deviceData.subscription, pushPayload);
+    if (result.sent) {
+      sent++;
+    } else if (result.expired) {
+      expired++;
+      try {
+        await doc.ref.delete();
+        console.log(`[WebPush] Removed expired device subscription: ${doc.id}`);
+      } catch (e) {}
+    } else {
+      failed++;
+    }
+  }));
+
+  console.log(`[WebPush] Broadcast complete: sent=${sent}, failed=${failed}, expired=${expired}, total=${snapshot.docs.length}`);
+  return { totalDevices: snapshot.docs.length, sent, failed, expired };
+}
+
 module.exports = {
   sendWebPush,
   sendWebPushToUser,
   sendWebPushToDevice,
+  broadcastWebPushToAll,
 };
+

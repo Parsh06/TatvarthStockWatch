@@ -6,8 +6,9 @@ import {
   Database, Clock, Activity, Sparkles, TrendingUp,
   Zap, Send, Trash2, Server, Globe, Bot, Terminal,
   AlertTriangle, Layers, ArrowUpRight, Check, Megaphone,
-  Search, Eye, Star
+  Search, Eye, Star, Bell
 } from 'lucide-react'
+
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell
 } from 'recharts'
@@ -51,6 +52,8 @@ export default function AdminPage() {
   // System Broadcast state
   const [broadcast, setBroadcast] = useState({ active: false, message: '', title: '', severity: 'info' })
   const [savingBroadcast, setSavingBroadcast] = useState(false)
+  const [broadcastSendPush, setBroadcastSendPush] = useState(true)
+
 
   // Reverse Watchlist search state
   const [reverseQuery, setReverseQuery] = useState('')
@@ -292,18 +295,30 @@ export default function AdminPage() {
     if (!canWrite) return toast.error('Write entitlement required')
     setSavingBroadcast(true)
     try {
+      const targetActive = newActiveState !== undefined ? newActiveState : broadcast.active
       const payload = {
-        active: newActiveState !== undefined ? newActiveState : broadcast.active,
+        active: targetActive,
         message: broadcast.message,
         title: broadcast.title,
         severity: broadcast.severity,
+        sendPush: broadcastSendPush,
       }
-      await apiClient('/api/admin/system/broadcast', {
+      const data = await apiClient('/api/admin/system/broadcast', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
       setBroadcast(prev => ({ ...prev, active: payload.active }))
-      toast.success(payload.active ? 'System broadcast published live to all users' : 'System broadcast deactivated')
+      if (payload.active) {
+        const sent = data?.pushStats?.sent || 0
+        const total = data?.pushStats?.totalDevices || 0
+        if (total > 0 && broadcastSendPush) {
+          toast.success(`Broadcast published! Sent push alert to ${sent}/${total} registered device(s).`)
+        } else {
+          toast.success('System broadcast banner published live across all active user sessions.')
+        }
+      } else {
+        toast.success('System broadcast banner deactivated')
+      }
       fetchAuditLogs()
     } catch (err) {
       toast.error(err.message || 'Failed to update broadcast')
@@ -311,6 +326,7 @@ export default function AdminPage() {
       setSavingBroadcast(false)
     }
   }
+
 
   const handleSearchWatchlist = async (e) => {
     e?.preventDefault()
@@ -683,7 +699,24 @@ export default function AdminPage() {
                     className="w-full px-3.5 py-2.5 text-xs bg-surface border border-border rounded-xl text-textPrimary focus:outline-none focus:border-primary/50 transition disabled:opacity-50"
                   />
                 </div>
+
+                <div className="pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={broadcastSendPush}
+                      onChange={e => setBroadcastSendPush(e.target.checked)}
+                      disabled={!canWrite}
+                      className="rounded border-border text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                    />
+                    <span className="text-xs text-textPrimary flex items-center gap-1.5 font-medium">
+                      <Bell className="w-3.5 h-3.5 text-sky-400" />
+                      Dispatch Web Push alert to all registered devices
+                    </span>
+                  </label>
+                </div>
               </div>
+
 
               {/* Preview & Action Buttons */}
               <div className="glass-panel p-4 rounded-2xl border border-border flex flex-col justify-between space-y-3">

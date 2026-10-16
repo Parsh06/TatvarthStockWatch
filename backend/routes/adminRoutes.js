@@ -30,6 +30,7 @@ const { getDb } = require('../lib/mongoClient');
 const { ObjectId } = require('mongodb');
 const axios = require('axios');
 const { strictRateLimiter } = require('../middleware/rateLimiter');
+const { broadcastWebPushToAll, sendWebPushToUser } = require('../lib/webPushNotifier');
 
 module.exports = function adminRoutes(verifyToken, requireAdmin) {
   const router = express.Router();
@@ -54,6 +55,20 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       console.error('[Admin] Audit log write failed:', err.message);
     }
   }
+
+  /**
+   * Log administrative audit event with positional args (alias for writeAuditLog).
+   */
+  async function logAdminAudit(actorUid, action, targetUid, payload = {}, ip = null) {
+    return writeAuditLog({
+      actorUid,
+      actorEmail: null,
+      action,
+      targetUid,
+      payload: { ...payload, ip },
+    });
+  }
+
 
   /**
    * Enrich raw Firebase Auth user with Firestore profile data.
@@ -971,21 +986,25 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
   });
 
   // ── POST /api/admin/system/flush-cache ─────────────────────────────────────
-  // Flush Redis rate-limit and rates caches
+  // Flush Redis rate-limit, live rates, and admin entitlement caches
   router.post('/system/flush-cache', verifyToken, requireAdmin('write'), async (req, res) => {
     try {
       const { UPSTASH_ENABLED, redis } = require('../lib/redis/redisClient');
       let flushedKeys = 0;
 
       if (UPSTASH_ENABLED && redis) {
-        // Find and delete rate limit or rates keys
-        try {
-          const keys = await redis.keys('ratelimit:*');
-          if (keys && keys.length) {
-            await Promise.all(keys.map(k => redis.del(k)));
-            flushedKeys += keys.length;
+        const patterns = ['ratelimit:*', 'rates:*', 'admin:entitlement:*'];
+        for (const pattern of patterns) {
+          try {
+            const keys = await redis.keys(pattern);
+            if (keys && keys.length) {
+              await Promise.all(keys.map(k => redis.del(k)));
+              flushedKeys += keys.length;
+            }
+          } catch (e) {
+            console.warn(`[Admin] Cache flush pattern warning for ${pattern}:`, e.message);
           }
-        } catch {}
+        }
       }
 
       await writeAuditLog({
@@ -999,6 +1018,7 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       res.json({
         success: true,
         message: `Cache flushed successfully (${flushedKeys} keys removed)`,
+        flushedKeys,
       });
     } catch (err) {
       console.error('[Admin] /system/flush-cache error:', err.message);
@@ -1019,9 +1039,10 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
 
   // ── POST /api/admin/system/broadcast ──────────────────────────────────────
   // Publish or deactivate a global banner broadcast across all client sessions
+  // AND dispatch instant Web Push notifications to all registered devices!
   router.post('/system/broadcast', verifyToken, requireAdmin('write'), async (req, res) => {
     try {
-      const { active = false, message = '', severity = 'info', title = '', dismissible = true } = req.body;
+      const { active = false, message = '', severity = 'info', title = '', dismissible = true, sendPush = true } = req.body;
       const broadcastData = {
         active: Boolean(active),
         message: String(message).trim(),
@@ -1034,19 +1055,37 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
 
       await db.collection('system_meta').doc('broadcast').set(broadcastData, { merge: true });
 
+      let pushStats = null;
+      if (broadcastData.active && sendPush !== false) {
+        try {
+          pushStats = await broadcastWebPushToAll({
+            title: broadcastData.title ? `${broadcastData.title}` : 'StockWatch Global Announcement',
+            body: broadcastData.message || 'New announcement published by administrator',
+            url: 'https://tatvarthstockwatch.web.app',
+            severity: broadcastData.severity,
+            tag: `broadcast-${Date.now()}`,
+          });
+        } catch (pushErr) {
+          console.error('[Admin] Broadcast push error:', pushErr.message);
+          pushStats = { error: pushErr.message, sent: 0, totalDevices: 0 };
+        }
+      }
+
       await writeAuditLog({
         actorUid: req.uid,
         actorEmail: req.user?.email,
         action: active ? 'PUBLISH_SYSTEM_BROADCAST' : 'CLEAR_SYSTEM_BROADCAST',
         targetUid: 'system',
-        payload: broadcastData,
+        payload: { ...broadcastData, pushStats },
       });
 
-      res.json({ success: true, broadcast: broadcastData });
+      res.json({ success: true, broadcast: broadcastData, pushStats });
     } catch (err) {
+      console.error('[Admin] /system/broadcast error:', err.message);
       res.status(500).json({ success: false, error: err.message });
     }
   });
+
 
   // ── GET /api/admin/watchlists/search ──────────────────────────────────────
   // Cross-user watchlist reverse search: find which users are tracking a stock
@@ -1126,13 +1165,14 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
         tag: `admin-diagnostic-${Date.now()}`,
       });
 
-      await logAdminAudit(
-        req.uid,
-        'SYSTEM_PUSH_TEST',
-        req.uid,
-        { result },
-        req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null
-      );
+      await writeAuditLog({
+        actorUid: req.uid,
+        actorEmail: req.user?.email,
+        action: 'SYSTEM_PUSH_TEST',
+        targetUid: req.uid,
+        payload: { result },
+      });
+
 
       return res.json({
         success: true,
@@ -1161,19 +1201,42 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
           const wlSnap = await doc.ref.collection('watchlist').get();
           watchlist = wlSnap.docs.map(w => {
             const wData = w.data();
+            let addedAtIso = null;
+            if (wData.addedAt) {
+              if (typeof wData.addedAt.toDate === 'function') {
+                addedAtIso = wData.addedAt.toDate().toISOString();
+              } else if (wData.addedAt instanceof Date) {
+                addedAtIso = wData.addedAt.toISOString();
+              } else {
+                addedAtIso = String(wData.addedAt);
+              }
+            }
             return {
               id: w.id,
-              scriptName: wData.scriptName || wData.companyName,
-              ltdCode: wData.ltdCode || wData.bseCode,
-              bseCode: wData.bseCode,
-              nseSymbol: wData.nseSymbol,
+              scriptName: wData.scriptName || wData.companyName || '',
+              ltdCode: wData.ltdCode || wData.bseCode || '',
+              bseCode: wData.bseCode || '',
+              nseSymbol: wData.nseSymbol || '',
               exchange: wData.exchange || 'BSE',
-              addedAt: wData.addedAt,
+              addedAt: addedAtIso,
             };
           });
           const devSnap = await doc.ref.collection('pushDevices').get();
           deviceCount = devSnap.size;
-        } catch {}
+        } catch (subErr) {
+          console.warn(`[Admin] Backup subcollection read warning for ${doc.id}:`, subErr.message);
+        }
+
+        let createdAtIso = null;
+        if (data.createdAt) {
+          if (typeof data.createdAt.toDate === 'function') {
+            createdAtIso = data.createdAt.toDate().toISOString();
+          } else if (data.createdAt instanceof Date) {
+            createdAtIso = data.createdAt.toISOString();
+          } else {
+            createdAtIso = String(data.createdAt);
+          }
+        }
 
         backupUsers.push({
           uid: doc.id,
@@ -1183,20 +1246,21 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
           entitlements: data.entitlements || { read: false, write: false },
           disabled: Boolean(data.disabled),
           prefs: data.prefs || {},
-          createdAt: data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate().toISOString() : data.createdAt) : null,
+          createdAt: createdAtIso,
           watchlistCount: watchlist.length,
           watchlist,
           deviceCount,
         });
       }
 
-      await logAdminAudit(
-        req.uid,
-        'SYSTEM_BACKUP_EXPORT',
-        'system',
-        { userCount: backupUsers.length },
-        req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null
-      );
+      await writeAuditLog({
+        actorUid: req.uid,
+        actorEmail: req.user?.email,
+        action: 'SYSTEM_BACKUP_EXPORT',
+        targetUid: 'system',
+        payload: { userCount: backupUsers.length },
+      });
+
 
       res.json({
         success: true,
