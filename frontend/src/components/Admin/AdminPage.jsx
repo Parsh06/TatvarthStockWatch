@@ -1129,7 +1129,7 @@ export default function AdminPage() {
                 </div>
 
                 <div className="pt-2 border-t border-border/30 flex items-center justify-between text-xs text-textMuted">
-                  <span>Node: {servicesData?.runtime?.details?.nodeVersion ?? process.version}</span>
+                  <span>Node: {servicesData?.runtime?.details?.nodeVersion ?? '—'}</span>
                   <span>Uptime: {Math.floor((servicesData?.runtime?.details?.uptimeSeconds ?? 0) / 60)}m</span>
                 </div>
               </div>

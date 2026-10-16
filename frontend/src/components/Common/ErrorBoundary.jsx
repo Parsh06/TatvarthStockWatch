@@ -29,7 +29,7 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
-      const isDev = process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost';
+      const isDev = import.meta.env.DEV || window.location.hostname === 'localhost';
 
       return (
         <div className="min-h-screen bg-background flex items-center justify-center p-4 sm:p-6 transition-colors selection:bg-primary/20">
