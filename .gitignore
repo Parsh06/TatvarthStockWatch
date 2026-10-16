@@ -13,5 +13,6 @@ firebase-debug.log
 
 *.traineddata
 scratch/
+.render_hook
 
 

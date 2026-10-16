@@ -1,0 +1,9 @@
+# Instructions to enable 1-second instant auto-deploy on Render:
+# 1. Open your Render Dashboard: https://dashboard.render.com
+# 2. Click on your service: tatvarthstockwatch
+# 3. Go to "Settings" tab and scroll down to "Deploy Hook"
+# 4. Click "Add Deploy Hook" (or copy your existing Deploy Hook URL)
+#    It looks like: https://api.render.com/deploy/srv-xxxxxxxxxxxxxxxxxxxx?key=yyyyyyyyyyy
+# 5. Create a file named .render_hook in the root of this project and paste that URL into it (single line, no quotes).
+#    OR add RENDER_DEPLOY_HOOK_URL as a Secret in your GitHub repository:
+#    GitHub Repo -> Settings -> Secrets and variables -> Actions -> New repository secret.

@@ -35,8 +35,8 @@ if "%CHOICE%"=="" (
     echo =======================================================
     echo             StockWatch Deployment Manager              
     echo =======================================================
-    echo  [1] Both - Backend to Vercel and Frontend to Firebase [Default]
-    echo  [2] Backend Only - Git Push to Vercel Serverless
+    echo  [1] Both - Backend to Render and Frontend to Firebase [Default]
+    echo  [2] Backend Only - Git Push to Render Web Service
     echo  [3] Frontend Only - Vite Build + Firebase Hosting
     echo =======================================================
     set /p USER_CHOICE="Select target [1/2/3] (Default: 1): "
@@ -62,6 +62,15 @@ if "%NEED_MSG%"=="1" (
     )
 )
 
+:: Check for Render Deploy Hook (optional instant trigger)
+set RENDER_HOOK=
+if exist "%~dp0.render_hook" (
+    set /p RENDER_HOOK=<"%~dp0.render_hook"
+)
+if defined RENDER_DEPLOY_HOOK_URL (
+    set RENDER_HOOK=!RENDER_DEPLOY_HOOK_URL!
+)
+
 :: =======================================================
 :: TARGET 1: FULL DEPLOY (Both Backend & Frontend)
 :: =======================================================
@@ -73,18 +82,31 @@ if "%CHOICE%"=="1" (
     echo [2/4] Committing changes...
     git commit -m "!MSG!"
     
-    echo [3/4] Pushing to Git repository - Triggers Vercel Backend...
+    echo [3/4] Pushing to Git repository (Branch: main)...
     git push
+    
+    if defined RENDER_HOOK (
+        echo [Render Hook] Triggering instant Render build...
+        curl -s -S -X POST "!RENDER_HOOK!" >nul 2>&1
+        echo [Render Hook] Instant build triggered on Render!
+    ) else (
+        echo [Render] Pushed to GitHub main.
+        echo [Render] TIP: If Auto-Deploy is OFF in Render dashboard, turn it ON in Settings
+        echo          or save your Deploy Hook URL into a '.render_hook' file for instant triggers!
+    )
     
     echo [4/4] Building frontend and deploying to Firebase Hosting...
     cd /d "%~dp0frontend"
     call npm run build
     if !ERRORLEVEL! equ 0 (
-        call npx firebase deploy --only hosting
+        cd /d "%~dp0"
+        call npx firebase deploy --only hosting --non-interactive
         echo.
         echo =======================================================
-        echo  SUCCESS: Backend deployed to Vercel
-        echo  SUCCESS: Frontend deployed to https://tatvarthstockwatch.web.app
+        echo  SUCCESS: Backend pushed to GitHub main (Render)
+        echo  Backend URL:  https://tatvarthstockwatch.onrender.com
+        echo  SUCCESS: Frontend deployed to Firebase Hosting
+        echo  Frontend URL: https://tatvarthstockwatch.web.app
         echo =======================================================
     ) else (
         echo.
@@ -95,12 +117,12 @@ if "%CHOICE%"=="1" (
 )
 
 :: =======================================================
-:: TARGET 2: BACKEND ONLY (Vercel via Git)
+:: TARGET 2: BACKEND ONLY (Render Web Service)
 :: =======================================================
 if "%CHOICE%"=="2" (
     echo.
     echo =======================================================
-    echo  Deploying Backend Only - Vercel Serverless
+    echo  Deploying Backend Only - Render Web Service
     echo =======================================================
     echo [1/3] Staging backend files...
     git add .
@@ -108,13 +130,23 @@ if "%CHOICE%"=="2" (
     echo [2/3] Committing changes...
     git commit -m "!MSG!"
     
-    echo [3/3] Pushing to GitHub - Auto-deploys Vercel Backend...
+    echo [3/3] Pushing to GitHub (Branch: main)...
     git push
     
     if !ERRORLEVEL! equ 0 (
+        if defined RENDER_HOOK (
+            echo [Render Hook] Triggering instant Render build...
+            curl -s -S -X POST "!RENDER_HOOK!" >nul 2>&1
+            echo [Render Hook] Instant build triggered on Render!
+        ) else (
+            echo [Render] Pushed to GitHub main.
+            echo [Render] TIP: If Auto-Deploy is OFF in Render dashboard, turn it ON in Settings
+            echo          or save your Deploy Hook URL into a '.render_hook' file for instant triggers!
+        )
         echo.
         echo =======================================================
-        echo  SUCCESS: Backend deployed to https://tatvarth-stock-watch.vercel.app
+        echo  SUCCESS: Backend pushed to GitHub main.
+        echo  Backend URL: https://tatvarthstockwatch.onrender.com
         echo =======================================================
     ) else (
         echo.
@@ -143,8 +175,9 @@ if "%CHOICE%"=="3" (
     call npm run build
     
     if !ERRORLEVEL! equ 0 (
+        cd /d "%~dp0"
         echo [3/3] Deploying to Firebase Hosting...
-        call npx firebase deploy --only hosting
+        call npx firebase deploy --only hosting --non-interactive
         echo.
         echo =======================================================
         echo  SUCCESS: Frontend deployed to https://tatvarthstockwatch.web.app
@@ -160,3 +193,4 @@ if "%CHOICE%"=="3" (
 echo.
 echo Invalid choice selected. Exiting.
 exit /b 1
+
