@@ -6,11 +6,13 @@ import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Star, Bell, Settings, TrendingUp,
   BarChart2, Search, CalendarDays, Globe, Newspaper, Layers, BellRing, Eye,
-  LogOut, Crown, Presentation, Zap, Users, Rocket, FileCheck2, Building2, CalendarCheck
+  LogOut, Crown, Presentation, Zap, Users, Rocket, FileCheck2, Building2, CalendarCheck, ShieldCheck
 } from 'lucide-react'
 import GlobalSearch from '../Common/GlobalSearch'
+import SystemBroadcastBanner from '../Common/SystemBroadcastBanner'
 import clsx from 'clsx'
 import { useAuth } from '../../contexts/AuthContext'
+import { useAdminAuth } from '../../hooks/useAdminAuth'
 import toast from 'react-hot-toast'
 import { Moon, Sun } from 'lucide-react'
 
@@ -38,6 +40,7 @@ const mobileNav = [
 
 export default function AppLayout({ children }) {
   const { logout } = useAuth()
+  const { isAdmin } = useAdminAuth()
   const [collapsed, setCollapsed]   = useState(false)
   const [isMd, setIsMd]             = useState(() => window.innerWidth >= 768)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -129,6 +132,7 @@ export default function AppLayout({ children }) {
         style={{ paddingLeft: isMd ? `calc(${collapsed ? 72 : 256}px + 2rem)` : undefined }}
       >
         <div className="max-w-7xl mx-auto h-full">
+          <SystemBroadcastBanner />
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
@@ -168,6 +172,27 @@ export default function AppLayout({ children }) {
                   <span className="text-[10px] whitespace-nowrap z-10 font-semibold tracking-tight">{label}</span>
                 </NavLink>
               ))}
+
+              {/* Admin Panel — only visible to admins */}
+              {isAdmin && (
+                <NavLink
+                  to="/admin"
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex flex-col items-center justify-center gap-1 p-2 w-[72px] h-12 rounded-xl transition-all duration-300 relative overflow-hidden border',
+                      isActive
+                        ? 'text-amber-400 border-amber-500/40 bg-amber-500/15'
+                        : 'text-amber-500/70 border-amber-500/20 hover:text-amber-400 hover:bg-amber-500/10 font-medium'
+                    )
+                  }
+                >
+                  {window.location.pathname === '/admin' && (
+                    <motion.div layoutId="mobileNavBgAdmin" className="absolute inset-0 bg-amber-500/15 rounded-xl -z-10" />
+                  )}
+                  <ShieldCheck className="w-5 h-5 z-10" />
+                  <span className="text-[10px] whitespace-nowrap z-10 font-semibold tracking-tight">Admin</span>
+                </NavLink>
+              )}
             </div>
           </nav>
         </div>
@@ -175,3 +200,4 @@ export default function AppLayout({ children }) {
     </div>
   )
 }
+

@@ -82,6 +82,9 @@ export async function ensureUserProfile(uid, { displayName, email }) {
       await setDoc(ref, {
         displayName: displayName || '',
         email:       email || '',
+        role:        'user',
+        entitlements: { read: false, write: false },
+        disabled:    false,
         tier:        'free',
         createdAt:   serverTimestamp(),
         prefs: { telegramEnabled: true, inAppEnabled: true, frequency: 'realtime' },

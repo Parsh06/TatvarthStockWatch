@@ -29,6 +29,8 @@ import AppLayout from './components/Layout/AppLayout'
 import SecurityGuard from './components/SecurityGuard/SecurityGuard'
 import CommandPalette from './components/Common/CommandPalette'
 import OfflineBanner from './components/Common/OfflineBanner'
+import AdminRoute from './components/Admin/AdminRoute'
+import AdminPage from './components/Admin/AdminPage'
 
 import { Preloader } from './components/Common/Preloader'
 
@@ -251,6 +253,18 @@ function AppRoutes() {
             <AppLayout>
               <InsiderTradingPage />
             </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <AppLayout>
+                <AdminPage />
+              </AppLayout>
+            </AdminRoute>
           </ProtectedRoute>
         }
       />

@@ -7,6 +7,7 @@ const helmet  = require('helmet');
 const cors    = require('cors');
 
 const { verifyToken, SECURE_MODE } = require('./lib/authMiddleware');
+const { requireAdmin }              = require('./middleware/requireAdmin');
 const { requestIdMiddleware }       = require('./utils/requestId');
 const { stripClientUserParams }     = require('./middleware/authorization');
 const { globalRateLimiter }         = require('./middleware/rateLimiter');
@@ -61,6 +62,7 @@ app.use('/api/ipo',           require('./routes/ipoVerificationRoutes')(verifyTo
 app.use('/api/bse',           require('./routes/bseRoutes')(verifyToken));
 app.use('/api/nse',           require('./routes/nseRoutes')(verifyToken));
 app.use('/api/market',        require('./routes/marketRoutes')(verifyToken));
+app.use('/api/admin',         require('./routes/adminRoutes')(verifyToken, requireAdmin));
 
 // ── Root Endpoint ─────────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
@@ -104,7 +106,25 @@ if (require.main === module) {
     console.log(`  API:           http://localhost:${PORT}/api/health`);
     console.log(`  Auth mode:     ${SECURE_MODE ? 'SECURE (Firebase token required)' : 'LOCAL (no auth)'}`);
     console.log(`  CORS origins:  ${ALLOWED_ORIGINS.join(', ')}`);
-    console.log(`  Alert cron:    (Disabled locally, trigger via /api/cron/trigger)`);
+    // Autonomous background worker if enabled (Render / standalone container)
+    if (process.env.ENABLE_BACKGROUND_WORKER === 'true' || process.env.RUN_CRON_WORKER === 'true') {
+      console.log('  Alert cron:    ACTIVE (Automated worker polling every 2m)');
+      const { runGlobalCronTick } = require('./services/cronService');
+      // Run initial tick after boot stagger (5s)
+      setTimeout(() => {
+        runGlobalCronTick().catch((e) => console.error('[Background Worker Boot Error]', e.message));
+      }, 5000);
+      // Scheduled tick every 2 minutes
+      setInterval(async () => {
+        try {
+          await runGlobalCronTick();
+        } catch (e) {
+          console.error('[Background Worker Loop Error]', e.message);
+        }
+      }, 120 * 1000);
+    } else {
+      console.log('  Alert cron:    PASSIVE (Trigger via /api/cron/trigger)');
+    }
     console.log('');
   });
 }

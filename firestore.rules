@@ -2,39 +2,85 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 1. Force Authentication: Users must be logged in to access anything
+    
+    // 1. Authentication & Identity Helpers
     function isAuthenticated() {
       return request.auth != null;
     }
     
-    // 2. Data Isolation: Users can only access documents where document ID == their UID
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Secure the core users collection and all its subcollections (watchlist, priceAlerts, portfolio)
+    // Checks that the requesting user account is not disabled
+    function isNotDisabled() {
+      return isAuthenticated() && (
+        !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('disabled', false) == false
+      );
+    }
+
+    // Checks if the requesting user has the admin role and read entitlement
+    function isAdmin() {
+      return isAuthenticated() && isNotDisabled() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin' &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('entitlements', {}).get('read', false) == true;
+    }
+
+    // 2. User Profiles & RBAC Protection
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      // User can read their own profile, or verified Admin can inspect any profile
+      allow read: if (isOwner(userId) && isNotDisabled()) || isAdmin();
       
-      // Cascade the rule to any nested document/collection under their UID
-      match /{document=**} {
-        allow read, write: if isOwner(userId);
+      // On registration/create: Users cannot self-elevate to admin or grant themselves entitlements
+      allow create: if isOwner(userId) && isNotDisabled() &&
+        request.resource.data.get('role', 'user') == 'user' &&
+        request.resource.data.get('disabled', false) == false &&
+        (
+          !('entitlements' in request.resource.data) ||
+          (
+            request.resource.data.entitlements.get('read', false) == false &&
+            request.resource.data.entitlements.get('write', false) == false
+          )
+        );
+
+      // On update: Users can update preferences, but CANNOT modify role, entitlements, or disabled state
+      // (All role/entitlement adjustments are executed strictly via the backend Admin SDK)
+      allow update: if isOwner(userId) && isNotDisabled() &&
+        (!('role' in request.resource.data) || request.resource.data.role == resource.data.get('role', 'user')) &&
+        (!('entitlements' in request.resource.data) || request.resource.data.entitlements == resource.data.get('entitlements', {})) &&
+        (!('disabled' in request.resource.data) || request.resource.data.disabled == resource.data.get('disabled', false));
+
+      // Deletion of root user doc via client SDK is prevented
+      allow delete: if false;
+
+      // Subcollections (watchlist, applicants, pushDevices, alerts, dedup locks)
+      match /{subcollection}/{docId} {
+        allow read, write: if (isOwner(userId) && isNotDisabled()) || isAdmin();
       }
     }
 
-    // Global Announcements (Read-only for clients, written by backend admin SDK)
-    match /announcements/{announcementId} {
-      allow read: if isAuthenticated();
-      allow write: if false; 
-    }
-
-    // System Metadata (e.g. cron_status)
-    match /system_meta/{document=**} {
-      allow read: if isAuthenticated();
+    // 3. Administrative Audit Trail
+    // Written only by backend Firebase Admin SDK; readable by verified admins
+    match /admin_audit_log/{logId} {
+      allow read: if isAdmin();
       allow write: if false;
     }
 
-    // Default deny all (blocks accidental exposure of other collections)
+    // 4. Global Announcements (Read-only for authenticated non-disabled users)
+    match /announcements/{announcementId} {
+      allow read: if isAuthenticated() && isNotDisabled();
+      allow write: if false; 
+    }
+
+    // 5. System Metadata (e.g. cron_status, dedup locks)
+    match /system_meta/{document=**} {
+      allow read: if isAuthenticated() && isNotDisabled();
+      allow write: if false;
+    }
+
+    // 6. Default Deny All (blocks accidental exposure of other collections)
     match /{document=**} {
       allow read, write: if false;
     }

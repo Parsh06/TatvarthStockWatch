@@ -5,6 +5,10 @@ const router = express.Router();
 const { runGlobalCronTick, runManualIpoClosingTick } = require('../services/cronService');
 
 function verifyCronSecret(req, res, next) {
+  // Support Vercel native cron invocation
+  if (req.headers['x-vercel-cron'] === '1') {
+    return next();
+  }
   const authHeader = req.headers.authorization || '';
   const secret = req.query.secret || authHeader.replace('Bearer ', '');
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {

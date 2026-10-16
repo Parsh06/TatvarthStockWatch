@@ -1,0 +1,99 @@
+import { useState, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { X, AlertTriangle, Loader2 } from 'lucide-react'
+import { apiClient } from '../../services/apiClient'
+import toast from 'react-hot-toast'
+
+/**
+ * DisableUserModal
+ *
+ * Confirmation modal for disabling a user account.
+ *
+ * Props:
+ *   user      — the user object { uid, email, displayName }
+ *   onClose   — called when modal should close
+ *   onSuccess — called after successful disable
+ */
+export default function DisableUserModal({ user, onClose, onSuccess }) {
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const handleDisable = useCallback(async () => {
+    setSaving(true)
+    try {
+      await apiClient(`/api/admin/users/${user.uid}/disable`, {
+        method: 'PATCH',
+        body: JSON.stringify({ reason }),
+      })
+      toast.success('Account disabled and all sessions revoked')
+      onSuccess?.()
+      onClose()
+    } catch (err) {
+      toast.error(err.message || 'Failed to disable account')
+    } finally {
+      setSaving(false)
+    }
+  }, [user.uid, reason, onSuccess, onClose])
+
+  return (
+    <AnimatePresence>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.94, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.94, y: 12 }}
+          transition={{ duration: 0.22, ease: 'easeOut' }}
+          className="glass-panel w-full max-w-md p-6 rounded-2xl relative"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex items-start gap-4 mb-6">
+            <div className="w-12 h-12 rounded-2xl bg-danger/15 border border-danger/25 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="w-6 h-6 text-danger" />
+            </div>
+            <div className="flex-1">
+              <h2 className="text-lg font-bold text-textPrimary font-display">Disable Account</h2>
+              <p className="text-sm text-textMuted mt-1">
+                This will immediately sign out <span className="text-textPrimary font-semibold">{user.displayName || user.email}</span> from all devices and block any new sign-ins.
+              </p>
+            </div>
+            <button onClick={onClose} className="p-1.5 rounded-lg text-textMuted hover:text-textPrimary hover:bg-white/5 transition">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-xs font-semibold text-textMuted uppercase tracking-wider mb-2">Reason (optional)</label>
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="Policy violation, suspicious activity…"
+              rows={3}
+              className="w-full px-4 py-3 rounded-xl bg-surface border border-border text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-danger/40 resize-none transition"
+            />
+          </div>
+
+          <p className="text-xs text-danger/80 bg-danger/10 border border-danger/20 rounded-xl px-3 py-2 mb-5">
+            ⚠️ All active Firebase refresh tokens will be revoked immediately. This cannot be automatically undone — you must re-enable the account manually.
+          </p>
+
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-border text-textMuted hover:text-textPrimary hover:border-border/80 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDisable}
+              disabled={saving}
+              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold bg-danger hover:bg-danger/80 text-white transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {saving ? 'Disabling…' : 'Disable Account'}
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    </AnimatePresence>
+  )
+}

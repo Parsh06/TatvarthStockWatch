@@ -105,6 +105,7 @@ stockwatch/
 │   │   └── search/
 │   │
 │   ├── routes/                        ← Domain-specific Express route modules
+│   │   ├── adminRoutes.js             ← Admin user management, stats, audit log & controls
 │   │   ├── alertRoutes.js             ← Historical alert logs CRUD
 │   │   ├── analyzeRoute.js            ← AI analysis endpoint
 │   │   ├── announcementRoutes.js      ← Market announcements feed & stats
@@ -122,7 +123,11 @@ stockwatch/
 │   ├── middleware/
 │   │   ├── authenticateFirebase.js    ← Firebase JWT verification (verifyToken)
 │   │   ├── authorization.js           ← stripClientUserParams
-│   │   └── rateLimiter.js             ← globalRateLimiter (120/min), strictRateLimiter (15/min), userMutationRateLimiter (60/min)
+│   │   ├── rateLimiter.js             ← globalRateLimiter (120/min), strictRateLimiter (15/min), userMutationRateLimiter (60/min)
+│   │   └── requireAdmin.js            ← Admin role & granular entitlement guard (read/write) + Redis cache
+│   │
+│   ├── scripts/
+│   │   └── seedAdmin.js               ← Bootstrap script to seed initial admin user role/entitlements
 │   │
 │   ├── services/                      ← Business service layer
 │   │   ├── cronService.js             ← Cronjob orchestration & midnight wipe logic
@@ -197,6 +202,16 @@ stockwatch/
         ├── index.css                  ← ★ GLOBAL STYLES (CSS vars, glass-panel, skeleton, scrollbar)
         │
         ├── components/                ← Feature-based component organization
+        │   ├── Admin/                 ← ★ ADMIN CONTROL CENTER & USER MANAGEMENT
+        │   │   ├── AdminPage.jsx      ← Main admin page shell (4 tabs: Users, Analytics, Audit, System)
+        │   │   ├── AdminRoute.jsx     ← Three-level route guard (Auth, Admin role, Read entitlement)
+        │   │   ├── AdminStatCard.jsx  ← Elevated glass-panel stat card with trends
+        │   │   ├── AdminAuditTable.jsx← Immutable audit trail table with action/user filters
+        │   │   ├── DisableUserModal.jsx← Confirmation modal with reason & token revocation
+        │   │   ├── ReadOnlyBadge.jsx  ← Header indicator when write entitlement is locked
+        │   │   ├── RoleEditModal.jsx  ← Role & read/write entitlement configuration modal
+        │   │   ├── UserDrawer.jsx     ← Slide-over drawer with user profile, watchlist, devices, alerts
+        │   │   └── UserTable.jsx      ← Searchable, sortable user directory with inline actions
         │   ├── AGMUpdates/            ← AGM tracking page
         │   ├── AllAnnouncements/      ← Full announcement feed + AI analysis
         │   ├── Announcements/         ← Watchlist-filtered announcements
@@ -242,6 +257,7 @@ stockwatch/
         │   └── AnnouncementsContext.jsx ← Announcements data provider
         │
         ├── hooks/
+        │   ├── useAdminAuth.js        ← Admin auth & granular entitlement status hook
         │   ├── useAnnouncements.js    ← Announcement fetching/filtering
         │   ├── useCronStatus.js       ← Cron status polling
         │   ├── useDashboardOverview.js ← Dashboard data hook
@@ -294,6 +310,7 @@ stockwatch/
 | `/settings` | `SettingsPage` | 🔒 | User preferences |
 | `/calendar` | `CorporateCalendarPage` | 🔒 | Economic calendar |
 | `/insider` | `InsiderTradingPage` | 🔒 | Insider trading tracker |
+| `/admin` | `AdminPage` | 🔒 Admin | Admin control center, user directory, analytics, audit log & controls |
 | `*` | → redirect | — | Catch-all → `/dashboard` |
 
 ### Backend API Routes (server.js)
@@ -324,6 +341,7 @@ stockwatch/
 | GET | `/api/bse/*` | 🔒 / Open | `bseRoutes.js` |
 | GET | `/api/nse/*` | 🔒 | `nseRoutes.js` |
 | GET | `/api/market/*` | 🔒 | `marketRoutes.js` |
+| ALL | `/api/admin/*` | 🔒 Admin | `adminRoutes.js` (requireAdmin 'read' / 'write') |
 
 ---
 
@@ -339,12 +357,13 @@ stockwatch/
 
 | Collection Path | Purpose |
 |---|---|
-| `users/{uid}` | User profile + `.prefs` (Telegram ID, blocked categories) |
+| `users/{uid}` | User profile + `.prefs` + `.role` ('admin'\|'user') + `.entitlements` ({read: bool, write: bool}) + `.disabled` (bool) |
 | `users/{uid}/watchlist/{docId}` | User's monitored scripts |
 | `users/{uid}/applicants/{docId}` | Encrypted family members (AES-256-GCM PAN) |
 | `users/{uid}/pushDevices/{deviceId}` | Web Push subscriptions |
 | `users/{uid}/alerts/{newsId}` | Historical alert log |
 | `users/{uid}/alert_dedup_locks/{newsId}` | Ephemeral dedup locks (wiped daily) |
+| `admin_audit_log/{logId}` | Immutable administrative audit trail (actor, action, target, payload) |
 | `system_meta/cron_status` | Global cron state (last run, last wipe) |
 
 ### Upstash Redis (Cache)
@@ -687,6 +706,8 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 | 2026-10-12 | BigShare 307 Redirect Resolution & Mirror Fallback: Hardened `bigshareScraper.js` with automated manual hop following for HTTP 301/302/307/308 redirects, custom `validateStatus` allowing 2xx-3xx codes without throwing Axios errors, and resilient fallback to MongoDB `iposymbols` active records so registrar transient redirects never trigger errors in `bigshareNotificationService.js` | `backend/lib/bigshareScraper.js`, `backend/lib/bigshareNotificationService.js` |
 | 2026-10-12 | AI Model Cascade & Groq Environment Compatibility Resolution: Fixed Gemini 503 high-demand errors by expanding `GEMINI_MODELS` with high-capacity models (`gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-flash`, `gemini-2.0-flash-lite`) alongside 3.1/3.7, and extended model timeout to 25s for multi-page statutory PDF vision inference. Resolved `Groq=OFF` in `providerRouter.js` and `grokProvider.js` by supporting both `GROQ_API_KEY` and `GROK_API_KEY` env variables and adding `llama-3.3-70b-versatile` and `llama-3.1-8b-instant` to `GROQ_MODELS`. Fixed NSE session 403 warning in `nseService.js` with `validateStatus` and Akamai-compliant headers, and clean fallback logging in `spurtStore.js` | `backend/lib/providers/geminiProvider.js`, `backend/lib/providers/providerRouter.js`, `backend/lib/providers/grokProvider.js`, `backend/services/nseService.js`, `backend/lib/spurtStore.js`, `GEMINI.md` |
 | 2026-10-12 | Institutional Tier AI Progress HUD, 1-Click Research Brief, Registrar Health & MongoDB Compound Indexes: Added automated MongoDB high-speed compound indexes (`bseCode`, `nseSymbol`, `category`, `datetimeIST`) in `mongoClient.js` for sub-5ms queries. Implemented `GET /api/ipo/registrars-health` endpoint in `ipoVerificationRoutes.js` and live animated Registrar Health Ribbon (Link Intime, KFintech, BigShare multi-server pool) in `IpoVerificationPage.jsx`. Upgraded `AiAnalyzeButton.jsx` with a 4-stage institutional progress HUD with live step counter and multi-color gradient progress bar. Added 1-Click Copy Formatted Research Brief and Print/PDF export buttons in `AiAnalysisPanel.jsx` | `backend/lib/mongoClient.js`, `backend/routes/ipoVerificationRoutes.js`, `frontend/src/components/IpoVerification/IpoVerificationPage.jsx`, `frontend/src/components/Common/AiAnalyzeButton.jsx`, `frontend/src/components/Common/AiAnalysisPanel.jsx`, `frontend/src/components/Announcements/AnnouncementCard.jsx`, `frontend/src/components/AllAnnouncements/AllAnnouncementsPage.jsx`, `GEMINI.md` |
+| 2026-10-16 | Enterprise RBAC Admin Panel, Mission Control & Granular Entitlement Engine (Read/Write): Implemented secure, multi-tier administrative infrastructure for StockWatch. Backend: Created `requireAdmin.js` middleware checking `role === 'admin'` and granular `entitlements.read` / `entitlements.write` with 60s Redis caching (`admin:entitlement:{uid}`). Created `adminRoutes.js` with comprehensive endpoints (`/stats`, `/users`, `/users/:uid`, `/users/:uid/watchlist`, `/users/:uid/alerts`, `/users/:uid/devices`, `/users/:uid/disable`, `/users/:uid/enable`, `/users/:uid/role`, `/audit-log`, `/me`) logging immutable audit trails to Firestore `admin_audit_log`. Account disabling immediately triggers `admin.auth().revokeRefreshTokens(uid)` for instant cross-device signout. Added advanced system management endpoints: `GET /api/admin/system/services-status` (parallel diagnostics for BSE, NSE, MongoDB Atlas, Cloud Firestore, Upstash Redis, AI Provider Router, Telegram bot, IPO Registrars, and Market Cadence), `POST /api/admin/system/test-service/:serviceName` (isolated on-demand test pings with round-trip latency & sample response), `POST /api/admin/system/trigger-cron`, `POST /api/admin/system/trigger-wipe`, and `POST /api/admin/system/flush-cache`. Seeded users in Firestore via `updateUsers.js` (`korojitha@gmail.com` as admin with `read: true, write: true`; `tatvarthcapital@gmail.com` & `cpjain1980@gmail.com` as users). Hardened `firestore.rules` preventing client-side self-elevation to admin, blocking modifications to `role`, `entitlements`, and `disabled`, denying all operations for disabled accounts, and securing `admin_audit_log`. Frontend: Updated `AuthContext.jsx` to load roles & entitlements and export `isAdmin`, `canAdminWrite`, and `refreshAdminProfile`. Added `useAdminAuth.js` hook. Guarded navigation items in `Sidebar.jsx` and mobile bottom navbar in `AppLayout.jsx` to only appear for admins. Added 3-level route guard `AdminRoute.jsx` and mounted `/admin` in `App.jsx`. Built complete luxury glassmorphic `AdminPage.jsx` featuring 4 animated tabs: Mission Control & Services, Users, Analytics, and Audit Trail. Verified with production Vite build | `backend/middleware/requireAdmin.js` (new), `backend/routes/adminRoutes.js` (new), `backend/scripts/seedAdmin.js` (new), `backend/scripts/updateUsers.js` (new), `backend/server.js`, `firestore.rules`, `frontend/src/contexts/AuthContext.jsx`, `frontend/src/hooks/useAdminAuth.js` (new), `frontend/src/components/Layout/Sidebar.jsx`, `frontend/src/components/Layout/AppLayout.jsx`, `frontend/src/App.jsx`, `frontend/src/components/Admin/AdminRoute.jsx` (new), `frontend/src/components/Admin/AdminPage.jsx` (new), `frontend/src/components/Admin/AdminStatCard.jsx` (new), `frontend/src/components/Admin/AdminAuditTable.jsx` (new), `frontend/src/components/Admin/ReadOnlyBadge.jsx` (new), `frontend/src/components/Admin/RoleEditModal.jsx` (new), `frontend/src/components/Admin/DisableUserModal.jsx` (new), `frontend/src/components/Admin/UserDrawer.jsx` (new), `frontend/src/components/Admin/UserTable.jsx` (new), `GEMINI.md` |
+| 2026-10-16 | Autonomous Background Worker, Vercel Native Crons, Push Test & Database Backup Snapshot: Added autonomous background cron loop in `server.js` (`ENABLE_BACKGROUND_WORKER === 'true'`) polling every 2 minutes for Render workers (`render.yaml`). Configured Vercel native crons in `backend/vercel.json` (`schedule: "*/5 * * * *"`) with `x-vercel-cron: "1"` support in `cronRoutes.js`. Added `POST /api/admin/system/test-push` in `adminRoutes.js` to dispatch instant VAPID diagnostic push alerts to admin devices, and `GET /api/admin/system/export-backup` to generate an on-demand complete JSON snapshot of all users and watchlists. Expanded Mission Control command deck in `AdminPage.jsx` with dedicated 1-click Test Web Push and Backup DB buttons. Updated `ensureUserProfile` in `alertService.js` to set standard default role and entitlement attributes for all newly registered accounts | `backend/server.js`, `backend/vercel.json`, `backend/routes/cronRoutes.js`, `backend/routes/adminRoutes.js`, `render.yaml`, `frontend/src/services/alertService.js`, `frontend/src/components/Admin/AdminPage.jsx`, `GEMINI.md` |
 
 ---
 

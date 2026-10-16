@@ -39,7 +39,8 @@ async function verifyToken(req, res, next) {
   }
 
   try {
-    const decoded = await admin.auth().verifyIdToken(token);
+    // Passing true as second argument checks token revocation and user disabled status
+    const decoded = await admin.auth().verifyIdToken(token, true);
     req.uid = decoded.uid;
     req.user = {
       uid: decoded.uid,
@@ -48,6 +49,13 @@ async function verifyToken(req, res, next) {
     };
     next();
   } catch (e) {
+    if (e.code === 'auth/id-token-revoked' || e.code === 'auth/user-disabled') {
+      return res.status(403).json({
+        success: false,
+        error: 'Your account has been disabled or session has been revoked. Please contact administrator.',
+        code: 'ACCOUNT_DISABLED'
+      });
+    }
     console.error('[Auth] Token verification failed:', e.message);
     return res.status(401).json({
       success: false,

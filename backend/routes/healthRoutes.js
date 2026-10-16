@@ -87,4 +87,22 @@ router.post('/telegram-test', verifyToken, async (req, res) => {
   res.json(await sendTelegramTest(userChatId));
 });
 
+/**
+ * GET /api/health/broadcast
+ * Public endpoint to fetch active system announcement banner.
+ */
+router.get('/broadcast', async (req, res) => {
+  try {
+    const { db } = require('../lib/firebaseAdmin');
+    const docSnap = await db.collection('system_meta').doc('broadcast').get();
+    if (docSnap.exists) {
+      res.json({ success: true, broadcast: docSnap.data() });
+    } else {
+      res.json({ success: true, broadcast: { active: false } });
+    }
+  } catch (err) {
+    res.json({ success: true, broadcast: { active: false } });
+  }
+});
+
 module.exports = router;

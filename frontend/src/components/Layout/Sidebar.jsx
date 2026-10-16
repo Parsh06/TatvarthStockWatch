@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Star, Bell, Settings, TrendingUp, ChevronLeft, ChevronRight, LogOut, Crown, Layers, BarChart2, Globe, Newspaper, CalendarDays, Eye, Presentation, Zap, Users, Rocket, FileCheck2, Building2, CalendarCheck } from 'lucide-react'
+import { LayoutDashboard, Star, Bell, Settings, TrendingUp, ChevronLeft, ChevronRight, LogOut, Crown, Layers, BarChart2, Globe, Newspaper, CalendarDays, Eye, Presentation, Zap, Users, Rocket, FileCheck2, Building2, CalendarCheck, ShieldCheck } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../contexts/AuthContext'
+import { useAdminAuth } from '../../hooks/useAdminAuth'
 import { useGlobalAnnouncements } from '../../contexts/AnnouncementsContext'
 import { apiClient } from '../../services/apiClient'
 import toast from 'react-hot-toast'
@@ -37,6 +38,7 @@ function markSeen()    { localStorage.setItem(LS_KEY, new Date().toISOString()) 
 
 export default function Sidebar({ collapsed, onToggle }) {
   const { currentUser, logout } = useAuth()
+  const { isAdmin } = useAdminAuth()
   const { unreadCount, markAllRead } = useGlobalAnnouncements()
   const annCount = unreadCount
 
@@ -101,6 +103,26 @@ export default function Sidebar({ collapsed, onToggle }) {
             {!collapsed && <span className="flex-1">{label}</span>}
           </NavLink>
         ))}
+
+        {/* Admin Panel — only visible to admins with read entitlement */}
+        {isAdmin && (
+          <NavLink
+            to="/admin"
+            className={({ isActive }) =>
+              clsx(
+                'group flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 mt-1',
+                isActive
+                  ? 'bg-amber-500/20 text-amber-400 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]'
+                  : 'text-amber-500/70 hover:bg-amber-500/10 hover:text-amber-400 hover:-translate-y-[1px] border border-amber-500/15 hover:border-amber-500/30',
+                collapsed && 'justify-center'
+              )
+            }
+            title={collapsed ? 'Admin Panel' : undefined}
+          >
+            <ShieldCheck className="w-[22px] h-[22px] flex-shrink-0 transition-transform group-hover:scale-110" />
+            {!collapsed && <span className="flex-1">Admin Panel</span>}
+          </NavLink>
+        )}
 
         <div className="flex-1" />
 
