@@ -5,7 +5,8 @@ import { ShieldAlert } from 'lucide-react'
  * ReadOnlyBadge
  * Displayed in the Admin page header when user has read-only entitlement (no write).
  */
-export default function ReadOnlyBadge() {
+export default function ReadOnlyBadge({ canWrite }) {
+  if (canWrite) return null
   return (
     <AnimatePresence>
       <motion.div
