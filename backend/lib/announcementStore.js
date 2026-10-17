@@ -106,7 +106,17 @@ async function getAnnouncements({ exchange, scriptCode, nseSymbol, limitCount = 
       .limit(Number(limitCount) || 1000)
       .toArray();
       
-    return docs.map(d => ({ ...d, id: String(d._id), _id: undefined }));
+    return docs.map(d => {
+      const bseCode = d.bseCode || (d.exchange === 'BSE' ? d.scriptCode : '');
+      const scriptCode = d.scriptCode || bseCode || d.nseSymbol || '';
+      return {
+        ...d,
+        id: String(d._id),
+        _id: undefined,
+        bseCode,
+        scriptCode,
+      };
+    });
   } catch (err) {
     console.error('[AnnouncementStore] getAnnouncements error:', err.message);
     return [];
@@ -135,7 +145,17 @@ async function getAnnouncementsForScripts(scriptCodes, sinceDate) {
 
   try {
     const docs = await collection.find(query).toArray();
-    return docs.map(d => ({ ...d, id: String(d._id), _id: undefined }));
+    return docs.map(d => {
+      const bseCode = d.bseCode || (d.exchange === 'BSE' ? d.scriptCode : '');
+      const scriptCode = d.scriptCode || bseCode || d.nseSymbol || '';
+      return {
+        ...d,
+        id: String(d._id),
+        _id: undefined,
+        bseCode,
+        scriptCode,
+      };
+    });
   } catch (err) {
     console.error('[AnnouncementStore] getAnnouncementsForScripts error:', err.message);
     return [];

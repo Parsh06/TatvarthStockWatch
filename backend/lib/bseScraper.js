@@ -134,6 +134,7 @@ function normalizeItem(item) {
   return {
     id:               String(id),
     exchange:         'BSE',
+    bseCode:          scripCode,
     scriptName:       scripName || scripCode,
     scriptCode:       scripCode,
     category:         (item.CATEGORYNAME || item.categoryname || item.Category || 'General').trim(),

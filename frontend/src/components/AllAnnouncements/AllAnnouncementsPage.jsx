@@ -101,10 +101,25 @@ export default function AllAnnouncementsPage() {
     setAiAnalysisMap(prev => new Map(prev).set(String(id), data))
   }, [])
 
-  const watchlistCodes = useMemo(() =>
-    new Set(watchlist.map((s) => s.ltdCode || s.bseCode || '').filter(Boolean)),
-    [watchlist]
-  )
+  const watchlistCodes = useMemo(() => {
+    const set = new Set()
+    watchlist.forEach((s) => {
+      const bse = (s.bseCode || s.ltdCode || s.scripCode || s.scriptCode || s.code || '').toString().trim()
+      if (bse) set.add(bse)
+      const nse = (s.nseSymbol || s.symbol || s.shortName || '').toString().trim().toUpperCase()
+      if (nse) set.add(nse)
+    })
+    return set
+  }, [watchlist])
+
+  const isItemInWatchlist = useCallback((a) => {
+    if (!a) return false
+    return (
+      (a.bseCode && watchlistCodes.has(String(a.bseCode).trim())) ||
+      (a.scriptCode && watchlistCodes.has(String(a.scriptCode).trim())) ||
+      (a.nseSymbol && watchlistCodes.has(String(a.nseSymbol).trim().toUpperCase()))
+    )
+  }, [watchlistCodes])
 
   function applyQuickRange(r) {
     setFromDate(r.from()); setToDate(r.to()); setResult(null); setError(null)
@@ -155,12 +170,26 @@ export default function AllAnnouncementsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const allItems = result?.announcements ?? []
+  const rawList = result?.announcements ?? []
+
+  const allItems = useMemo(() => {
+    return rawList.map((a) => {
+      const bse = a.bseCode || (a.exchange === 'BSE' ? a.scriptCode : (!a.nseSymbol && /^\d+$/.test(a.scriptCode) ? a.scriptCode : ''))
+      const nse = a.nseSymbol || (a.exchange === 'NSE' ? a.scriptCode : '')
+      const code = a.scriptCode || bse || nse || ''
+      return {
+        ...a,
+        bseCode: bse,
+        nseSymbol: nse,
+        scriptCode: code,
+      }
+    })
+  }, [rawList])
 
   // Unique categories — scoped to current company if one is selected
   const categoryOptions = useMemo(() => {
     const source = codeFilter
-      ? allItems.filter((a) => a.bseCode === codeFilter || a.scriptCode === codeFilter)
+      ? allItems.filter((a) => a.bseCode === codeFilter || a.scriptCode === codeFilter || a.nseSymbol === codeFilter)
       : allItems
     const counts = {}
     for (const a of source) {
@@ -187,8 +216,8 @@ export default function AllAnnouncementsPage() {
     }
 
     // codeFilter: Server cannot filter by company server-side, must do it here
-    if (codeFilter)    list = list.filter((a) => a.bseCode === codeFilter || a.scriptCode === codeFilter)
-    if (onlyWatchlist) list = list.filter((a) => watchlistCodes.has(a.bseCode))
+    if (codeFilter)    list = list.filter((a) => a.bseCode === codeFilter || a.scriptCode === codeFilter || a.nseSymbol === codeFilter)
+    if (onlyWatchlist) list = list.filter(isItemInWatchlist)
     if (catFilter) {
       const target = catFilter.toLowerCase().trim()
       list = list.filter((a) => {
@@ -213,26 +242,30 @@ export default function AllAnnouncementsPage() {
     }
     
     // Exchange filtering
-    if (exchange === 'BSE') list = list.filter(a => a.bseCode || (a.source === 'BSE' || !a.nseSymbol))
-    if (exchange === 'NSE') list = list.filter(a => a.nseSymbol || a.source === 'NSE')
+    if (exchange === 'BSE') list = list.filter(a => a.exchange === 'BSE' || a.bseCode || a.source === 'BSE' || (!a.nseSymbol && /^\d+$/.test(a.scriptCode)))
+    if (exchange === 'NSE') list = list.filter(a => a.exchange === 'NSE' || a.nseSymbol || a.source === 'NSE')
     
     if (search) {
-      const q = search.toLowerCase()
+      const q = search.toLowerCase().trim()
       list = list.filter((a) =>
         a.scriptName?.toLowerCase().includes(q) ||
-        a.bseCode?.includes(q) ||
+        (a.bseCode && a.bseCode.toLowerCase().includes(q)) ||
+        (a.scriptCode && a.scriptCode.toLowerCase().includes(q)) ||
+        (a.nseSymbol && a.nseSymbol.toLowerCase().includes(q)) ||
         a.subject?.toLowerCase().includes(q) ||
-        a.category?.toLowerCase().includes(q)
+        a.description?.toLowerCase().includes(q) ||
+        a.category?.toLowerCase().includes(q) ||
+        a.subCategory?.toLowerCase().includes(q)
       )
     }
     return list
-  }, [allItems, codeFilter, catFilter, search, onlyWatchlist, watchlistCodes, exchange])
+  }, [allItems, codeFilter, catFilter, search, onlyWatchlist, isItemInWatchlist, exchange])
 
   // Stats scoped to codeFilter context: if a company is selected, scope watchlist/critical to that
-  const baseList         = codeFilter ? allItems.filter((a) => a.bseCode === codeFilter || a.scriptCode === codeFilter) : allItems
+  const baseList         = codeFilter ? allItems.filter((a) => a.bseCode === codeFilter || a.scriptCode === codeFilter || a.nseSymbol === codeFilter) : allItems
   const paginated        = filtered.slice(0, page * PAGE_SIZE)
   const hasMore          = paginated.length < filtered.length
-  const watchlistMatched = baseList.filter((a) => watchlistCodes.has(a.bseCode)).length
+  const watchlistMatched = baseList.filter(isItemInWatchlist).length
   const criticalCount    = baseList.filter((a) => a.critical).length
   const activeFilters    = [catFilter, codeFilter, search, onlyWatchlist].filter(Boolean).length
   const companyFiltered  = codeFilter && result  // true when showing a specific company's data
@@ -506,9 +539,10 @@ export default function AllAnnouncementsPage() {
           ) : (
             <div className="space-y-2">
               {paginated.map((a) => {
-                const inWatchlist = watchlistCodes.has(a.bseCode)
+                const inWatchlist = isItemInWatchlist(a)
+                const displayCode = a.bseCode || (a.exchange === 'BSE' ? a.scriptCode : (/^\d+$/.test(a.scriptCode) ? a.scriptCode : ''))
                 return (
-                  <div key={a.id || `${a.bseCode}-${a.announcementDate}`}
+                  <div key={a.id || `${a.bseCode || a.scriptCode || a.nseSymbol}-${a.announcementDate}`}
                     className={clsx(
                       'group bg-surface border rounded-xl p-4 flex gap-3 hover:border-primary/40 transition-all',
                       inWatchlist ? 'border-warning/25 ring-1 ring-warning/10' : 'border-border',
@@ -540,14 +574,19 @@ export default function AllAnnouncementsPage() {
                       {/* Company + code — clickable to Company Data */}
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <button
-                          onClick={() => a.bseCode && navigate('/company-data', { state: { script: { bseCode: a.bseCode, scripName: a.scriptName, symbol: a.nseSymbol || '' } } })}
+                          onClick={() => {
+                            const code = displayCode || a.bseCode || a.scriptCode
+                            if (code) {
+                              navigate('/company-data', { state: { script: { bseCode: code, scripName: a.scriptName, symbol: a.nseSymbol || '' } } })
+                            }
+                          }}
                           className="text-sm font-semibold text-textPrimary hover:text-primary transition text-left"
                           title="View company data"
                         >
                           {a.scriptName}
                         </button>
-                        {a.bseCode && (
-                          <code className="text-xs font-mono text-textMuted bg-background px-1.5 py-0.5 rounded border border-border">{a.bseCode}</code>
+                        {displayCode && (
+                          <code className="text-xs font-mono text-textMuted bg-background px-1.5 py-0.5 rounded border border-border">{displayCode}</code>
                         )}
                         {a.nseSymbol && (
                           <code className="text-xs font-mono text-textMuted opacity-70">{a.nseSymbol}</code>
