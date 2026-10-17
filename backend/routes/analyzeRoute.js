@@ -54,6 +54,10 @@ module.exports = function createAnalyzeRouter(verifyToken) {
       // ── 1. Find the announcement ─────────────────────────────────────────────
       let ann = await col.findOne({ $or: [{ _id: announcementId }, { id: announcementId }] });
       if (!ann && req.body && (req.body.pdfUrl || req.body.subject || req.body.headline || req.body.scriptName)) {
+        const { validateSafeFilingUrl } = require('../utils/validators');
+        if (req.body.pdfUrl && !validateSafeFilingUrl(req.body.pdfUrl).valid) {
+          return res.status(400).json({ success: false, error: 'Invalid or unsafe PDF filing URL. Must be an official exchange HTTPS link.' });
+        }
         ann = {
           _id: announcementId,
           id: announcementId,
@@ -74,6 +78,22 @@ module.exports = function createAnalyzeRouter(verifyToken) {
           model: ann.aiAnalysis.model,
           provider: ann.aiAnalysis.provider || 'gemini',
           analysis: ann.aiAnalysis.analysis,
+        });
+      }
+
+      // ── 2b. Check Daily AI Quota for new generation ────────────────────────
+      const { checkAndConsumeAiQuota } = require('../lib/planLimits');
+      const quotaCheck = await checkAndConsumeAiQuota(req.uid);
+      if (!quotaCheck.allowed) {
+        return res.status(403).json({
+          success: false,
+          error: `Daily AI analysis quota reached (${quotaCheck.usedToday}/${quotaCheck.maxAllowed} used today on ${quotaCheck.plan.toUpperCase()} plan). Upgrade to Pro or Premium for unlimited real-time AI summaries.`,
+          code: 'PLAN_LIMIT_REACHED',
+          feature: 'ai_analysis',
+          plan: quotaCheck.plan,
+          usedToday: quotaCheck.usedToday,
+          maxAllowed: quotaCheck.maxAllowed,
+          resetsAt: 'Midnight IST',
         });
       }
 

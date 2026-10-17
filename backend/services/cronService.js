@@ -4,7 +4,7 @@ const { getDb } = require('../lib/mongoClient');
 const { cleanupHistoricalIpos } = require('../lib/ipoStore');
 const { wipeTodayClosingIpos, syncTodayClosingIpos } = require('../lib/ipoClosingStore');
 const { getIposClosingToday } = require('./ipoService');
-const { fetchAllBSEAnnouncements } = require('../lib/bseScraper');
+const { fetchAllBSEAnnouncements, clearKnownBseAnnouncementIds } = require('../lib/bseScraper');
 const { fetchAllNSEAnnouncements } = require('../lib/nseScraper');
 const { saveAnnouncements } = require('../lib/announcementStore');
 const { processNewAnnouncements, processNewIpos } = require('../lib/notificationEngine');
@@ -13,11 +13,14 @@ const { saveIpoSymbols, reconcileMissingIpos } = require('../lib/ipoStore');
 const { processIpoClosingQueueTick } = require('../lib/ipoClosingNotificationService');
 const { checkAndNotifyNewMufgIpos } = require('../lib/mufgNotificationService');
 const { checkAndNotifyNewBigshareIpos } = require('../lib/bigshareNotificationService');
-const { getMarketCadence } = require('../lib/time/istTime');
+const { getMarketCadence, getISTDateTime } = require('../lib/time/istTime');
 
 // In-memory cache for announcements (for fast preview/stats)
 const _cache = { announcements: [] };
 let _lastHeavyScrapeTime = 0;
+let _lastRegistrarCheckTime = 0;
+const REGISTRAR_CADENCE_NORMAL_MS = 10 * 60 * 1000;  // 10 minutes regular interval
+const REGISTRAR_CADENCE_EVENING_MS = 5 * 60 * 1000;   // 5 minutes (20:00 - 23:30 IST evening allotment drop window)
 
 function getAnnouncementsMemoryCache() {
   return _cache.announcements;
@@ -69,6 +72,8 @@ async function performMidnightWipeIfNeeded() {
       }
 
       setAnnouncementsMemoryCache([]);
+      clearKnownBseAnnouncementIds();
+      _lastRegistrarCheckTime = 0;
 
       await metaRef.set({
         lastWipeDate: todayDateStr,
@@ -83,6 +88,95 @@ async function performMidnightWipeIfNeeded() {
   } catch (err) {
     console.error('[Midnight Wipe] Error executing midnight wipe:', err.message);
     return { wiped: false, error: err.message };
+  }
+}
+
+/**
+ * Automated Plan Lifecycle Engine:
+ * 1. Pre-expiry alerts: Warns users 3 days prior to expiration via Web Push.
+ * 2. Graceful Downgrade: Reverts expired Pro/Premium accounts to Basic without deleting data.
+ */
+async function processPlanExpirationsAndReminders() {
+  try {
+    const admin = require('firebase-admin');
+    const db = admin.firestore();
+    const now = new Date();
+    const threeDaysFromNow = new Date(now.getTime() + (3 * 24 * 60 * 60 * 1000));
+
+    // Fetch all active paid tier users (pro / premium) with zero composite index requirement
+    const paidSnap = await db.collection('users')
+      .where('plan', 'in', ['pro', 'premium'])
+      .get();
+
+    if (paidSnap.empty) return;
+
+    let sendWebPushToUser = null;
+    try {
+      sendWebPushToUser = require('../lib/webPushNotifier').sendWebPushToUser;
+    } catch {}
+
+    const nowMs = now.getTime();
+    const threeDaysMs = threeDaysFromNow.getTime();
+
+    for (const userDoc of paidSnap.docs) {
+      const d = userDoc.data();
+      if (!d.planExpiresAt) continue; // Lifetime plan — never expires
+
+      const expiresDate = d.planExpiresAt.toDate ? d.planExpiresAt.toDate() : new Date(d.planExpiresAt);
+      const expiresMs = expiresDate.getTime();
+      const uid = userDoc.id;
+
+      // 1. Process Expired Plan
+      if (expiresMs < nowMs) {
+        const prevPlan = d.plan || 'pro';
+        await userDoc.ref.set({
+          plan: 'basic',
+          planStatus: 'expired',
+          downgradedAt: admin.firestore.FieldValue.serverTimestamp(),
+          planHistory: admin.firestore.FieldValue.arrayUnion({
+            plan: 'basic',
+            action: 'EXPIRED_DOWNGRADE',
+            timestamp: now.toISOString(),
+            previousPlan: prevPlan,
+            notes: 'Subscription concluded. Reverted to Basic tier without data loss.',
+          }),
+        }, { merge: true });
+
+        if (sendWebPushToUser) {
+          sendWebPushToUser(uid, {
+            title: 'Subscription Ended — Returned to Basic Plan',
+            body: 'Your Pro subscription has concluded. Your saved stocks and applicants remain safe. Renew anytime to re-enable Pro features.',
+            url: 'https://tatvarthstockwatch.web.app/plans',
+          }).catch(() => {});
+        }
+        continue;
+      }
+
+      // 2. Process Expiry Reminders (T-3 Days)
+      if (expiresMs <= threeDaysMs && expiresMs > nowMs) {
+        const lastReminder = d.lastReminderSentAt?.toDate ? d.lastReminderSentAt.toDate() : (d.lastReminderSentAt ? new Date(d.lastReminderSentAt) : null);
+
+        // Only send if no reminder was sent in the past 2.5 days
+        if (!lastReminder || (nowMs - lastReminder.getTime()) > (2.5 * 24 * 60 * 60 * 1000)) {
+          const expiresDateStr = expiresDate.toLocaleDateString('en-IN');
+
+          await userDoc.ref.set({
+            planStatus: 'expiring_soon',
+            lastReminderSentAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+
+          if (sendWebPushToUser) {
+            sendWebPushToUser(uid, {
+              title: `⏳ Your ${d.plan?.toUpperCase()} Plan Expires in 3 Days`,
+              body: `Your subscription expires on ${expiresDateStr}. Renew now to keep 50+ watchlists and unlimited AI analysis uninterrupted.`,
+              url: 'https://tatvarthstockwatch.web.app/plans',
+            }).catch(() => {});
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[PlanLifecycle] Error processing expirations:', err.message);
   }
 }
 
@@ -175,18 +269,55 @@ async function runGlobalCronTick(options = {}) {
     ? await processNewAnnouncements(newAnnouncements)
     : { newAnnouncements: 0 };
 
-  // 4. IPO Allotment Symbol Discovery & Alert Pipeline (KFintech)
+  // 4 & 6. IPO Allotment Symbol Discovery & Alert Pipeline (Registrars Cadence Throttle)
   let ipoStats = { newIpos: 0 };
-  try {
-    const scrapedIpos = await scrapeKfinCompanies();
-    const newIpos = await saveIpoSymbols(scrapedIpos);
-    await reconcileMissingIpos(scrapedIpos).catch(() => {});
+  const { istHour, istMinute } = getISTDateTime(new Date());
+  // Evening allotment release window (20:00 - 23:30 IST): 5-min cadence. Otherwise: 10-min cadence.
+  const isEveningAllotmentWindow = (istHour >= 20 && istHour < 23) || (istHour === 23 && istMinute <= 30);
+  const requiredRegistrarCadence = isEveningAllotmentWindow ? REGISTRAR_CADENCE_EVENING_MS : REGISTRAR_CADENCE_NORMAL_MS;
+  const elapsedRegistrar = Date.now() - _lastRegistrarCheckTime;
+  const shouldCheckRegistrars = Boolean(options.force || options.forceRegistrars || elapsedRegistrar >= requiredRegistrarCadence);
 
-    if (newIpos && newIpos.length > 0) {
-      ipoStats = await processNewIpos(newIpos);
+  if (shouldCheckRegistrars) {
+    _lastRegistrarCheckTime = Date.now();
+    const cadenceDesc = isEveningAllotmentWindow ? 'Evening Allotment Window (5m)' : 'Standard Cadence (10m)';
+    console.log(`[Global Cron] Running Registrar Discovery [${cadenceDesc}]...`);
+
+    // 4. IPO Allotment Symbol Discovery & Alert Pipeline (KFintech)
+    try {
+      const scrapedIpos = await scrapeKfinCompanies();
+      const newIpos = await saveIpoSymbols(scrapedIpos);
+      await reconcileMissingIpos(scrapedIpos).catch(() => {});
+
+      if (newIpos && newIpos.length > 0) {
+        ipoStats = await processNewIpos(newIpos);
+      }
+    } catch (ipoErr) {
+      console.error('[Global Cron] IPO Discovery Error:', ipoErr.message);
     }
-  } catch (ipoErr) {
-    console.error('[Global Cron] IPO Discovery Error:', ipoErr.message);
+
+    // 6. Check & Notify for New Allotments on Registrars (MUFG & BigShare)
+    try {
+      await checkAndNotifyNewMufgIpos().catch(e => console.error('[Global Cron] MUFG Allotment Check Error:', e.message));
+    } catch (mufgErr) {
+      console.error('[Global Cron] MUFG notifier error:', mufgErr.message);
+    }
+
+    try {
+      await checkAndNotifyNewBigshareIpos().catch(e => console.error('[Global Cron] BigShare Allotment Check Error:', e.message));
+    } catch (bigshareErr) {
+      console.error('[Global Cron] BigShare notifier error:', bigshareErr.message);
+    }
+
+    // 7. Multi-Registrar Reconciliation & Historical Cleanup
+    try {
+      await cleanupHistoricalIpos().catch(() => {});
+    } catch (cleanErr) {
+      console.error('[Global Cron] IPO cleanup error:', cleanErr.message);
+    }
+  } else {
+    const nextCheckMins = Math.max(1, Math.ceil((requiredRegistrarCadence - elapsedRegistrar) / 60000));
+    console.log(`[Global Cron] Registrars cached (${Math.floor(elapsedRegistrar / 60000)}m elapsed < ${Math.round(requiredRegistrarCadence / 60000)}m). Next check in ~${nextCheckMins}m.`);
   }
 
   // 5. IPO Closing Day Dispatch (11:00 AM – 12:59 PM IST, one IPO per tick)
@@ -203,24 +334,11 @@ async function runGlobalCronTick(options = {}) {
     console.error('[Global Cron] IPO closing tick error:', ipoCloseErr.message);
   }
 
-  // 6. Check & Notify for New Allotments on Registrars (MUFG & BigShare)
+  // 7b. Membership Plan Expiry & 3-Day Renewal Reminder Engine
   try {
-    await checkAndNotifyNewMufgIpos().catch(e => console.error('[Global Cron] MUFG Allotment Check Error:', e.message));
-  } catch (mufgErr) {
-    console.error('[Global Cron] MUFG notifier error:', mufgErr.message);
-  }
-
-  try {
-    await checkAndNotifyNewBigshareIpos().catch(e => console.error('[Global Cron] BigShare Allotment Check Error:', e.message));
-  } catch (bigshareErr) {
-    console.error('[Global Cron] BigShare notifier error:', bigshareErr.message);
-  }
-
-  // 7. Multi-Registrar Reconciliation & Historical Cleanup
-  try {
-    await cleanupHistoricalIpos().catch(() => {});
-  } catch (cleanErr) {
-    console.error('[Global Cron] IPO cleanup error:', cleanErr.message);
+    await processPlanExpirationsAndReminders();
+  } catch (planErr) {
+    console.error('[Global Cron] Plan lifecycle error:', planErr.message);
   }
 
   // 8. Write meta status to Firestore for real-time frontend status updates
@@ -301,6 +419,27 @@ async function runUserManualTrigger() {
 /**
  * Manual trigger for IPO closing queue tick (bypasses time window check if forced).
  */
+function getRegistrarCadenceStatus() {
+  const { istHour, istMinute } = getISTDateTime(new Date());
+  const isEvening = (istHour >= 20 && istHour < 23) || (istHour === 23 && istMinute <= 30);
+  const requiredCadence = isEvening ? REGISTRAR_CADENCE_EVENING_MS : REGISTRAR_CADENCE_NORMAL_MS;
+  const elapsed = Date.now() - _lastRegistrarCheckTime;
+  return {
+    lastCheckedAt: _lastRegistrarCheckTime ? new Date(_lastRegistrarCheckTime).toISOString() : null,
+    elapsedMinutes: Math.floor(elapsed / 60000),
+    cadenceMinutes: Math.round(requiredCadence / 60000),
+    isEveningWindow: isEvening,
+    dueNow: elapsed >= requiredCadence,
+  };
+}
+
+function resetRegistrarCadence() {
+  _lastRegistrarCheckTime = 0;
+}
+
+/**
+ * Manual trigger for IPO closing queue tick (bypasses time window check if forced).
+ */
 async function runManualIpoClosingTick(force = true) {
   return await processIpoClosingQueueTick({ force });
 }
@@ -310,6 +449,9 @@ module.exports = {
   runGlobalCronTick,
   runUserManualTrigger,
   runManualIpoClosingTick,
+  processPlanExpirationsAndReminders,
   getAnnouncementsMemoryCache,
   setAnnouncementsMemoryCache,
+  getRegistrarCadenceStatus,
+  resetRegistrarCadence,
 };

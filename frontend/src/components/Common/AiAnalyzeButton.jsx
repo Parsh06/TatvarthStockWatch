@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Sparkles, RefreshCw, AlertCircle, Clock } from 'lucide-react'
+import { Sparkles, RefreshCw, AlertCircle, Clock, Crown } from 'lucide-react'
 import clsx from 'clsx'
+import { useAuth } from '../../contexts/AuthContext'
 import { analyzeAnnouncement } from '../../services/announcementService'
+import UpgradePromptModal from '../Plans/UpgradePromptModal'
 
 const LOADING_STAGES = [
   '📄 Downloading Statutory PDF (BSE/NSE CDN)...',
@@ -30,7 +32,11 @@ export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysi
   const [state, setState] = useState(hasCached ? 'cached' : 'idle') // idle | cached | loading | error
   const [errorMsg, setErrorMsg] = useState('')
   const [stageIdx, setStageIdx] = useState(0)
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
   const stageTimer = useRef(null)
+
+  const { plan, isPro, isPremium, dailyAiCount, planLimits } = useAuth()
+  const maxAi = planLimits?.maxAiDaily ?? 3
 
   useEffect(() => {
     if (initialAnalysis?.generated && state === 'idle') {
@@ -64,6 +70,12 @@ export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysi
 
     if (state === 'loading') return
 
+    // Daily limit check for generating fresh analysis on basic tier
+    if (maxAi !== Infinity && (dailyAiCount || 0) >= maxAi) {
+      setUpgradeModalOpen(true)
+      return
+    }
+
     setState('loading')
     setErrorMsg('')
     startStageTimer()
@@ -75,8 +87,13 @@ export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysi
       onResult?.(result.analysis)
     } catch (err) {
       stopStageTimer()
-      setState('error')
       const raw = err.message || ''
+      if (raw.includes('AI analysis limit reached') || raw.includes('PLAN_LIMIT_REACHED') || err.status === 403) {
+        setState('idle')
+        setUpgradeModalOpen(true)
+        return
+      }
+      setState('error')
       if (raw.includes('PDF unavailable') || raw.includes('NO_PDF')) {
         setErrorMsg('PDF unavailable for this filing.')
       } else if (raw.includes('422')) {
@@ -218,12 +235,26 @@ export default function AiAnalyzeButton({ announcementId, pdfUrl, initialAnalysi
 
         <Sparkles className="w-3.5 h-3.5 group-hover:rotate-12 transition-transform duration-200 relative z-10" />
         <span className="relative z-10">AI Analyze</span>
+        {/* Daily limit badge for basic users */}
+        {maxAi !== Infinity && (
+          <span className="hidden sm:inline text-[10px] text-violet-200/90 font-mono font-medium px-1.5 py-0.2 bg-black/25 rounded relative z-10">
+            {dailyAiCount || 0}/{maxAi}
+          </span>
+        )}
         {/* Hidden on very narrow layouts (mobile announcement cards) to keep the button compact */}
         <span className="hidden xs:flex sm:flex items-center gap-1 text-white/60 font-normal text-[10px] relative z-10">
           <Clock className="w-2.5 h-2.5" />
           ~20s
         </span>
       </button>
+
+      <UpgradePromptModal
+        isOpen={upgradeModalOpen}
+        onClose={() => setUpgradeModalOpen(false)}
+        title="Daily AI Limit Reached"
+        message={`You've reached your free daily limit of ${maxAi} Gemini AI filings analyses for today. Upgrade to Pro for unlimited PDF extraction, YoY/QoQ breakdown, and institutional guidance.`}
+        targetTier="pro"
+      />
     </>
   )
 }

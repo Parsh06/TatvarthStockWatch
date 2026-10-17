@@ -35,6 +35,9 @@ import PublicBasketPage from './components/Watchlist/PublicBasketPage'
 
 import PendingApprovalPage from './components/Auth/PendingApprovalPage'
 import AccessRejectedPage from './components/Auth/AccessRejectedPage'
+import AccountDisabledPage from './components/Auth/AccountDisabledPage'
+import PlansPage from './components/Plans/PlansPage'
+import WelcomePage from './components/Welcome/WelcomePage'
 
 import { Preloader } from './components/Common/Preloader'
 
@@ -49,10 +52,16 @@ function FirebaseAnalyticsTracker() {
 }
 
 function ProtectedRoute({ children }) {
-  const { currentUser, loading, role, approvalStatus, rejectedReason } = useAuth()
+  const { currentUser, loading, role, approvalStatus, rejectedReason, isDisabled, disabledReason } = useAuth()
   if (loading) {
     return <Preloader />
   }
+
+  // Account disabled by admin (highest precedence: blocks all roles including admin!)
+  if (isDisabled) {
+    return <AccountDisabledPage reason={disabledReason} />
+  }
+
   if (!currentUser) return <Navigate to="/login" replace />
 
   // Admins bypass approval gate
@@ -81,7 +90,8 @@ function PublicRoute({ children }) {
   }
   if (currentUser) {
     const params = new URLSearchParams(location.search)
-    const redirectUrl = params.get('redirect') || '/dashboard'
+    const plan = params.get('plan')
+    const redirectUrl = params.get('redirect') || (plan && plan !== 'basic' ? `/plans?select=${plan}` : '/dashboard')
     return <Navigate to={redirectUrl} replace />
   }
   return children
@@ -99,7 +109,10 @@ function AppRoutes() {
       <Routes>
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/register" element={<Navigate to="/login" replace />} />
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/account-disabled" element={<AccountDisabledPage />} />
+      <Route path="/" element={<WelcomePage />} />
+      <Route path="/welcome" element={<WelcomePage />} />
+      <Route path="/landing" element={<WelcomePage />} />
       <Route
         path="/dashboard"
         element={
@@ -295,6 +308,28 @@ function AppRoutes() {
       />
       {/* ── Public Shareable Curated Watchlist Basket Route ── */}
       <Route path="/basket/:slug" element={<PublicBasketPage />} />
+
+      {/* ── Membership Plans & Pricing ── */}
+      <Route
+        path="/plans"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <PlansPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/pricing"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <PlansPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

@@ -109,8 +109,15 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       approvalRequestedAt: profileData.approvalRequestedAt?.toDate?.()?.toISOString() || profileData.approvalRequestedAt || null,
       approvedAt: profileData.approvedAt?.toDate?.()?.toISOString() || profileData.approvedAt || null,
       rejectedAt: profileData.rejectedAt?.toDate?.()?.toISOString() || profileData.rejectedAt || null,
-      rejectedReason: profileData.rejectedReason || null,
       prefs: profileData.prefs || {},
+      plan: profileData.plan || 'basic',
+      planStatus: profileData.planStatus || 'active',
+      planStartedAt: profileData.planStartedAt?.toDate?.()?.toISOString() || profileData.planStartedAt || null,
+      planExpiresAt: profileData.planExpiresAt?.toDate?.()?.toISOString() || profileData.planExpiresAt || null,
+      planAssignedBy: profileData.planAssignedBy || null,
+      planNotes: profileData.planNotes || null,
+      planHistory: Array.isArray(profileData.planHistory) ? profileData.planHistory : [],
+      dailyAiUsage: profileData.dailyAiUsage || { date: null, count: 0 },
       watchlistCount,
     };
   }
@@ -337,13 +344,37 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       // Revoke all refresh tokens (force sign-out from all devices)
       await admin.auth().revokeRefreshTokens(uid);
 
+      const effectiveReason = (reason && reason.trim()) || 'Your account access has been suspended by an administrator.';
+
       // Update Firestore profile
       await db.collection('users').doc(uid).set({
         disabled: true,
         disabledAt: admin.firestore.FieldValue.serverTimestamp(),
         disabledBy: actorUid,
-        disabledReason: reason || 'Disabled by admin',
+        disabledReason: effectiveReason,
       }, { merge: true });
+
+      // Purge registered push devices so disabled user stops receiving push notifications
+      try {
+        const pushSnap = await db.collection('users').doc(uid).collection('pushDevices').get();
+        if (!pushSnap.empty) {
+          const batch = db.batch();
+          pushSnap.docs.forEach(docSnap => batch.delete(docSnap.ref));
+          await batch.commit();
+        }
+      } catch (pushErr) {
+        console.warn(`[Admin] Failed to clear push devices for disabled user ${uid}:`, pushErr.message);
+      }
+
+      // Remove from Redis notification sets if available
+      try {
+        const redisNotifStore = require('../lib/redis/redisNotificationStore');
+        if (redisNotifStore && typeof redisNotifStore.removeScopeAllUser === 'function') {
+          await redisNotifStore.removeScopeAllUser(uid).catch(() => {});
+        }
+      } catch (redisErr) {
+        console.warn(`[Admin] Failed to clean Redis notification cache for ${uid}:`, redisErr.message);
+      }
 
       // Invalidate entitlement cache for this user
       await invalidateEntitlementCache(uid);
@@ -354,10 +385,10 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
         actorEmail: req.user?.email,
         action: 'DISABLE_USER',
         targetUid: uid,
-        payload: { reason },
+        payload: { reason: effectiveReason },
       });
 
-      res.json({ success: true, message: 'Account disabled and all sessions revoked' });
+      res.json({ success: true, message: 'Account disabled, sessions revoked, and notifications deactivated' });
     } catch (err) {
       console.error('[Admin] /disable error:', err.message);
       res.status(500).json({ success: false, error: 'Failed to disable account' });
@@ -402,12 +433,33 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       const { uid } = req.params;
       const actorUid = req.uid;
 
+      // Lookup user email to record in approved_emails
+      let userEmail = '';
+      try {
+        const uDoc = await db.collection('users').doc(uid).get();
+        if (uDoc.exists && uDoc.data()?.email) {
+          userEmail = uDoc.data().email.toLowerCase().trim();
+        } else {
+          const authUser = await admin.auth().getUser(uid);
+          userEmail = (authUser.email || '').toLowerCase().trim();
+        }
+      } catch {}
+
       await db.collection('users').doc(uid).set({
         approvalStatus: 'approved',
         approvedAt: new Date(),
         approvedBy: actorUid,
         rejectedReason: null,
       }, { merge: true });
+
+      if (userEmail) {
+        await db.collection('approved_emails').doc(userEmail).set({
+          email: userEmail,
+          uid,
+          approvedAt: new Date(),
+          approvedBy: actorUid,
+        }, { merge: true }).catch(() => {});
+      }
 
       await invalidateEntitlementCache(uid);
 
@@ -416,7 +468,7 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
         actorEmail: req.user?.email,
         action: 'USER_ACCESS_APPROVED',
         targetUid: uid,
-        payload: {},
+        payload: { email: userEmail },
       });
 
       res.json({ success: true, message: 'User access approved successfully', approvalStatus: 'approved' });
@@ -433,12 +485,25 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       const { reason } = req.body || {};
       const actorUid = req.uid;
 
+      // Lookup user email to clean up approved_emails
+      let userEmail = '';
+      try {
+        const uDoc = await db.collection('users').doc(uid).get();
+        if (uDoc.exists && uDoc.data()?.email) {
+          userEmail = uDoc.data().email.toLowerCase().trim();
+        }
+      } catch {}
+
       await db.collection('users').doc(uid).set({
         approvalStatus: 'rejected',
         rejectedAt: new Date(),
         rejectedBy: actorUid,
         rejectedReason: reason || 'Access request declined by administrator',
       }, { merge: true });
+
+      if (userEmail) {
+        await db.collection('approved_emails').doc(userEmail).delete().catch(() => {});
+      }
 
       // Revoke active sessions immediately
       await admin.auth().revokeRefreshTokens(uid).catch(() => {});
@@ -535,6 +600,147 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
     } catch (err) {
       console.error('[Admin] /role error:', err.message);
       res.status(500).json({ success: false, error: 'Failed to update role' });
+    }
+  });
+
+  // ── PATCH /api/admin/users/:uid/plan ─────────────────────────────────────
+  router.patch('/users/:uid/plan', verifyToken, requireAdmin('write'), async (req, res) => {
+    try {
+      const { uid } = req.params;
+      const { plan, notes = '' } = req.body || {};
+      const actorUid = req.uid;
+
+      const validPlans = ['basic', 'pro', 'premium'];
+      const targetPlan = (plan || 'basic').toLowerCase();
+      if (!validPlans.includes(targetPlan)) {
+        return res.status(400).json({ success: false, error: `Invalid plan. Must be one of: ${validPlans.join(', ')}` });
+      }
+
+      let months = 1;
+      const rawDuration = req.body?.duration !== undefined ? req.body?.duration : req.body?.durationMonths;
+      if (rawDuration === 'lifetime' || rawDuration === '0' || rawDuration === 0 || rawDuration === null) {
+        months = 0; // Lifetime
+      } else if (rawDuration === '1y' || rawDuration === '12m') {
+        months = 12;
+      } else if (rawDuration === '6m') {
+        months = 6;
+      } else if (rawDuration === '3m') {
+        months = 3;
+      } else if (rawDuration === '1m') {
+        months = 1;
+      } else if (!isNaN(Number(rawDuration))) {
+        months = Number(rawDuration);
+      }
+
+      let planExpiresAt = null;
+      let planStatus = 'active';
+
+      if (targetPlan !== 'basic') {
+        if (months && months > 0) {
+          const now = new Date();
+          now.setMonth(now.getMonth() + months);
+          planExpiresAt = now;
+        } else {
+          // 0 or null implies lifetime / ongoing
+          planExpiresAt = null;
+        }
+      }
+
+      const updateData = {
+        plan: targetPlan,
+        planStatus,
+        planStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+        planExpiresAt: planExpiresAt ? admin.firestore.Timestamp.fromDate(planExpiresAt) : null,
+        planAssignedBy: actorUid,
+        planNotes: (notes && notes.trim()) || null,
+        planHistory: admin.firestore.FieldValue.arrayUnion({
+          plan: targetPlan,
+          action: targetPlan === 'basic' ? 'RESET_BASIC' : 'UPGRADE',
+          durationMonths: months || null,
+          timestamp: new Date().toISOString(),
+          assignedBy: actorUid,
+          notes: (notes && notes.trim()) || null,
+        }),
+      };
+
+      await db.collection('users').doc(uid).set(updateData, { merge: true });
+
+      await invalidateEntitlementCache(uid);
+
+      await writeAuditLog({
+        actorUid,
+        actorEmail: req.user?.email,
+        action: targetPlan === 'basic' ? 'DOWNGRADE_USER_PLAN' : 'UPGRADE_USER_PLAN',
+        targetUid: uid,
+        payload: { plan: targetPlan, durationMonths: months, notes },
+      });
+
+      // Send congratulatory push notification to user
+      if (targetPlan !== 'basic') {
+        const { sendWebPushToUser } = require('../lib/webPushNotifier');
+        sendWebPushToUser(uid, {
+          title: `🎉 ${targetPlan === 'premium' ? 'Premium HNI' : 'Pro'} Plan Activated!`,
+          body: `Your account has been upgraded to ${targetPlan.toUpperCase()} with full intelligence unlocked.`,
+          url: 'https://tatvarthstockwatch.web.app/plans',
+        }).catch(() => {});
+      }
+
+      res.json({
+        success: true,
+        message: `User plan updated to '${targetPlan.toUpperCase()}' successfully`,
+        plan: targetPlan,
+        planStatus,
+        planExpiresAt: planExpiresAt ? planExpiresAt.toISOString() : null,
+        membership: {
+          plan: targetPlan,
+          planStatus,
+          planExpiresAt: planExpiresAt ? planExpiresAt.toISOString() : null,
+          planAssignedBy: actorUid,
+          planNotes: (notes && notes.trim()) || null,
+        },
+      });
+    } catch (err) {
+      console.error('[Admin] /plan error:', err.message);
+      res.status(500).json({ success: false, error: 'Failed to update user plan' });
+    }
+  });
+
+  // ── PATCH /api/admin/users/:uid/plan/revoke ──────────────────────────────
+  router.patch('/users/:uid/plan/revoke', verifyToken, requireAdmin('write'), async (req, res) => {
+    try {
+      const { uid } = req.params;
+      const { reason = '' } = req.body || {};
+      const actorUid = req.uid;
+
+      await db.collection('users').doc(uid).set({
+        plan: 'basic',
+        planStatus: 'expired',
+        planExpiresAt: null,
+        planRevokedAt: admin.firestore.FieldValue.serverTimestamp(),
+        planRevokedBy: actorUid,
+        planHistory: admin.firestore.FieldValue.arrayUnion({
+          plan: 'basic',
+          action: 'REVOKE',
+          timestamp: new Date().toISOString(),
+          assignedBy: actorUid,
+          notes: reason || 'Revoked by admin',
+        }),
+      }, { merge: true });
+
+      await invalidateEntitlementCache(uid);
+
+      await writeAuditLog({
+        actorUid,
+        actorEmail: req.user?.email,
+        action: 'REVOKE_USER_PLAN',
+        targetUid: uid,
+        payload: { reason },
+      });
+
+      res.json({ success: true, message: 'User plan revoked and reverted to Basic', plan: 'basic' });
+    } catch (err) {
+      console.error('[Admin] /plan/revoke error:', err.message);
+      res.status(500).json({ success: false, error: 'Failed to revoke user plan' });
     }
   });
 

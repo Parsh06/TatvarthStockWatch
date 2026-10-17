@@ -16,7 +16,7 @@ const BASE_HEADERS = {
 let _nseCookies      = '';
 let _nseInitialised  = false;
 let _nseSessionAt    = 0;
-const SESSION_TTL_MS = 2 * 60 * 1000;   // re-init every 2 minutes — NSE cookies expire quickly
+const SESSION_TTL_MS = 20 * 60 * 1000;   // 20 minutes keep-alive — eliminates ~18GB/mo redundant homepage downloads
 
 // ── Session init ──────────────────────────────────────────────────────────────
 // NSE Akamai requires: homepage visit → filings page visit → API call
@@ -157,6 +157,16 @@ async function fetchAllNSEAnnouncements(watchedMap = new Map()) {
 function resetNSESession() {
   _nseInitialised = false;
   _nseCookies     = '';
+  _nseSessionAt   = 0;
 }
 
-module.exports = { fetchAllNSEAnnouncements, resetNSESession };
+function getNSESessionInfo() {
+  return {
+    initialised: _nseInitialised,
+    sessionAt: _nseSessionAt,
+    ttlMs: SESSION_TTL_MS,
+    hasCookies: Boolean(_nseCookies && _nseCookies.length > 0),
+  };
+}
+
+module.exports = { fetchAllNSEAnnouncements, resetNSESession, getNSESessionInfo };

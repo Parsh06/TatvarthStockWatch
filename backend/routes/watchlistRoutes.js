@@ -6,6 +6,7 @@ const { verifyToken } = require('../lib/authMiddleware');
 const { userMutationRateLimiter } = require('../middleware/rateLimiter');
 const watchlistStore = require('../lib/watchlistStore');
 const { sanitizeWatchlistScript } = require('../utils/sanitizeResponse');
+const { validateScripInput } = require('../utils/validators');
 const { db, admin } = require('../lib/firebaseAdmin');
 const { getDb } = require('../lib/mongoClient');
 
@@ -30,17 +31,33 @@ router.get('/', verifyToken, async (req, res) => {
  */
 router.post('/', verifyToken, async (req, res) => {
   try {
-    const body = req.body || {};
-    const ltdCode = String(body.ltdCode || body.bseCode || body.scripCode || '').trim();
-    const symbol = String(body.symbol || body.nseSymbol || '').trim().toUpperCase();
-    const scriptName = String(body.scriptName || body.name || ltdCode || symbol).trim();
-    const exchange = String(body.exchange || 'BOTH').trim().toUpperCase();
-    const notes = String(body.notes || '').trim();
-    const group = String(body.group || '').trim();
-    const isin = String(body.isin || '').trim();
+    const validation = validateScripInput(req.body || {});
+    if (!validation.valid) {
+      return res.status(400).json({ success: false, error: validation.error, code: 'INVALID_INPUT' });
+    }
 
-    if (!ltdCode && !symbol) {
-      return res.status(400).json({ error: 'ltdCode or symbol is required' });
+    const { ltdCode, symbol, scriptName, exchange, notes, group, isin } = validation.data;
+
+    // Check if script already exists; if not, check plan capacity limits
+    const existing = await watchlistStore.getWatchlist(req.uid);
+    const isAlreadyThere = existing.some(s => 
+      (ltdCode && s.ltdCode === ltdCode) || (symbol && s.symbol === symbol)
+    );
+
+    if (!isAlreadyThere) {
+      const { canAddToWatchlist } = require('../lib/planLimits');
+      const check = await canAddToWatchlist(req.uid, existing.length);
+      if (!check.allowed) {
+        return res.status(403).json({
+          success: false,
+          error: `Watchlist limit reached (${existing.length}/${check.maxAllowed} scripts on ${check.plan.toUpperCase()} plan). Upgrade to Pro for 50 scripts or Premium for unlimited.`,
+          code: 'PLAN_LIMIT_REACHED',
+          feature: 'watchlist',
+          plan: check.plan,
+          current: existing.length,
+          maxAllowed: check.maxAllowed,
+        });
+      }
     }
 
     const result = await watchlistStore.addScript(req.uid, {
@@ -72,11 +89,26 @@ router.post('/bulk', verifyToken, async (req, res) => {
   if (!incoming.length) return res.json({ added: 0, skipped: 0 });
 
   const existing = await watchlistStore.getWatchlist(req.uid);
-  const existingCodes = new Set(existing.map((s) => s.ltdCode));
+  const existingCodes = new Set(existing.map((s) => s.ltdCode || s.symbol));
+
+  const { canAddToWatchlist } = require('../lib/planLimits');
+  const planCheck = await canAddToWatchlist(req.uid, existing.length);
+  if (!planCheck.allowed || (planCheck.maxAllowed !== Infinity && existing.length >= planCheck.maxAllowed)) {
+    return res.status(403).json({
+      success: false,
+      error: `Watchlist limit reached (${existing.length}/${planCheck.maxAllowed} scripts on ${planCheck.plan.toUpperCase()} plan). Upgrade to Pro for 50 scripts or Premium for unlimited.`,
+      code: 'PLAN_LIMIT_REACHED',
+      feature: 'watchlist',
+      plan: planCheck.plan,
+      current: existing.length,
+      maxAllowed: planCheck.maxAllowed,
+    });
+  }
+
   let added = 0;
   let skipped = 0;
 
-  const toAdd = [];
+  let toAdd = [];
   for (const item of incoming) {
     const ltdCode = String(item.ltdCode || item.bseCode || item.scripCode || '').trim();
     const symbol = String(item.symbol || item.nseSymbol || '').trim().toUpperCase();
@@ -102,8 +134,16 @@ router.post('/bulk', verifyToken, async (req, res) => {
       group: String(item.group || '').trim(),
       addedAt: new Date(),
     });
-    added++;
   }
+
+  const availableSlots = planCheck.maxAllowed === Infinity ? Infinity : Math.max(0, planCheck.maxAllowed - existing.length);
+  let planCapped = false;
+  if (toAdd.length > availableSlots) {
+    skipped += (toAdd.length - availableSlots);
+    toAdd = toAdd.slice(0, availableSlots);
+    planCapped = true;
+  }
+  added = toAdd.length;
 
   if (toAdd.length > 0) {
     const mongoDb = await getDb();
@@ -112,7 +152,7 @@ router.post('/bulk', verifyToken, async (req, res) => {
     watchlistStore.invalidateWatchlistCache();
   }
 
-  res.json({ added, skipped });
+  res.json({ added, skipped, planCapped, maxAllowed: planCheck.maxAllowed });
 });
 
 /**
@@ -205,6 +245,18 @@ router.post('/catchup', verifyToken, async (req, res) => {
  */
 router.get('/export', verifyToken, async (req, res) => {
   try {
+    const { canExportData } = require('../lib/planLimits');
+    const exportCheck = await canExportData(req.uid);
+    if (!exportCheck.allowed) {
+      return res.status(403).json({
+        success: false,
+        error: 'Data export is a Pro feature. Upgrade to Pro or Premium to export watchlist and analysis to CSV/Excel.',
+        code: 'FEATURE_LOCKED',
+        feature: 'export',
+        plan: exportCheck.plan,
+      });
+    }
+
     const scripts = await watchlistStore.getWatchlist(req.uid);
     const header = 'BSE Code,NSE Symbol,Company Name,Exchange,Group,Notes,Added At\n';
     const rows = scripts.map((s) => {

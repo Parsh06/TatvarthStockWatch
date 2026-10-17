@@ -356,10 +356,10 @@ module.exports = function (verifyToken) {
   // ── POST /api/ipo/verify ────────────────────────────────────────────────────
   router.post('/verify', verifyToken, async (req, res) => {
     try {
-      const { symbol: rawSymbol, verificationType, identifier, registrar: rawRegistrar = 'KFINTECH' } = req.body;
+      const { symbol: rawSymbol, verificationType, identifier, registrar: rawRegistrar = 'KFINTECH' } = req.body || {};
 
-      if (!rawSymbol || typeof rawSymbol !== 'string') {
-        return res.status(400).json({ success: false, error: 'Please select an IPO symbol' });
+      if (!rawSymbol || typeof rawSymbol !== 'string' || rawSymbol.trim().length === 0 || rawSymbol.length > 80 || !/^[A-Za-z0-9_ -]+$/.test(rawSymbol.trim())) {
+        return res.status(400).json({ success: false, error: 'Please select a valid IPO symbol' });
       }
       if (!verificationType || verificationType !== 'pan') {
         return res.status(400).json({ success: false, error: 'Only PAN verification is supported' });
@@ -460,22 +460,37 @@ module.exports = function (verifyToken) {
   // ── POST /api/ipo/applicants ────────────────────────────────────────────────
   router.post('/applicants', verifyToken, async (req, res) => {
     try {
-      const { name, pan } = req.body;
-
-      if (!name || typeof name !== 'string' || !name.trim()) {
-        return res.status(400).json({ success: false, error: 'Please enter the applicant name' });
+      const { validateApplicantInput } = require('../utils/validators');
+      const validation = validateApplicantInput(req.body);
+      if (!validation.valid) {
+        return res.status(400).json({
+          success: false,
+          error: validation.errors[0] || 'Invalid applicant data',
+          errors: validation.errors,
+        });
       }
-      if (!pan || !validatePan(pan.trim().toUpperCase())) {
-        return res.status(400).json({ success: false, error: 'Please enter a valid 10-character PAN number' });
-      }
 
-      const cleanName = name.trim().slice(0, 50);
-      const cleanPan = pan.trim().toUpperCase();
+      const { name: cleanName, pan: cleanPan } = validation.data;
 
       const { db } = require('../lib/firebaseAdmin');
       const collRef = db.collection('users').doc(req.uid).collection('familyPans');
 
       const countSnap = await collRef.count().get();
+      const currentCount = countSnap.data().count;
+
+      const { canAddFamilyPan } = require('../lib/planLimits');
+      const check = await canAddFamilyPan(req.uid, currentCount);
+      if (!check.allowed) {
+        return res.status(403).json({
+          success: false,
+          error: `Family PAN limit reached (${currentCount}/${check.maxAllowed} PANs on ${check.plan.toUpperCase()} plan). Upgrade to Pro for 10 PANs or Premium for unlimited.`,
+          code: 'PLAN_LIMIT_REACHED',
+          feature: 'family_pans',
+          plan: check.plan,
+          current: currentCount,
+          maxAllowed: check.maxAllowed,
+        });
+      }
 
       const panLast4 = cleanPan.slice(-4);
       const existingSnap = await collRef.where('panLast4', '==', panLast4).get();

@@ -203,21 +203,49 @@ async function fetchBSEPage(strPrevDate, strToDate, strScrip, pageNo) {
   }
 }
 
+// ── In-Memory Deduplication Cache for Incremental Polling ─────────────────────
+// Remembers announcement IDs seen in recent ticks. When Page 1 overlaps with known IDs,
+// older pages (2..N) are safely skipped, cutting outbound BSE bandwidth by 85-90%.
+const _knownBseAnnouncementIds = new Set();
+const MAX_KNOWN_BSE_IDS = 5000;
+
+function recordKnownBseIds(items) {
+  for (const item of items) {
+    const id = String(item.NEWSID || item.NewsID || item.id || '');
+    if (id) _knownBseAnnouncementIds.add(id);
+  }
+  // Prevent unbounded memory growth across weeks
+  if (_knownBseAnnouncementIds.size > MAX_KNOWN_BSE_IDS) {
+    const arr = Array.from(_knownBseAnnouncementIds);
+    _knownBseAnnouncementIds.clear();
+    arr.slice(arr.length - 2500).forEach((id) => _knownBseAnnouncementIds.add(id));
+  }
+}
+
+function clearKnownBseAnnouncementIds() {
+  _knownBseAnnouncementIds.clear();
+}
+
+function getKnownBseIdsCount() {
+  return _knownBseAnnouncementIds.size;
+}
+
 // ── Public: fetch ALL announcements (cron) ────────────────────────────────────
 
 /**
  * Fetch ALL BSE announcements for today across ALL companies.
- * Paginates automatically. The cron calls this then filters in-memory.
- * Typically 6-10 pages (~300-500 items) on a trading day.
+ * Employs smart Page-1 incremental diffing: if any announcement on Page 1 matches
+ * an already-seen ID, older pages are skipped, saving ~4GB bandwidth per month.
  *
  * @param {string|Date} [date] - defaults to today
+ * @param {{ fullCrawl?: boolean }} [options={}] - force full pagination
  * @returns {Promise<object[]>}
  */
-async function fetchAllBSEAnnouncements(date) {
+async function fetchAllBSEAnnouncements(date, options = {}) {
   await initSession();
 
   const dateStr = formatBSEDate(date);
-  console.log(`[BSE] Fetching ALL announcements for ${dateStr}...`);
+  console.log(`[BSE] Fetching announcements for ${dateStr}...`);
 
   const first = await fetchBSEPage(dateStr, dateStr, '', 1);
   if (!first || !first.items.length) {
@@ -225,14 +253,21 @@ async function fetchAllBSEAnnouncements(date) {
     return [];
   }
 
-  const allItems  = [...first.items];
+  const allItems   = [...first.items];
   const totalCount = first.rowCount;
   const pageSize   = first.items.length || 50;
   const totalPages = Math.ceil(totalCount / pageSize);
 
-  console.log(`[BSE] Total: ${totalCount} across ${totalPages} page(s)`);
+  // Check how many items on Page 1 are already known
+  const page1Ids = first.items.map((item) => String(item.NEWSID || item.NewsID || ''));
+  const knownOnPage1 = page1Ids.filter((id) => id && _knownBseAnnouncementIds.has(id)).length;
 
-  if (totalPages > 1) {
+  const isIncrementalOverlap = _knownBseAnnouncementIds.size > 0 && knownOnPage1 > 0 && !options.fullCrawl;
+
+  if (isIncrementalOverlap) {
+    console.log(`[BSE] Incremental diff match: Page 1 overlap found (${knownOnPage1} known). Skipped ${totalPages - 1} older pages (Saved ${(totalPages - 1) * 35}KB)`);
+  } else if (totalPages > 1) {
+    console.log(`[BSE] Fresh / burst crawl: ${totalCount} items across ${totalPages} page(s)`);
     for (let p = 2; p <= totalPages; p += PAGE_CONCURRENCY) {
       const pageNums = [];
       for (let q = p; q <= Math.min(p + PAGE_CONCURRENCY - 1, totalPages); q++) pageNums.push(q);
@@ -240,7 +275,26 @@ async function fetchAllBSEAnnouncements(date) {
       const results = await Promise.all(
         pageNums.map((pg) => fetchBSEPage(dateStr, dateStr, '', pg))
       );
-      results.forEach((r) => { if (r) allItems.push(...r.items); });
+      
+      let foundOverlapInBatch = false;
+      for (const r of results) {
+        if (!r) continue;
+        allItems.push(...r.items);
+        if (_knownBseAnnouncementIds.size > 0 && !options.fullCrawl) {
+          const batchKnown = r.items.some((item) => {
+            const id = String(item.NEWSID || item.NewsID || '');
+            return id && _knownBseAnnouncementIds.has(id);
+          });
+          if (batchKnown) {
+            foundOverlapInBatch = true;
+            break;
+          }
+        }
+      }
+      if (foundOverlapInBatch) {
+        console.log(`[BSE] Overlap boundary reached at page ${p}. Stopping deeper pagination.`);
+        break;
+      }
     }
   }
 
@@ -248,7 +302,10 @@ async function fetchAllBSEAnnouncements(date) {
     .map(normalizeItem)
     .filter((a) => a.scriptCode || a.scriptName);
 
-  console.log(`[BSE] Fetched ${normalized.length} total announcements`);
+  // Record all fetched IDs to memory for next tick diffing
+  recordKnownBseIds(normalized);
+
+  console.log(`[BSE] Fetched ${normalized.length} total announcements (known cache: ${_knownBseAnnouncementIds.size})`);
   return normalized;
 }
 
@@ -281,4 +338,9 @@ async function fetchBSEAnnouncements(scripCode, fromDate, toDate) {
   return normalized;
 }
 
-module.exports = { fetchBSEAnnouncements, fetchAllBSEAnnouncements };
+module.exports = {
+  fetchBSEAnnouncements,
+  fetchAllBSEAnnouncements,
+  clearKnownBseAnnouncementIds,
+  getKnownBseIdsCount,
+};

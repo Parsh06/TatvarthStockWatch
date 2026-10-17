@@ -61,19 +61,36 @@ export default function DisableUserModal({ user, onClose, onSuccess }) {
             </button>
           </div>
 
-          <div className="mb-6">
-            <label className="block text-xs font-semibold text-textMuted uppercase tracking-wider mb-2">Reason (optional)</label>
+          <div className="mb-4">
+            <label className="block text-xs font-semibold text-textMuted uppercase tracking-wider mb-2">Reason (shown to user)</label>
+            <div className="flex flex-wrap gap-1.5 mb-2.5">
+              {[
+                'Terms of service violation',
+                'Suspicious activity or unauthorized access',
+                'Administrative hold pending review',
+                'Automated request abuse'
+              ].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setReason(preset)}
+                  className="text-[11px] px-2.5 py-1 rounded-lg bg-surface border border-border/80 text-textMuted hover:text-textPrimary hover:border-danger/30 transition"
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
             <textarea
               value={reason}
               onChange={e => setReason(e.target.value)}
-              placeholder="Policy violation, suspicious activity…"
+              placeholder="Specify the reason why access is being revoked (this will be displayed to the user)…"
               rows={3}
               className="w-full px-4 py-3 rounded-xl bg-surface border border-border text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-danger/40 resize-none transition"
             />
           </div>
 
-          <p className="text-xs text-danger/80 bg-danger/10 border border-danger/20 rounded-xl px-3 py-2 mb-5">
-            ⚠️ All active Firebase refresh tokens will be revoked immediately. This cannot be automatically undone — you must re-enable the account manually.
+          <p className="text-xs text-danger/80 bg-danger/10 border border-danger/20 rounded-xl px-3 py-2.5 mb-5 leading-relaxed">
+            ⚠️ <strong>Instant Revocation:</strong> All active browser sessions and background listeners for this user will be terminated immediately. Push notification subscriptions will also be removed.
           </p>
 
           <div className="flex gap-3">

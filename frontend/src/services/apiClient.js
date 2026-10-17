@@ -65,7 +65,24 @@ export async function apiClient(url, options = {}) {
 
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
-    throw new Error(`API ${options.method || 'GET'} ${url} failed (${res.status}): ${text}`)
+    let parsed = null
+    try {
+      parsed = JSON.parse(text)
+    } catch {}
+
+    if (res.status === 403 && (parsed?.code === 'ACCOUNT_DISABLED' || parsed?.disabled)) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('sw:account-disabled', {
+          detail: {
+            error: parsed?.error || 'Your account has been disabled by administrator.',
+            reason: parsed?.reason || parsed?.error,
+            code: 'ACCOUNT_DISABLED',
+          }
+        }))
+      }
+    }
+
+    throw new Error(parsed?.error || `API ${options.method || 'GET'} ${url} failed (${res.status}): ${text}`)
   }
 
   return res.json()

@@ -11,6 +11,51 @@ import {
 import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import { auth, db, googleProvider, FIREBASE_ENABLED } from '../services/firebase'
 
+export const PLAN_LIMITS = {
+  basic: {
+    name: 'Basic',
+    priceMonthly: 0,
+    priceAnnual: 0,
+    maxWatchlist: 5,
+    maxDailyAi: 3,
+    maxAiDaily: 3,
+    maxFamilyPans: 1,
+    maxBaskets: 0,
+    maxCuratedBaskets: 0,
+    canExport: false,
+    canExportCsv: false,
+    canUseRadar: false,
+  },
+  pro: {
+    name: 'Pro',
+    priceMonthly: 999,
+    priceAnnual: 8999,
+    maxWatchlist: 50,
+    maxDailyAi: Infinity,
+    maxAiDaily: Infinity,
+    maxFamilyPans: 10,
+    maxBaskets: 5,
+    maxCuratedBaskets: 5,
+    canExport: true,
+    canExportCsv: true,
+    canUseRadar: false,
+  },
+  premium: {
+    name: 'Premium HNI',
+    priceMonthly: 1999,
+    priceAnnual: 17999,
+    maxWatchlist: Infinity,
+    maxDailyAi: Infinity,
+    maxAiDaily: Infinity,
+    maxFamilyPans: Infinity,
+    maxBaskets: Infinity,
+    maxCuratedBaskets: Infinity,
+    canExport: true,
+    canExportCsv: true,
+    canUseRadar: true,
+  },
+}
+
 const AuthContext = createContext({
   currentUser:    null,
   loading:        true,
@@ -19,6 +64,15 @@ const AuthContext = createContext({
   entitlements:   { read: false, write: false },
   approvalStatus: 'approved',
   rejectedReason: '',
+  isDisabled:     false,
+  disabledReason: '',
+  plan:           'basic',
+  planStatus:     'active',
+  planExpiresAt:  null,
+  isPro:          false,
+  isPremium:      false,
+  dailyAiCount:   0,
+  planLimits:     PLAN_LIMITS.basic,
   isApproved:     true,
   isPendingApproval: false,
   isRejected:     false,
@@ -49,6 +103,53 @@ export function AuthProvider({ children }) {
   const [entitlements, setEntitlements] = useState({ read: false, write: false })
   const [approvalStatus, setApprovalStatus] = useState('approved')
   const [rejectedReason, setRejectedReason] = useState('')
+  const [isDisabled, setIsDisabled] = useState(false)
+  const [disabledReason, setDisabledReason] = useState('')
+  const [plan, setPlan] = useState('basic')
+  const [planStatus, setPlanStatus] = useState('active')
+  const [planExpiresAt, setPlanExpiresAt] = useState(null)
+  const [dailyAiCount, setDailyAiCount] = useState(0)
+
+  // Listen for global account-disabled lockdown events (e.g. from apiClient 403)
+  useEffect(() => {
+    function handleAccountDisabledEvent(e) {
+      console.warn('[AuthContext] Account disabled event received:', e.detail)
+      setIsDisabled(true)
+      if (e.detail?.reason) {
+        setDisabledReason(e.detail.reason)
+      }
+    }
+    window.addEventListener('sw:account-disabled', handleAccountDisabledEvent)
+    return () => window.removeEventListener('sw:account-disabled', handleAccountDisabledEvent)
+  }, [])
+
+  /**
+   * Helper to parse and update user plan state from Firestore data.
+   */
+  const applyPlanState = useCallback((data) => {
+    const userPlan = (data.plan || 'basic').toLowerCase()
+    let expires = null
+    let isExpired = false
+    if (data.planExpiresAt) {
+      expires = data.planExpiresAt?.toDate ? data.planExpiresAt.toDate() : new Date(data.planExpiresAt)
+      if (expires && !isNaN(expires.getTime()) && expires.getTime() < Date.now()) {
+        isExpired = true
+      }
+    }
+
+    const effectivePlan = (userPlan !== 'basic' && isExpired) ? 'basic' : (PLAN_LIMITS[userPlan] ? userPlan : 'basic')
+    setPlan(effectivePlan)
+    setPlanStatus(isExpired ? 'expired' : (data.planStatus || 'active'))
+    setPlanExpiresAt(expires)
+
+    // Calculate today's date in IST
+    const todayIST = new Date(Date.now() + (5.5 * 3600000)).toISOString().split('T')[0]
+    if (data.dailyAiUsage?.date === todayIST) {
+      setDailyAiCount(Number(data.dailyAiUsage?.count || 0))
+    } else {
+      setDailyAiCount(0)
+    }
+  }, [])
 
   /**
    * Loads the admin role + entitlements from Firestore for a given Firebase user (fallback/one-shot).
@@ -58,12 +159,22 @@ export function AuthProvider({ children }) {
       setRole('user')
       setEntitlements({ read: false, write: false })
       setApprovalStatus('approved')
+      setIsDisabled(false)
+      setDisabledReason('')
+      setPlan('basic')
+      setPlanStatus('active')
+      setPlanExpiresAt(null)
+      setDailyAiCount(0)
       return
     }
     try {
       const snap = await getDoc(doc(db, 'users', user.uid))
       if (snap.exists()) {
         const data = snap.data() || {}
+        const isUserDisabled = Boolean(data.disabled)
+        setIsDisabled(isUserDisabled)
+        setDisabledReason(data.disabledReason || (isUserDisabled ? 'Your account access has been suspended by an administrator.' : ''))
+
         const userRole = data.role || 'user'
         setRole(userRole)
         setEntitlements(data.entitlements || { read: false, write: false })
@@ -73,15 +184,23 @@ export function AuthProvider({ children }) {
           setApprovalStatus(data.approvalStatus || 'approved')
         }
         setRejectedReason(data.rejectedReason || '')
+
+        applyPlanState(data)
       } else {
         setRole('user')
         setEntitlements({ read: false, write: false })
         setApprovalStatus('pending')
+        setIsDisabled(false)
+        setDisabledReason('')
+        setPlan('basic')
+        setPlanStatus('active')
+        setPlanExpiresAt(null)
+        setDailyAiCount(0)
       }
     } catch (e) {
       console.warn('[AuthContext] Could not load admin profile:', e.message)
     }
-  }, [])
+  }, [applyPlanState])
 
   useEffect(() => {
     if (!FIREBASE_ENABLED) {
@@ -89,6 +208,8 @@ export function AuthProvider({ children }) {
       setRole('admin')
       setEntitlements({ read: true, write: true })
       setApprovalStatus('approved')
+      setIsDisabled(false)
+      setDisabledReason('')
       setLoading(false)
       return
     }
@@ -109,6 +230,12 @@ export function AuthProvider({ children }) {
         setEntitlements({ read: false, write: false })
         setApprovalStatus('approved')
         setRejectedReason('')
+        setIsDisabled(false)
+        setDisabledReason('')
+        setPlan('basic')
+        setPlanStatus('active')
+        setPlanExpiresAt(null)
+        setDailyAiCount(0)
         setLoading(false)
         return
       }
@@ -121,6 +248,10 @@ export function AuthProvider({ children }) {
             (snap) => {
               if (snap.exists()) {
                 const data = snap.data() || {}
+                const isUserDisabled = Boolean(data.disabled)
+                setIsDisabled(isUserDisabled)
+                setDisabledReason(data.disabledReason || (isUserDisabled ? 'Your account access has been suspended by an administrator.' : ''))
+
                 const userRole = data.role || 'user'
                 setRole(userRole)
                 setEntitlements(data.entitlements || { read: false, write: false })
@@ -130,11 +261,19 @@ export function AuthProvider({ children }) {
                   setApprovalStatus(data.approvalStatus || 'approved')
                 }
                 setRejectedReason(data.rejectedReason || '')
+
+                applyPlanState(data)
               } else {
                 // If profile hasn't been created yet, default to pending for safety
                 setRole('user')
                 setEntitlements({ read: false, write: false })
                 setApprovalStatus('pending')
+                setIsDisabled(false)
+                setDisabledReason('')
+                setPlan('basic')
+                setPlanStatus('active')
+                setPlanExpiresAt(null)
+                setDailyAiCount(0)
               }
               setLoading(false)
             },
@@ -234,13 +373,22 @@ export function AuthProvider({ children }) {
   const isPendingApproval = role !== 'admin' && approvalStatus === 'pending'
   const isRejected = role !== 'admin' && approvalStatus === 'rejected'
 
+  const isPro = role === 'admin' || plan === 'pro' || plan === 'premium'
+  const isPremium = role === 'admin' || plan === 'premium'
+  const currentLimits = role === 'admin' ? PLAN_LIMITS.premium : (PLAN_LIMITS[plan] || PLAN_LIMITS.basic)
+
   return (
     <AuthContext.Provider value={{
       currentUser, loading,
       role, entitlements,
       approvalStatus, rejectedReason,
+      isDisabled, disabledReason,
       isApproved, isPendingApproval, isRejected,
       isAdmin, canAdminWrite,
+      plan, planStatus, planExpiresAt,
+      isPro, isPremium,
+      dailyAiCount,
+      planLimits: currentLimits,
       login, register, loginWithGoogle, logout, resetPassword,
       refreshAdminProfile,
       isDemo: !FIREBASE_ENABLED,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
-import { Bell, Sun, Moon, ChevronDown, LogOut, User, Search } from 'lucide-react'
+import { useLocation, Link } from 'react-router-dom'
+import { Bell, Sun, Moon, ChevronDown, LogOut, User, Search, Crown } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../contexts/AuthContext'
 import { getNotifications, markAllNotificationsRead } from '../../services/announcementService'
@@ -15,7 +15,7 @@ const PAGE_TITLES = {
 }
 
 export default function Topbar({ sidebarWidth, onSearch, theme, toggleTheme }) {
-  const { currentUser, logout } = useAuth()
+  const { currentUser, logout, plan, isPro, isPremium } = useAuth()
   const location = useLocation()
   const [notifOpen, setNotifOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -135,18 +135,49 @@ export default function Topbar({ sidebarWidth, onSearch, theme, toggleTheme }) {
             <div className="w-7 h-7 rounded-full bg-primary/30 flex items-center justify-center text-primary text-xs font-bold">
               {initials}
             </div>
-            <span className="text-sm text-textPrimary hidden sm:block max-w-[120px] truncate">
-              {currentUser?.displayName || currentUser?.email}
-            </span>
+            <div className="hidden sm:flex flex-col items-start leading-tight">
+              <span className="text-sm text-textPrimary max-w-[120px] truncate font-medium">
+                {currentUser?.displayName || currentUser?.email}
+              </span>
+              <span className={clsx(
+                "text-[9px] font-bold px-1 rounded uppercase tracking-wider",
+                isPremium
+                  ? "bg-amber-500/20 text-amber-300"
+                  : isPro
+                  ? "bg-primary/20 text-primary"
+                  : "bg-surface text-textMuted border border-border"
+              )}>
+                {isPremium ? 'HNI Premium' : isPro ? 'Pro' : 'Free'}
+              </span>
+            </div>
             <ChevronDown className="w-3 h-3 text-textMuted" />
           </button>
 
           {userMenuOpen && (
-            <div className="absolute right-0 top-12 w-52 bg-surface border border-border rounded-xl shadow-2xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-border">
+            <div className="absolute right-0 top-12 w-56 bg-surface border border-border rounded-xl shadow-2xl overflow-hidden py-1">
+              <div className="px-4 py-3 border-b border-border bg-white/[0.02]">
                 <p className="text-sm font-medium text-textPrimary truncate">{currentUser?.displayName || 'User'}</p>
                 <p className="text-xs text-textMuted truncate">{currentUser?.email}</p>
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <span className="text-textMuted">Tier:</span>
+                  <span className={clsx(
+                    "font-bold text-[10px] px-1.5 py-0.5 rounded uppercase",
+                    isPremium ? "bg-amber-500/20 text-amber-300" : isPro ? "bg-primary/20 text-primary" : "bg-white/10 text-textMuted"
+                  )}>
+                    {plan?.toUpperCase() || 'BASIC'}
+                  </span>
+                </div>
               </div>
+
+              <Link
+                to="/plans"
+                onClick={() => setUserMenuOpen(false)}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-amber-400 hover:bg-amber-500/10 transition font-medium"
+              >
+                <Crown className="w-4 h-4 text-amber-400" />
+                <span>{isPremium ? 'Manage Membership' : isPro ? 'Upgrade to Premium' : 'Upgrade to Pro'}</span>
+              </Link>
+
               <button
                 onClick={async () => { await logout(); toast.success('Signed out') }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-textMuted hover:text-danger hover:bg-danger/10 transition"

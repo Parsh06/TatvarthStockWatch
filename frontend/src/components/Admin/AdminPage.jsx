@@ -22,6 +22,7 @@ import ReadOnlyBadge from './ReadOnlyBadge'
 import UserTable from './UserTable'
 import UserDrawer from './UserDrawer'
 import RoleEditModal from './RoleEditModal'
+import PlanEditModal from './PlanEditModal'
 import DisableUserModal from './DisableUserModal'
 import AdminAuditTable from './AdminAuditTable'
 
@@ -63,6 +64,7 @@ export default function AdminPage() {
   // Modals & Drawer state
   const [drawerUser, setDrawerUser] = useState(null)
   const [roleModalUser, setRoleModalUser] = useState(null)
+  const [planModalUser, setPlanModalUser] = useState(null)
   const [disableModalUser, setDisableModalUser] = useState(null)
 
   // ── Data Fetching ───────────────────────────────────────────────────────────
@@ -1347,6 +1349,7 @@ export default function AdminPage() {
             canWrite={canWrite}
             onViewUser={(u) => setDrawerUser(u)}
             onEditRole={(u) => setRoleModalUser(u)}
+            onEditPlan={(u) => setPlanModalUser(u)}
             onDisable={(u) => setDisableModalUser(u)}
             onEnable={handleEnableUser}
             onApprove={handleApproveUser}
@@ -1576,6 +1579,22 @@ export default function AdminPage() {
             onClose={() => setDisableModalUser(null)}
             onSuccess={() => {
               setDisableModalUser(null)
+              fetchUsers()
+              fetchStats()
+              fetchAuditLogs()
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── Membership Plan Edit Modal ───────────────────────────────────────── */}
+      <AnimatePresence>
+        {planModalUser && (
+          <PlanEditModal
+            user={planModalUser}
+            onClose={() => setPlanModalUser(null)}
+            onSuccess={() => {
+              setPlanModalUser(null)
               fetchUsers()
               fetchStats()
               fetchAuditLogs()

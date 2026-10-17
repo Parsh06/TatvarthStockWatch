@@ -131,28 +131,34 @@ router.get('/:slug', async (req, res) => {
 // ── POST /api/baskets (Authenticated Basket Creation) ─────────────────────────
 router.post('/', verifyToken, async (req, res) => {
   try {
-    const { title, description, category, slug: userSlug, scripts, tags } = req.body || {};
-
-    if (!title || typeof title !== 'string' || title.trim().length < 3) {
-      return res.status(400).json({ success: false, error: 'Basket title must be at least 3 characters' });
+    const { validateBasketInput } = require('../utils/validators');
+    const validation = validateBasketInput(req.body);
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: validation.errors[0] || 'Invalid basket data',
+        errors: validation.errors,
+      });
     }
 
-    if (!Array.isArray(scripts) || scripts.length === 0) {
-      return res.status(400).json({ success: false, error: 'Basket must contain at least 1 stock' });
-    }
+    const { title, description, category, slug: userSlug, scripts: sanitizedScripts, tags } = validation.data;
 
-    // Sanitize scripts array
-    const sanitizedScripts = scripts.map(s => {
-      const bseCode = String(s.bseCode || s.ltdCode || s.scripCode || '').trim();
-      const symbol = String(s.symbol || s.nseSymbol || '').trim().toUpperCase();
-      const scriptName = String(s.scriptName || s.name || symbol || bseCode).trim();
-      const exchange = String(s.exchange || 'BOTH').toUpperCase();
-      const notes = String(s.notes || '').trim().slice(0, 150);
-      return { bseCode, symbol, scriptName, exchange, notes };
-    }).filter(s => s.bseCode || s.symbol);
+    // Check user plan basket creation limit
+    const existingBasketsSnap = await db.collection('public_baskets').where('creatorUid', '==', req.uid).count().get();
+    const currentBasketCount = existingBasketsSnap.data().count;
 
-    if (sanitizedScripts.length === 0) {
-      return res.status(400).json({ success: false, error: 'Valid scrip code or NSE symbol required for all stocks' });
+    const { canCreateBasket } = require('../lib/planLimits');
+    const basketCheck = await canCreateBasket(req.uid, currentBasketCount);
+    if (!basketCheck.allowed) {
+      return res.status(403).json({
+        success: false,
+        error: `Basket creation limit reached (${currentBasketCount}/${basketCheck.maxAllowed} baskets on ${basketCheck.plan.toUpperCase()} plan). Upgrade to Pro for 5 baskets or Premium for unlimited shareable baskets.`,
+        code: 'PLAN_LIMIT_REACHED',
+        feature: 'baskets',
+        plan: basketCheck.plan,
+        current: currentBasketCount,
+        maxAllowed: basketCheck.maxAllowed,
+      });
     }
 
     // Generate unique slug

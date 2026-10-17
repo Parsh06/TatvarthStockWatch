@@ -37,7 +37,7 @@ function getLastSeen() { return localStorage.getItem(LS_KEY) || '' }
 function markSeen()    { localStorage.setItem(LS_KEY, new Date().toISOString()) }
 
 export default function Sidebar({ collapsed, onToggle }) {
-  const { currentUser, logout } = useAuth()
+  const { currentUser, logout, plan, isPro, isPremium } = useAuth()
   const { isAdmin } = useAdminAuth()
   const { unreadCount, markAllRead } = useGlobalAnnouncements()
   const annCount = unreadCount
@@ -125,6 +125,47 @@ export default function Sidebar({ collapsed, onToggle }) {
         )}
 
         <div className="flex-1" />
+
+        {/* Membership & Plans */}
+        <NavLink
+          to="/plans"
+          className={({ isActive }) =>
+            clsx(
+              'group flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 mb-1',
+              isActive
+                ? 'bg-amber-500/20 text-amber-400 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]'
+                : isPremium
+                ? 'text-amber-400/90 hover:bg-amber-500/10 hover:text-amber-300'
+                : isPro
+                ? 'text-primary hover:bg-primary/10 hover:text-primary/90'
+                : 'text-textMuted hover:bg-white/5 hover:text-textPrimary hover:-translate-y-[1px]',
+              collapsed && 'justify-center'
+            )
+          }
+          title={collapsed ? (isPremium ? 'Premium Tier' : isPro ? 'Pro Tier' : 'Upgrade Plan') : undefined}
+        >
+          <div className="relative flex-shrink-0">
+            <Crown className={clsx(
+              "w-[22px] h-[22px] transition-transform group-hover:scale-110",
+              isPremium ? 'text-amber-400 fill-amber-400/20' : isPro ? 'text-primary fill-primary/20' : ''
+            )} />
+          </div>
+          {!collapsed && (
+            <div className="flex-1 flex items-center justify-between">
+              <span>{isPremium ? 'Premium Tier' : isPro ? 'Pro Tier' : 'Plans & Pricing'}</span>
+              <span className={clsx(
+                "text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wider uppercase",
+                isPremium
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  : isPro
+                  ? 'bg-primary/20 text-primary border border-primary/30'
+                  : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse'
+              )}>
+                {isPremium ? 'HNI' : isPro ? 'PRO' : 'FREE'}
+              </span>
+            </div>
+          )}
+        </NavLink>
 
         {/* Settings at bottom of nav */}
         {NAV_BOTTOM.map(({ to, icon: Icon, label }) => (

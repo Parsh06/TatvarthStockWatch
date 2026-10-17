@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Star, Bell, Smartphone, Tag, Loader2, Trash2, RefreshCw,
-  CheckCircle2, UserCheck, ShieldAlert
+  CheckCircle2, UserCheck, ShieldAlert, Crown
 } from 'lucide-react'
 import { apiClient } from '../../services/apiClient'
 import { useAdminAuth } from '../../hooks/useAdminAuth'
 import RejectUserModal from './RejectUserModal'
+import PlanEditModal from './PlanEditModal'
 import clsx from 'clsx'
 import toast from 'react-hot-toast'
 
@@ -157,6 +158,7 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
   const { canWrite } = useAdminAuth()
   const [activeTab, setActiveTab] = useState('watchlist')
   const [showRejectModal, setShowRejectModal] = useState(false)
+  const [showPlanModal, setShowPlanModal] = useState(false)
 
   if (!user) return null
 
@@ -317,6 +319,43 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
               </div>
             )}
 
+            {/* Membership Tier & Entitlements Section */}
+            <div className="mt-4 p-3.5 rounded-2xl bg-gradient-to-r from-surface to-surfaceHover border border-border flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className={clsx(
+                  "w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs border",
+                  user.plan === 'premium' ? "bg-amber-500/20 text-amber-300 border-amber-500/30" : user.plan === 'pro' ? "bg-primary/20 text-primary border-primary/30" : "bg-white/5 text-textMuted border-white/10"
+                )}>
+                  <Crown className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-bold text-textPrimary uppercase tracking-wider">{user.plan || 'BASIC'} PLAN</p>
+                    <span className={clsx(
+                      "text-[9px] font-bold px-1.5 py-0.2 rounded uppercase",
+                      user.planStatus === 'expired' ? "bg-danger/20 text-danger" : "bg-success/20 text-success"
+                    )}>
+                      {user.planStatus || 'ACTIVE'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-textMuted mt-0.5">
+                    {user.planExpiresAt
+                      ? `Valid until ${new Date(user.planExpiresAt).toLocaleDateString('en-IN')}`
+                      : 'Lifetime Access (No Expiry)'}
+                  </p>
+                </div>
+              </div>
+
+              {canWrite && (
+                <button
+                  onClick={() => setShowPlanModal(true)}
+                  className="px-2.5 py-1.5 rounded-xl border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs transition"
+                >
+                  Manage
+                </button>
+              )}
+            </div>
+
             {/* Meta grid */}
             <div className="grid grid-cols-3 gap-3 mt-4">
               {[
@@ -416,6 +455,21 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
           user={user}
           onClose={() => setShowRejectModal(false)}
           onSuccess={() => {
+            onUpdate?.()
+          }}
+        />
+      )}
+
+      {showPlanModal && (
+        <PlanEditModal
+          user={user}
+          onClose={() => setShowPlanModal(false)}
+          onSuccess={(membership) => {
+            if (user) {
+              user.plan = membership.plan
+              user.planStatus = membership.planStatus
+              user.planExpiresAt = membership.planExpiresAt
+            }
             onUpdate?.()
           }}
         />

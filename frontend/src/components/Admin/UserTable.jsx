@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import {
   Search, ShieldCheck, ShieldX, UserX, UserCheck, Edit3,
   ExternalLink, ChevronUp, ChevronDown, Loader2, RefreshCw, Download,
-  CheckCircle2, XCircle, Clock, ShieldAlert, AlertCircle
+  CheckCircle2, XCircle, Clock, ShieldAlert, AlertCircle, Crown
 } from 'lucide-react'
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
@@ -22,6 +22,7 @@ export default function UserTable({
   canWrite,
   onViewUser,
   onEditRole,
+  onEditPlan,
   onDisable,
   onEnable,
   onApprove,
@@ -250,6 +251,12 @@ export default function UserTable({
                   <div className="flex items-center gap-1">Role <SortIcon col="role" /></div>
                 </th>
                 <th
+                  className="text-left px-4 py-3 cursor-pointer hover:text-textPrimary transition"
+                  onClick={() => toggleSort('plan')}
+                >
+                  <div className="flex items-center gap-1">Plan <SortIcon col="plan" /></div>
+                </th>
+                <th
                   className="text-right px-4 py-3 cursor-pointer hover:text-textPrimary transition"
                   onClick={() => toggleSort('watchlistCount')}
                 >
@@ -270,7 +277,7 @@ export default function UserTable({
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-b border-border/30">
-                    <td className="px-4 py-4" colSpan={7}>
+                    <td className="px-4 py-4" colSpan={8}>
                       <div className="skeleton h-8 rounded-lg" />
                     </td>
                   </tr>
@@ -338,6 +345,31 @@ export default function UserTable({
                           {user.role === 'admin' && (
                             <span className="text-[9px] text-textMuted/60 font-mono">
                               {user.entitlements?.write ? 'R+W' : user.entitlements?.read ? 'R' : '—'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Membership Plan */}
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col items-start gap-0.5">
+                          <span className={clsx(
+                            'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider',
+                            user.plan === 'premium'
+                              ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                              : user.plan === 'pro'
+                              ? 'bg-primary/15 text-primary border-primary/30'
+                              : 'bg-surface text-textMuted border-border'
+                          )}>
+                            <Crown className="w-2.5 h-2.5" />
+                            {user.plan || 'basic'}
+                          </span>
+                          {user.planExpiresAt && (
+                            <span className={clsx(
+                              "text-[9px] font-mono",
+                              user.planStatus === 'expired' ? "text-danger" : "text-textMuted/70"
+                            )}>
+                              {user.planStatus === 'expired' ? 'Expired' : `Exp ${new Date(user.planExpiresAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`}
                             </span>
                           )}
                         </div>
@@ -445,6 +477,15 @@ export default function UserTable({
                                 title="Edit role & permissions"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Edit membership plan */}
+                              <button
+                                onClick={() => onEditPlan?.(user)}
+                                className="p-1.5 rounded-lg text-textMuted hover:text-primary hover:bg-primary/10 transition"
+                                title="Manage membership plan tier & validity"
+                              >
+                                <Crown className="w-3.5 h-3.5" />
                               </button>
 
                               {/* Reject / Revoke if approved */}

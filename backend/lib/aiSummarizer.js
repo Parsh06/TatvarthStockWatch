@@ -30,6 +30,12 @@ const MODEL_CASCADE = GEMINI_MODELS;
  */
 async function downloadPdfAsBase64(pdfUrl) {
   if (!pdfUrl) return null;
+  const { validateSafeFilingUrl } = require('../utils/validators');
+  const filingCheck = validateSafeFilingUrl(pdfUrl);
+  if (!filingCheck.valid) {
+    console.warn(`[aiSummarizer] Security Alert: Blocked unsafe or non-exchange PDF URL (${pdfUrl}): ${filingCheck.error}`);
+    return null;
+  }
   try {
     const response = await axios.get(pdfUrl, {
       responseType: 'arraybuffer',

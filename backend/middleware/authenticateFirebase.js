@@ -49,11 +49,17 @@ async function verifyToken(req, res, next) {
     };
     next();
   } catch (e) {
-    if (e.code === 'auth/id-token-revoked' || e.code === 'auth/user-disabled') {
+    const isRevokedOrDisabled = 
+      e.code === 'auth/id-token-revoked' || 
+      e.code === 'auth/user-disabled' ||
+      (typeof e.message === 'string' && (e.message.toLowerCase().includes('revoked') || e.message.toLowerCase().includes('disabled')));
+
+    if (isRevokedOrDisabled) {
       return res.status(403).json({
         success: false,
         error: 'Your account has been disabled or session has been revoked. Please contact administrator.',
-        code: 'ACCOUNT_DISABLED'
+        code: 'ACCOUNT_DISABLED',
+        disabled: true
       });
     }
     console.error('[Auth] Token verification failed:', e.message);

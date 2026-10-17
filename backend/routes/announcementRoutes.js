@@ -68,6 +68,7 @@ router.get('/', async (req, res) => {
       }
     }
 
+    res.setHeader('Cache-Control', 'public, max-age=5, stale-while-revalidate=15');
     res.json({ data: list, total: list.length });
   } catch (e) {
     res.status(500).json({ error: e.message });

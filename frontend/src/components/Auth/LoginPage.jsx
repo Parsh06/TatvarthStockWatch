@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   ShieldCheck, Zap, Activity, Sparkles, BarChart3, Bell,
-  TrendingUp, Eye, Search, CalendarCheck
+  TrendingUp, Eye, Search, CalendarCheck, Crown
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import toast from 'react-hot-toast'
@@ -53,6 +53,8 @@ function FeatureItem({ icon: Icon, title, desc, delayMs }) {
 export default function LoginPage() {
   const { loginWithGoogle } = useAuth()
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [searchParams] = useSearchParams()
+  const intendedPlan = searchParams.get('plan')
 
   async function handleGoogle() {
     setGoogleLoading(true)
@@ -166,12 +168,23 @@ export default function LoginPage() {
             <div className="absolute -bottom-10 -left-10 w-28 h-28 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
             <div className="relative z-10 text-center mb-8">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold mb-4">
-                <Sparkles className="w-3.5 h-3.5" />
-                Welcome back
-              </div>
+              {intendedPlan && intendedPlan !== 'basic' ? (
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/30 text-xs font-bold mb-4 shadow-sm animate-pulse">
+                  <Crown className="w-3.5 h-3.5" />
+                  Continuing to {intendedPlan.toUpperCase()} Plan
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold mb-4">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Welcome to Tatvarth StockWatch
+                </div>
+              )}
               <h3 className="text-2xl sm:text-3xl font-bold font-display text-textPrimary mb-2">Access your account</h3>
-              <p className="text-sm text-textMuted">Sign in or create a new account with Google</p>
+              <p className="text-sm text-textMuted">
+                {intendedPlan && intendedPlan !== 'basic'
+                  ? `Sign in with Google to complete your ${intendedPlan.toUpperCase()} membership checkout`
+                  : 'Sign in or create a new account with Google'}
+              </p>
             </div>
 
             {/* Google sign-in button */}

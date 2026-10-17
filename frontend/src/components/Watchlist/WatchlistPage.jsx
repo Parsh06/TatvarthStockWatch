@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Upload, Search, Trash2, Star, Zap, X, ExternalLink, FileText, Mail, RefreshCw, TrendingUp, Clock, Download, Share2 } from 'lucide-react'
+import { Plus, Upload, Search, Trash2, Star, Zap, X, ExternalLink, FileText, Mail, RefreshCw, TrendingUp, Clock, Download, Share2, Crown } from 'lucide-react'
 import clsx from 'clsx'
+import { useAuth } from '../../contexts/AuthContext'
 import { useWatchlist } from '../../hooks/useWatchlist'
 import { useAnnouncements } from '../../hooks/useAnnouncements'
 import { useCronStatus } from '../../hooks/useCronStatus'
@@ -16,6 +17,7 @@ import EmptyState from '../Common/EmptyState'
 import { SkeletonCard } from '../Common/Loader'
 import PageTransition from '../Common/PageTransition'
 import ConfirmDialog from '../Common/ConfirmDialog'
+import UpgradePromptModal from '../Plans/UpgradePromptModal'
 import toast from 'react-hot-toast'
 
 const SORT_OPTIONS = [
@@ -90,8 +92,63 @@ export default function WatchlistPage() {
   const [bulkRemoveConfirm, setBulkRemoveConfirm] = useState(false)
   const [activeGroup, setActiveGroup]             = useState('')
   const cronStatus = useCronStatus()
+  const { plan, isPro, isPremium, planLimits } = useAuth()
+  const [upgradeModal, setUpgradeModal] = useState({ open: false, title: '', message: '', targetTier: 'pro' })
 
+  const maxWL = planLimits?.maxWatchlist ?? 5
+  const isWatchlistFull = maxWL !== Infinity && watchlist?.length >= maxWL
 
+  function handleOpenAdd() {
+    if (isWatchlistFull) {
+      setUpgradeModal({
+        open: true,
+        title: 'Watchlist Limit Reached',
+        message: `You have reached your limit of ${maxWL} scripts on the ${plan?.toUpperCase() || 'BASIC'} plan. Upgrade to Pro to track up to 50 companies with instant push notifications, or Premium for unlimited monitoring.`,
+        targetTier: 'pro',
+      })
+      return
+    }
+    setAddOpen(true)
+  }
+
+  function handleOpenBulk() {
+    if (isWatchlistFull) {
+      setUpgradeModal({
+        open: true,
+        title: 'Watchlist Limit Reached',
+        message: `You have reached your limit of ${maxWL} scripts on the ${plan?.toUpperCase() || 'BASIC'} plan. Upgrade to Pro to upload bulk CSV watchlists and track up to 50 scripts.`,
+        targetTier: 'pro',
+      })
+      return
+    }
+    setBulkOpen(true)
+  }
+
+  function handleShareBasket() {
+    const maxBaskets = planLimits?.maxCuratedBaskets ?? 0
+    if (maxBaskets === 0) {
+      setUpgradeModal({
+        open: true,
+        title: 'Shareable Curated Baskets',
+        message: 'Curated Watchlist Baskets with viral public links are exclusively available on Pro & Premium tiers. Package high-conviction ideas and share with 1 tap.',
+        targetTier: 'pro',
+      })
+      return
+    }
+    setShareBasketOpen(true)
+  }
+
+  function handleExportCsv(e) {
+    if (!planLimits?.canExportCsv) {
+      e.preventDefault()
+      setUpgradeModal({
+        open: true,
+        title: 'CSV / Excel Export',
+        message: 'Institutional spreadsheet exports are reserved for Pro and Premium members. Export complete watchlist holdings, LTD codes, and company notes with 1 click.',
+        targetTier: 'pro',
+      })
+    }
+  }
 
   const { watchlist, loading, removeScript, clearWatchlist, filtered } = useWatchlist({ search, exchange })
 
@@ -241,11 +298,37 @@ export default function WatchlistPage() {
       {/* ── Header ── */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-xl font-semibold text-textPrimary">My Watchlist</h1>
-            <span className="px-2.5 py-1 bg-primary/15 text-primary text-xs font-semibold rounded-full">
-              {watchlist.length} scripts
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={clsx(
+                "px-2.5 py-1 text-xs font-semibold rounded-full border flex items-center gap-1.5 transition-colors",
+                isWatchlistFull
+                  ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                  : "bg-primary/15 text-primary border-primary/20"
+              )}>
+                <span>{watchlist.length} / {maxWL === Infinity ? '∞' : maxWL} scrips</span>
+                {isWatchlistFull && (
+                  <span className="text-[10px] font-bold uppercase bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">
+                    Limit Reached
+                  </span>
+                )}
+              </span>
+              {isWatchlistFull && (
+                <button
+                  onClick={() => setUpgradeModal({
+                    open: true,
+                    title: 'Expand Watchlist Capacity',
+                    message: `You've filled all ${maxWL} watchlist slots on your ${plan?.toUpperCase()} plan. Upgrade to Pro for 50 scrips or Premium for unlimited monitoring.`,
+                    targetTier: 'pro'
+                  })}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 rounded-full transition shadow-sm"
+                >
+                  <Crown className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Upgrade</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Action buttons — wrap on mobile */}
@@ -266,19 +349,19 @@ export default function WatchlistPage() {
               }
               {triggering ? 'Fetching...' : 'Fetch Latest Data'}
             </button>
-            <button onClick={() => setBulkOpen(true)}
+            <button onClick={handleOpenBulk}
               className="flex items-center gap-1.5 px-3 py-2 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/25 rounded-lg text-sm font-medium transition">
               <Upload className="w-4 h-4" />
               <span className="hidden sm:inline">Bulk Add</span>
             </button>
-            <button onClick={() => setShareBasketOpen(true)}
+            <button onClick={handleShareBasket}
               disabled={watchlist.length === 0}
               title="Share curated basket via viral public link"
               className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 rounded-lg text-sm font-medium transition disabled:opacity-50">
               <Share2 className="w-4 h-4" />
               <span className="hidden sm:inline">Share Basket</span>
             </button>
-            <button onClick={() => setAddOpen(true)}
+            <button onClick={handleOpenAdd}
               className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium transition">
               <Plus className="w-4 h-4" />
               <span className="hidden sm:inline">Add Script</span>
@@ -299,9 +382,16 @@ export default function WatchlistPage() {
               {bulkMode ? 'Cancel' : 'Select'}
             </button>
             <a href="/api/watchlist/export" download
-               className="flex items-center gap-1.5 px-3 py-2 border border-border text-textMuted hover:text-textPrimary hover:border-primary/40 rounded-lg text-sm transition"
-               title="Export watchlist to CSV">
+               onClick={handleExportCsv}
+               className={clsx(
+                 "flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm transition",
+                 planLimits?.canExportCsv
+                   ? "border-border text-textMuted hover:text-textPrimary hover:border-primary/40"
+                   : "border-amber-500/30 text-amber-400 bg-amber-500/5 hover:bg-amber-500/15"
+               )}
+               title={planLimits?.canExportCsv ? "Export watchlist to CSV" : "Pro Feature: Export to CSV"}>
               <Download className="w-4 h-4" />
+              {!planLimits?.canExportCsv && <span className="text-[10px] font-bold uppercase">PRO</span>}
             </a>
             <a href="/api/email-preview" target="_blank" rel="noopener noreferrer"
                className="flex items-center gap-1.5 px-3 py-2 border border-border text-textMuted hover:text-textPrimary hover:border-primary/40 rounded-lg text-sm transition"
@@ -443,6 +533,14 @@ export default function WatchlistPage() {
       <ConfirmDialog isOpen={clearConfirm} title="Clear Watchlist"
         message="This will permanently remove all scripts from your watchlist."
         confirmLabel="Clear All" onConfirm={handleClearAll} onCancel={() => setClearConfirm(false)} danger />
+
+      <UpgradePromptModal
+        isOpen={upgradeModal.open}
+        onClose={() => setUpgradeModal(prev => ({ ...prev, open: false }))}
+        title={upgradeModal.title}
+        message={upgradeModal.message}
+        targetTier={upgradeModal.targetTier}
+      />
     </PageTransition>
   )
 }

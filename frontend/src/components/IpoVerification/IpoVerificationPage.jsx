@@ -5,12 +5,14 @@ import {
   Users, CheckCircle2, XCircle, Clock, 
   FileCheck2, Check, Copy, Sparkles, Building2, UserCheck, CreditCard,
   Download, PauseCircle, PlayCircle, StopCircle, Filter, FileSpreadsheet,
-  AlertTriangle
+  AlertTriangle, Crown
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { useAuth } from '../../contexts/AuthContext'
 import { apiClient } from '../../services/apiClient'
 import toast from 'react-hot-toast'
 import Loader, { Spinner } from '../Common/Loader'
+import UpgradePromptModal from '../Plans/UpgradePromptModal'
 
 // ── PAN Validation Regex ──────────────────────────────────────────────────────
 const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]$/
@@ -35,6 +37,11 @@ export default function IpoVerificationPage() {
   const [newPan, setNewPan] = useState('')
   const [addingApplicant, setAddingApplicant] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+
+  const { plan, isPro, isPremium, planLimits } = useAuth()
+  const [upgradeModal, setUpgradeModal] = useState({ open: false, title: '', message: '', targetTier: 'pro' })
+  const maxPans = planLimits?.maxFamilyPans ?? 1
+  const isPansFull = maxPans !== Infinity && applicants.length >= maxPans
 
   // ── 500+ Streaming State ───────────────────────────────────────────────────
   const [bulkVerifying, setBulkVerifying] = useState(false)
@@ -115,6 +122,17 @@ export default function IpoVerificationPage() {
   async function handleAddApplicant(e) {
     e.preventDefault()
     if (!newName.trim() || !newPan.trim()) return
+
+    if (isPansFull) {
+      setUpgradeModal({
+        open: true,
+        title: 'Family PAN Limit Reached',
+        message: `You have reached your limit of ${maxPans} family PAN(s) on the ${plan?.toUpperCase() || 'BASIC'} plan. Upgrade to Pro to track up to 10 family accounts with automated allotment alerts, or Premium for unlimited family portfolios.`,
+        targetTier: 'pro',
+      })
+      return
+    }
+
     const cleanPan = newPan.trim().toUpperCase()
     if (!PAN_REGEX.test(cleanPan)) {
       toast.error('Invalid PAN format (e.g., ABCDE1234F)')
@@ -132,6 +150,15 @@ export default function IpoVerificationPage() {
       setShowAddForm(false)
       fetchApplicants()
     } catch (err) {
+      if (err.message?.includes('PAN limit reached') || err.message?.includes('PLAN_LIMIT_REACHED')) {
+        setUpgradeModal({
+          open: true,
+          title: 'Family PAN Limit Reached',
+          message: err.message,
+          targetTier: 'pro',
+        })
+        return
+      }
       toast.error(err.message?.includes('already saved') ? 'This PAN is already in your portfolio' : 'Failed to save applicant')
     } finally {
       setAddingApplicant(false)
@@ -475,6 +502,16 @@ export default function IpoVerificationPage() {
 
   // ── Export Results to Excel (.xlsx) ─────────────────────────────────────────
   function handleExportExcel() {
+    if (!planLimits?.canExportCsv) {
+      setUpgradeModal({
+        open: true,
+        title: 'Institutional Excel Export',
+        message: 'Bulk IPO Allotment Excel export is reserved for Pro and Premium members. Export full family audit books with S.No, applied shares, and allotment status with 1 click.',
+        targetTier: 'pro',
+      })
+      return
+    }
+
     if (!bulkResult?.results || bulkResult.results.length === 0) {
       toast.error('No verification results to export')
       return
@@ -634,10 +671,27 @@ export default function IpoVerificationPage() {
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-primary" />
                 <h2 className="text-sm font-extrabold text-textPrimary uppercase tracking-wider">Family Portfolio</h2>
+                <span className={clsx(
+                  "text-[10px] font-bold px-2 py-0.5 rounded-full border",
+                  isPansFull ? "bg-amber-500/15 text-amber-400 border-amber-500/30" : "bg-primary/10 text-primary border-primary/20"
+                )}>
+                  {applicants.length} / {maxPans === Infinity ? '∞' : maxPans}
+                </span>
               </div>
               <button
                 type="button"
-                onClick={() => setShowAddForm(!showAddForm)}
+                onClick={() => {
+                  if (!showAddForm && isPansFull) {
+                    setUpgradeModal({
+                      open: true,
+                      title: 'Family PAN Limit Reached',
+                      message: `You've registered ${maxPans} PAN(s) on your ${plan?.toUpperCase() || 'BASIC'} plan. Upgrade to Pro for 10 PANs or Premium for unlimited family accounts with automated verification.`,
+                      targetTier: 'pro'
+                    })
+                    return
+                  }
+                  setShowAddForm(!showAddForm)
+                }}
                 className="text-xs text-primary hover:text-primaryHover flex items-center gap-1 font-bold transition-all"
               >
                 {showAddForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
@@ -1467,6 +1521,14 @@ export default function IpoVerificationPage() {
           </div>
         )}
       </AnimatePresence>
+
+      <UpgradePromptModal
+        isOpen={upgradeModal.open}
+        onClose={() => setUpgradeModal(prev => ({ ...prev, open: false }))}
+        title={upgradeModal.title}
+        message={upgradeModal.message}
+        targetTier={upgradeModal.targetTier}
+      />
     </div>
   )
 }
