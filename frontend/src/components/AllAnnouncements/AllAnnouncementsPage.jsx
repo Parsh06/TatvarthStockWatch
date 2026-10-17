@@ -596,7 +596,20 @@ export default function AllAnnouncementsPage() {
                       <p className="text-sm text-textMuted leading-snug line-clamp-2 mb-2">{a.subject}</p>
                       {/* Footer + AI Analyze button */}
                       <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="text-xs text-textMuted tabular-nums">{a.datetimeIST || a.announcementDate}</span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-textMuted tabular-nums" title={`Filed at exchange: ${a.datetimeIST || a.announcementDate}`}>
+                            {a.datetimeIST || a.announcementDate}
+                          </span>
+                          {(a.storedTime || a.storedAtIST || a.savedAtIST) && (
+                            <span 
+                              className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20"
+                              title={`Captured & stored in database at: ${a.storedAtIST || a.savedAtIST}`}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              Stored: {a.storedTime || (a.storedAtIST ? a.storedAtIST.split(' ')[3] : '')}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1.5">
                           <AiAnalyzeButton
                             announcementId={String(a.id || a._id || a.bseCode || '')}

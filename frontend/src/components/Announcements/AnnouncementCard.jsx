@@ -124,7 +124,18 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
 
         {/* Footer */}
         <div className="flex items-center justify-between mt-3">
-          <span className="text-xs text-textMuted">{formatRelativeDate(dateStr)}</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-textMuted">{formatRelativeDate(dateStr)}</span>
+            {(a.storedTime || a.storedAtIST || a.savedAtIST) && (
+              <span 
+                className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20"
+                title={`Captured & stored in database at: ${a.storedAtIST || a.savedAtIST}`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Stored: {a.storedTime || (a.storedAtIST ? a.storedAtIST.split(' ')[3] : '')}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {/* AI Analyze button */}
             <AiAnalyzeButton

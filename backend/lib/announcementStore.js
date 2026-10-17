@@ -11,6 +11,29 @@ const { getDb } = require('./mongoClient');
  * naturally idempotent.
  */
 
+function getStoredISTTimestamp(date = new Date()) {
+  const d = (date instanceof Date && !isNaN(date.getTime())) ? date : new Date(date);
+  const options = {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  };
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', options).formatToParts(d).map(p => [p.type, p.value]));
+  const dateStr = `${parts.day} ${parts.month} ${parts.year}`;
+  const timeStr = `${parts.hour}:${parts.minute}:${parts.second}`;
+  return {
+    date: dateStr,
+    time: timeStr,
+    datetimeIST: `${dateStr} ${timeStr} IST`,
+    iso: d.toISOString(),
+  };
+}
+
 /**
  * Save an array of normalized announcements to MongoDB.
  * Only returns documents that did not already exist.
@@ -38,12 +61,16 @@ async function saveAnnouncements(announcements) {
     return { saved: 0, skipped: announcements.length, newAnnouncements: [] };
   }
 
-  // 3. Bulk write new announcements
+  // 3. Bulk write new announcements with exact storage time (including seconds in IST)
   const operations = newAnnouncements.map(ann => {
     // Clone object to avoid mutating the original
     const doc = { ...ann };
     const docId = String(doc.id);
     delete doc.id;
+
+    const now = new Date();
+    const storedMeta = getStoredISTTimestamp(now);
+
     return {
       updateOne: {
         filter: { _id: docId },
@@ -51,7 +78,12 @@ async function saveAnnouncements(announcements) {
           $set: { 
             ...doc,
             _id: docId,
-            savedAt: new Date()
+            savedAt: now,
+            savedAtIST: storedMeta.datetimeIST,   // e.g. "17 Oct 2026 22:45:12 IST"
+            storedAt: now,
+            storedAtIST: storedMeta.datetimeIST,  // e.g. "17 Oct 2026 22:45:12 IST"
+            storedTime: storedMeta.time,          // e.g. "22:45:12"
+            storedDate: storedMeta.date,          // e.g. "17 Oct 2026"
           } 
         },
         upsert: true
@@ -109,12 +141,29 @@ async function getAnnouncements({ exchange, scriptCode, nseSymbol, limitCount = 
     return docs.map(d => {
       const bseCode = d.bseCode || (d.exchange === 'BSE' ? d.scriptCode : '');
       const scriptCode = d.scriptCode || bseCode || d.nseSymbol || '';
+
+      let savedAtIST = d.savedAtIST || d.storedAtIST;
+      let storedTime = d.storedTime;
+      let storedDate = d.storedDate;
+      if ((!savedAtIST || !storedTime) && d.savedAt) {
+        try {
+          const ist = getStoredISTTimestamp(d.savedAt);
+          savedAtIST = savedAtIST || ist.datetimeIST;
+          storedTime = storedTime || ist.time;
+          storedDate = storedDate || ist.date;
+        } catch { /* fallback */ }
+      }
+
       return {
         ...d,
         id: String(d._id),
         _id: undefined,
         bseCode,
         scriptCode,
+        savedAtIST: savedAtIST || '',
+        storedAtIST: savedAtIST || '',
+        storedTime: storedTime || '',
+        storedDate: storedDate || '',
       };
     });
   } catch (err) {
@@ -148,12 +197,29 @@ async function getAnnouncementsForScripts(scriptCodes, sinceDate) {
     return docs.map(d => {
       const bseCode = d.bseCode || (d.exchange === 'BSE' ? d.scriptCode : '');
       const scriptCode = d.scriptCode || bseCode || d.nseSymbol || '';
+
+      let savedAtIST = d.savedAtIST || d.storedAtIST;
+      let storedTime = d.storedTime;
+      let storedDate = d.storedDate;
+      if ((!savedAtIST || !storedTime) && d.savedAt) {
+        try {
+          const ist = getStoredISTTimestamp(d.savedAt);
+          savedAtIST = savedAtIST || ist.datetimeIST;
+          storedTime = storedTime || ist.time;
+          storedDate = storedDate || ist.date;
+        } catch { /* fallback */ }
+      }
+
       return {
         ...d,
         id: String(d._id),
         _id: undefined,
         bseCode,
         scriptCode,
+        savedAtIST: savedAtIST || '',
+        storedAtIST: savedAtIST || '',
+        storedTime: storedTime || '',
+        storedDate: storedDate || '',
       };
     });
   } catch (err) {
