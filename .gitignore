@@ -16,5 +16,6 @@ scratch/
 .render_hook
 .vscode/
 .idea/
+.playwright-mcp/
 
 
