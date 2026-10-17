@@ -56,12 +56,18 @@ app.use(helmet({
 app.use(requestIdMiddleware);
 app.use(stripClientUserParams);
 
+// ── Runtime Detection (Hybrid Architecture: Vercel Serverless + Render Worker) ─
+const IS_VERCEL = Boolean(process.env.VERCEL || process.env.NOW_REGION);
+const IS_RENDER = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
+const RUNTIME_HOST = IS_VERCEL ? 'vercel' : (IS_RENDER ? 'render' : 'standalone');
+
 // ── Strict CORS Whitelist ─────────────────────────────────────────────────────
 const ALLOWED_EXACT_ORIGINS = new Set([
   process.env.FRONTEND_URL,
   'https://tatvarthstockwatch.web.app',
   'https://tatvarthstockwatch.firebaseapp.com',
   'https://tatvarth-stockwatch.vercel.app',
+  'https://tatvarth-stock-watch.vercel.app',
   'https://tatvarthstockwatch.onrender.com',
 ].filter(Boolean));
 
@@ -73,7 +79,7 @@ app.use(cors({
     if (ALLOWED_EXACT_ORIGINS.has(origin)) return cb(null, true);
     if (process.env.NODE_ENV !== 'production' && DEV_ORIGIN_REGEX.test(origin)) return cb(null, true);
     // Explicit subdomain pattern for official deployments only
-    if (/^https:\/\/(tatvarthstockwatch|tatvarth-stockwatch)(-[a-z0-9]+)?\.(web\.app|firebaseapp\.com|vercel\.app|onrender\.com)$/.test(origin)) {
+    if (/^https:\/\/(tatvarthstockwatch|tatvarth-stockwatch|tatvarth-stock-watch)(-[a-z0-9]+)?\.(web\.app|firebaseapp\.com|vercel\.app|onrender\.com)$/.test(origin)) {
       return cb(null, true);
     }
     return cb(new Error('Blocked by CORS: Unauthorized origin'));
@@ -119,14 +125,29 @@ app.use('/api/admin',         require('./routes/adminRoutes')(verifyToken, requi
 app.use('/api/baskets',       require('./routes/basketRoutes'));
 app.use('/api/plans',         require('./routes/planRoutes')(verifyToken));
 
-// ── Root Endpoint ─────────────────────────────────────────────────────────────
+// ── Root & Runtime Diagnostic Endpoints ────────────────────────────────────────
 app.get('/', (req, res) => {
   res.json({
     status: 'online',
     service: 'Tatvarth StockWatch API',
     version: '1.0.0',
+    runtime: RUNTIME_HOST,
+    architecture: 'Hybrid Vercel Serverless + Render Worker Engine',
     documentation: '/api/health',
     frontend: 'https://tatvarthstockwatch.web.app',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/api/system/runtime-info', (req, res) => {
+  res.json({
+    success: true,
+    runtime: RUNTIME_HOST,
+    isVercel: IS_VERCEL,
+    isRender: IS_RENDER,
+    workerActive: !IS_VERCEL && (process.env.ENABLE_BACKGROUND_WORKER === 'true' || process.env.RUN_CRON_WORKER === 'true'),
+    architecture: 'Hybrid Vercel Serverless + Render Worker Engine',
+    uptimeSec: Math.floor(process.uptime()),
     timestamp: new Date().toISOString()
   });
 });
@@ -371,8 +392,9 @@ if (require.main === module) {
     console.log(`  Auth mode:     ${SECURE_MODE ? 'SECURE (Firebase token required)' : 'LOCAL (no auth)'}`);
     console.log(`  CORS origins:  ${Array.from(ALLOWED_EXACT_ORIGINS).join(', ')}`);
     // Autonomous background worker if enabled (Render / standalone container)
-    if (process.env.ENABLE_BACKGROUND_WORKER === 'true' || process.env.RUN_CRON_WORKER === 'true') {
-      console.log('  Alert cron:    ACTIVE (Automated worker polling every 2m)');
+    // On Vercel serverless, background intervals are suppressed; background duties are handled exclusively by Render
+    if (!IS_VERCEL && (process.env.ENABLE_BACKGROUND_WORKER === 'true' || process.env.RUN_CRON_WORKER === 'true')) {
+      console.log('  Alert cron:    ACTIVE (Autonomous 24/7 background worker polling every 2m on Render)');
       const { runGlobalCronTick } = require('./services/cronService');
       // Run initial tick after boot stagger (5s)
       setTimeout(() => {
@@ -386,9 +408,12 @@ if (require.main === module) {
           console.error('[Background Worker Loop Error]', e.message);
         }
       }, 120 * 1000);
+    } else if (IS_VERCEL) {
+      console.log('  Alert cron:    DELEGATED TO RENDER (Vercel running in stateless serverless mode)');
     } else {
       console.log('  Alert cron:    PASSIVE (Trigger via /api/cron/trigger)');
     }
+    console.log(`  Engine Mode:   ${RUNTIME_HOST.toUpperCase()} (Hybrid Multi-Host Topology)`);
     console.log('');
   });
 }

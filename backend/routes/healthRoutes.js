@@ -18,6 +18,10 @@ router.get('/', async (req, res) => {
     scriptCount = all.length;
   } catch (e) {}
 
+  const isVercel = Boolean(process.env.VERCEL || process.env.NOW_REGION);
+  const isRender = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
+  const runtime = isVercel ? 'vercel' : (isRender ? 'render' : 'standalone');
+
   res.json({
     status: 'ok',
     uptime: Math.floor(process.uptime()),
@@ -25,6 +29,11 @@ router.get('/', async (req, res) => {
     authMode: SECURE_MODE ? 'secure' : 'local',
     telegramOk: !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
     scriptCount,
+    runtime,
+    isVercel,
+    isRender,
+    workerActive: !isVercel && (process.env.ENABLE_BACKGROUND_WORKER === 'true' || process.env.RUN_CRON_WORKER === 'true'),
+    architecture: 'Hybrid Vercel Serverless + Render Worker Engine',
   });
 });
 

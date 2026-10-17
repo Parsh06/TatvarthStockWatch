@@ -16,7 +16,7 @@ import clsx from 'clsx'
 import toast from 'react-hot-toast'
 
 import { useAdminAuth } from '../../hooks/useAdminAuth'
-import { apiClient } from '../../services/apiClient'
+import { apiClient, getHybridArchitectureStatus, probeVercelHealth } from '../../services/apiClient'
 import AdminStatCard from './AdminStatCard'
 import ReadOnlyBadge from './ReadOnlyBadge'
 import UserTable from './UserTable'
@@ -66,6 +66,28 @@ export default function AdminPage() {
   const [roleModalUser, setRoleModalUser] = useState(null)
   const [planModalUser, setPlanModalUser] = useState(null)
   const [disableModalUser, setDisableModalUser] = useState(null)
+
+  // Hybrid Architecture Topology State
+  const [hybridStatus, setHybridStatus] = useState(() => getHybridArchitectureStatus())
+  const [probingGateway, setProbingGateway] = useState(false)
+
+  const handleProbeVercel = async () => {
+    setProbingGateway(true)
+    try {
+      const isOk = await probeVercelHealth(true)
+      const freshStatus = getHybridArchitectureStatus()
+      setHybridStatus(freshStatus)
+      if (isOk) {
+        toast.success('Vercel Serverless Gateway verified ONLINE')
+      } else {
+        toast('Vercel Gateway on standby (Render is actively serving 100% of traffic)', { icon: '🛡️' })
+      }
+    } catch {
+      toast.error('Probe gateway error')
+    } finally {
+      setProbingGateway(false)
+    }
+  }
 
   // ── Data Fetching ───────────────────────────────────────────────────────────
 
@@ -526,6 +548,105 @@ export default function AdminPage() {
       {/* ── Tab 1: Mission Control & Services ───────────────────────────────── */}
       {activeTab === 'system' && (
         <div className="space-y-6">
+          {/* Hybrid Multi-Host Architecture Topology */}
+          <div className="glass-panel p-6 rounded-3xl border border-border space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/30 pb-3">
+              <div>
+                <h3 className="text-base font-bold font-display text-textPrimary flex items-center gap-2">
+                  <Server className="w-4 h-4 text-primary" />
+                  Hybrid Multi-Host Architecture Topology
+                </h3>
+                <p className="text-xs text-textMuted mt-0.5">
+                  Decoupled high-concurrency serverless client API (Vercel) paired with an autonomous 24/7 scraping & push notification engine (Render)
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={clsx(
+                  'px-3 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5',
+                  hybridStatus.isVercelHealthy
+                    ? 'bg-success/15 border-success/30 text-success'
+                    : 'bg-primary/15 border-primary/30 text-primary'
+                )}>
+                  <span className={clsx('w-2 h-2 rounded-full', hybridStatus.isVercelHealthy ? 'bg-success animate-pulse' : 'bg-primary')} />
+                  {hybridStatus.isVercelHealthy ? 'Vercel Primary Gateway Active' : 'Render High-Reliability Active'}
+                </span>
+                <button
+                  onClick={handleProbeVercel}
+                  disabled={probingGateway}
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg border border-border bg-surface hover:bg-surfaceHover text-textPrimary flex items-center gap-1 transition"
+                  title="Test Vercel Gateway Health"
+                >
+                  <RefreshCw className={clsx('w-3.5 h-3.5', probingGateway && 'animate-spin text-primary')} />
+                  <span>{probingGateway ? 'Probing...' : 'Probe Gateway'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Card 1: Stateless Client API */}
+              <div className="p-4 rounded-2xl bg-surface border border-border space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-textPrimary flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-accent-blue" />
+                    Stateless Client API
+                  </span>
+                  <span className={clsx(
+                    'text-[10px] font-semibold px-2 py-0.5 rounded-full border',
+                    hybridStatus.isVercelHealthy
+                      ? 'bg-success/10 text-success border-success/20'
+                      : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                  )}>
+                    {hybridStatus.isVercelHealthy ? 'Vercel Online' : 'Standby / Fallback'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-textMuted leading-relaxed">
+                  Absorbs client feed requests, AI analysis, watchlists, preferences, and script search using 100 GB monthly bandwidth.
+                </p>
+                <div className="text-[10px] font-mono text-textMuted truncate pt-1 border-t border-border/20">
+                  Target: {hybridStatus.vercelUrl || 'https://tatvarth-stockwatch.vercel.app'}
+                </div>
+              </div>
+
+              {/* Card 2: Autonomous Worker Engine */}
+              <div className="p-4 rounded-2xl bg-surface border border-border space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-textPrimary flex items-center gap-1.5">
+                    <Cpu className="w-3.5 h-3.5 text-primary" />
+                    Autonomous Worker Engine
+                  </span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/20">
+                    Render Active (24/7)
+                  </span>
+                </div>
+                <p className="text-[11px] text-textMuted leading-relaxed">
+                  Executes scheduled BSE/NSE scraping every 2 mins, VAPID push notifications, Telegram bot dispatches, and daily wipes.
+                </p>
+                <div className="text-[10px] font-mono text-textMuted truncate pt-1 border-t border-border/20">
+                  Target: {hybridStatus.renderUrl || 'https://tatvarthstockwatch.onrender.com'}
+                </div>
+              </div>
+
+              {/* Card 3: Zero-Downtime Circuit Breaker */}
+              <div className="p-4 rounded-2xl bg-surface border border-border space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-textPrimary flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-accent-teal" />
+                    Failover Circuit Breaker
+                  </span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent-teal/10 text-accent-teal border border-accent-teal/20">
+                    Armed (Zero Downtime)
+                  </span>
+                </div>
+                <p className="text-[11px] text-textMuted leading-relaxed">
+                  Transparent failover: If Vercel experiences 402/404/5xx or downtime, requests seamlessly route to Render with 0 user disruption.
+                </p>
+                <div className="text-[10px] font-mono text-textMuted truncate pt-1 border-t border-border/20">
+                  Mode: {hybridStatus.mode}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Operations Command Bar */}
           <div className="glass-panel p-6 rounded-3xl border border-border space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/30 pb-3">

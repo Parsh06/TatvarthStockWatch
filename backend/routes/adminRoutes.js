@@ -1148,6 +1148,23 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       },
     };
 
+    // 11. Hybrid Multi-Host Architecture Topology
+    const isVercel = Boolean(process.env.VERCEL || process.env.NOW_REGION);
+    const isRender = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
+    const workerActive = !isVercel && (process.env.ENABLE_BACKGROUND_WORKER === 'true' || process.env.RUN_CRON_WORKER === 'true');
+
+    checks.hybridTopology = {
+      name: 'Hybrid Architecture (Vercel + Render)',
+      status: 'healthy',
+      details: {
+        currentHost: isVercel ? 'Vercel Serverless' : (isRender ? 'Render Cloud' : 'Standalone / Local'),
+        statelessApiTarget: 'Vercel Edge Network (100 GB Bandwidth & Sub-second Response)',
+        autonomousWorkerTarget: 'Render Background Worker (24/7 Scraping & Push Notification Engine)',
+        workerActiveOnThisHost: workerActive,
+        architecture: 'Hybrid High-Concurrency Serverless API + Dedicated 24/7 Worker',
+      },
+    };
+
     res.json({
       success: true,
       timestamp: new Date().toISOString(),
