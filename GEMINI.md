@@ -98,6 +98,7 @@ stockwatch/
 ├── .render_hook.example               ← Guide for 1-click instant Render deploy hook triggers
 ├── Equity.csv                         ← BSE equity master data
 ├── render.yaml                        ← Render Blueprint config (1-click free background worker)
+├── vercel.json                        ← Root Vercel build config (routes to backend/server.js)
 │
 ├── backend/                           ← EXPRESS SERVER (Vercel Serverless)
 │   ├── server.js                      ← ★ MAIN ENTRY (91 lines) — clean Express bootstrapping, global middleware, and route mounting
