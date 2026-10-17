@@ -116,52 +116,55 @@ function getMarketCadence(date = new Date()) {
   const isSunday = dayOfWeek === 0;
   const isSaturday = dayOfWeek === 6;
 
-  // Saturday daytime (09:00 - 20:00 IST): Board meetings, earnings, corporate actions
-  if (isSaturday && istHour >= 9 && istHour < 20) {
+  // Saturday active corporate filing window: 08:30 to 23:45 IST
+  // Earnings calls, board meeting outcomes, investor audio recordings, and SEBI disclosures
+  const isSatActiveWindow = isSaturday && (
+    (istHour === 8 && istMinute >= 30) ||
+    (istHour >= 9 && istHour < 23) ||
+    (istHour === 23 && istMinute <= 45)
+  );
+
+  if (isSatActiveWindow) {
     return {
       window: 'SATURDAY_BOARD_MEETINGS',
       isWeekend: true,
       minIntervalMinutes: 0, // Zero delay for weekend corporate announcements
-      description: 'Saturday Corporate Filings & Board Outcomes (09:00 - 20:00 IST): Full speed (Zero delay)',
+      description: 'Saturday Corporate Filings & Earnings Calls (08:30 - 23:45 IST): Full speed (Zero delay)',
     };
   }
 
-  if (isSunday || (isSaturday && (istHour < 9 || istHour >= 20))) {
+  // Weekdays (Mon-Fri) active announcement window: 07:30 to 23:45 IST
+  // Pre-market, trading hours, post-market results & late-night regulatory filings
+  const isWeekdayActiveWindow = !isSunday && !isSaturday && (
+    (istHour === 7 && istMinute >= 30) ||
+    (istHour >= 8 && istHour < 23) ||
+    (istHour === 23 && istMinute <= 45)
+  );
+
+  if (isWeekdayActiveWindow) {
+    return {
+      window: 'ACTIVE_ANNOUNCEMENT_HOURS',
+      isWeekend: false,
+      minIntervalMinutes: 0, // Unrestricted, run on every tick for zero delay!
+      description: 'Active Corporate Announcement Window (07:30 - 23:45 IST): Full speed (Zero delay)',
+    };
+  }
+
+  if (isSunday) {
     return {
       window: 'WEEKEND',
       isWeekend: true,
       minIntervalMinutes: 30,
-      description: 'Weekend Off-Market: 30-min cadence',
+      description: 'Sunday Off-Market: 30-min cadence',
     };
   }
 
-  // Weekdays (Mon-Fri): Active announcement window (08:00 - 22:00 IST)
-  // Pre-market, core trading, post-market results & board meeting outcomes
-  if (istHour >= 8 && istHour < 22) {
-    return {
-      window: 'ACTIVE_ANNOUNCEMENT_HOURS',
-      isWeekend: false,
-      minIntervalMinutes: 0, // Unrestricted, run every tick for zero delay!
-      description: 'Active Corporate Announcement Window (08:00 - 22:00 IST): Full speed (Zero delay)',
-    };
-  }
-
-  // Late Evening Allotment Window (22:00 - 23:00)
-  if (istHour >= 22 && istHour < 23) {
-    return {
-      window: 'LATE_EVENING_ALLOTMENTS',
-      isWeekend: false,
-      minIntervalMinutes: 5,
-      description: 'Late Evening Window (22:00 - 23:00 IST): 5-min cadence',
-    };
-  }
-
-  // Deep Night: 23:00 to 07:59
+  // Deep Night: 23:46 to 07:29 IST (zero market/corporate disclosures occur during this window)
   return {
     window: 'DEEP_NIGHT',
     isWeekend: false,
     minIntervalMinutes: 30,
-    description: 'Deep Night (23:00 - 08:00 IST): 30-min cadence',
+    description: 'Deep Night (23:46 - 07:29 IST): 30-min cadence',
   };
 }
 

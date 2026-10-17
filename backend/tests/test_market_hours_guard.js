@@ -18,6 +18,13 @@ assert.strictEqual(satDayCadence.window, 'SATURDAY_BOARD_MEETINGS', 'Saturday da
 assert.strictEqual(satDayCadence.minIntervalMinutes, 0, 'Saturday daytime cadence must be 0 min (zero delay for board meetings)');
 console.log('✅ Saturday Board Meeting Window: 0-min (Zero delay!)');
 
+// 1b. Saturday Late-Night Earnings Calls & Audio Disclosures (Saturday 2026-10-17 23:15 IST)
+const satNight = makeISTDate(2026, 10, 17, 23, 15);
+const satNightCadence = getMarketCadence(satNight);
+assert.strictEqual(satNightCadence.window, 'SATURDAY_BOARD_MEETINGS', 'Saturday late night must remain in SATURDAY_BOARD_MEETINGS');
+assert.strictEqual(satNightCadence.minIntervalMinutes, 0, 'Saturday 23:15 IST must have 0 min delay');
+console.log('✅ Saturday Late Night Earnings Window (23:15 IST): 0-min (Zero delay!)');
+
 // 2. Active Weekday Market Hours (Wednesday 2026-10-14 11:15 IST)
 const marketDate = makeISTDate(2026, 10, 14, 11, 15);
 const marketCadence = getMarketCadence(marketDate);

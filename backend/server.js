@@ -394,20 +394,21 @@ if (require.main === module) {
     // Autonomous background worker if enabled (Render / standalone container)
     // On Vercel serverless, background intervals are suppressed; background duties are handled exclusively by Render
     if (!IS_VERCEL && (process.env.ENABLE_BACKGROUND_WORKER === 'true' || process.env.RUN_CRON_WORKER === 'true')) {
-      console.log('  Alert cron:    ACTIVE (Autonomous 24/7 background worker polling every 2m on Render)');
+      console.log('  Alert cron:    ACTIVE (Autonomous 24/7 background worker polling every 90s on Render)');
       const { runGlobalCronTick } = require('./services/cronService');
       // Run initial tick after boot stagger (5s)
       setTimeout(() => {
         runGlobalCronTick().catch((e) => console.error('[Background Worker Boot Error]', e.message));
       }, 5000);
-      // Scheduled tick every 2 minutes
+      // Scheduled tick every 90 seconds (1.5 minutes) for near real-time announcement ingestion
+      const WORKER_INTERVAL_MS = 90 * 1000;
       setInterval(async () => {
         try {
           await runGlobalCronTick();
         } catch (e) {
           console.error('[Background Worker Loop Error]', e.message);
         }
-      }, 120 * 1000);
+      }, WORKER_INTERVAL_MS);
     } else if (IS_VERCEL) {
       console.log('  Alert cron:    DELEGATED TO RENDER (Vercel running in stateless serverless mode)');
     } else {
