@@ -211,8 +211,10 @@ async function runGlobalCronTick(options = {}) {
     }
 
     if (lastScrape > 0) {
-      const elapsedMinutes = (Date.now() - lastScrape) / (60 * 1000);
-      if (elapsedMinutes < cadence.minIntervalMinutes) {
+      const elapsedSeconds = (Date.now() - lastScrape) / 1000;
+      const minIntervalSeconds = (cadence.minIntervalMinutes * 60) - 5; // 5-second timer jitter tolerance
+      if (elapsedSeconds < minIntervalSeconds) {
+        const elapsedMinutes = elapsedSeconds / 60;
         const waitRemaining = Math.max(1, Math.ceil(cadence.minIntervalMinutes - elapsedMinutes));
         console.log(`[Market Guard] ${cadence.description}. Throttled (${Math.floor(elapsedMinutes)}m elapsed < ${cadence.minIntervalMinutes}m). Skipping heavy scrape.`);
         return {

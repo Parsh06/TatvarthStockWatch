@@ -115,56 +115,72 @@ function getMarketCadence(date = new Date()) {
   const dayOfWeek = getISTDayOfWeek(date); // 0 = Sun, 6 = Sat
   const isSunday = dayOfWeek === 0;
   const isSaturday = dayOfWeek === 6;
+  const isWeekday = !isSunday && !isSaturday;
 
-  // Saturday active corporate filing window: 08:30 to 23:45 IST
-  // Earnings calls, board meeting outcomes, investor audio recordings, and SEBI disclosures
-  const isSatActiveWindow = isSaturday && (
-    (istHour === 8 && istMinute >= 30) ||
-    (istHour >= 9 && istHour < 23) ||
-    (istHour === 23 && istMinute <= 45)
-  );
+  const currentMinutes = istHour * 60 + istMinute;
+  const t0730 = 7 * 60 + 30;   // 07:30 IST
+  const t0830 = 8 * 60 + 30;   // 08:30 IST
+  const t1630 = 16 * 60 + 30;  // 16:30 IST (4:30 PM)
+  const t2345 = 23 * 60 + 45;  // 23:45 IST (11:45 PM)
+  const t0900 = 9 * 60;        // 09:00 IST
 
-  if (isSatActiveWindow) {
+  // 1. Weekdays Core Trading & Pre-Open (Mon-Fri 08:30 to 16:30 IST): 1-minute high-frequency polling
+  // Runs on every 60-second worker tick for sub-minute live statutory filing ingestion
+  if (isWeekday && currentMinutes >= t0830 && currentMinutes <= t1630) {
+    return {
+      window: 'CORE_TRADING_HOURS',
+      isWeekend: false,
+      minIntervalMinutes: 0, // 0-min delay: executes on every 60s worker tick
+      description: 'Weekday Core Trading (08:30 - 16:30 IST): 1-minute high-frequency polling',
+    };
+  }
+
+  // 2. Weekdays Evening Post-Market Results & Board Outcomes (Mon-Fri 16:30 to 23:45 IST): 2-minute cadence
+  if (isWeekday && currentMinutes > t1630 && currentMinutes <= t2345) {
+    return {
+      window: 'EVENING_RESULTS_HOURS',
+      isWeekend: false,
+      minIntervalMinutes: 2, // 2-minute cadence
+      description: 'Weekday Evening Results (16:30 - 23:45 IST): 2-minute cadence',
+    };
+  }
+
+  // 3. Weekdays Early Pre-Market Corporate Actions (Mon-Fri 07:30 to 08:30 IST): 2-minute cadence
+  if (isWeekday && currentMinutes >= t0730 && currentMinutes < t0830) {
+    return {
+      window: 'PRE_MARKET_HOURS',
+      isWeekend: false,
+      minIntervalMinutes: 2, // 2-minute cadence
+      description: 'Weekday Pre-Market (07:30 - 08:30 IST): 2-minute cadence',
+    };
+  }
+
+  // 4. Saturday Corporate Filings, Earnings Calls & Disclosures (09:00 to 23:45 IST): Normal 5-minute cadence
+  if (isSaturday && currentMinutes >= t0900 && currentMinutes <= t2345) {
     return {
       window: 'SATURDAY_BOARD_MEETINGS',
       isWeekend: true,
-      minIntervalMinutes: 0, // Zero delay for weekend corporate announcements
-      description: 'Saturday Corporate Filings & Earnings Calls (08:30 - 23:45 IST): Full speed (Zero delay)',
+      minIntervalMinutes: 5, // Normal weekend 5-minute cadence
+      description: 'Saturday Corporate Filings (09:00 - 23:45 IST): 5-minute normal cadence',
     };
   }
 
-  // Weekdays (Mon-Fri) active announcement window: 07:30 to 23:45 IST
-  // Pre-market, trading hours, post-market results & late-night regulatory filings
-  const isWeekdayActiveWindow = !isSunday && !isSaturday && (
-    (istHour === 7 && istMinute >= 30) ||
-    (istHour >= 8 && istHour < 23) ||
-    (istHour === 23 && istMinute <= 45)
-  );
-
-  if (isWeekdayActiveWindow) {
-    return {
-      window: 'ACTIVE_ANNOUNCEMENT_HOURS',
-      isWeekend: false,
-      minIntervalMinutes: 0, // Unrestricted, run on every tick for zero delay!
-      description: 'Active Corporate Announcement Window (07:30 - 23:45 IST): Full speed (Zero delay)',
-    };
-  }
-
+  // 5. Sunday Off-Market: Normal 30-minute cadence
   if (isSunday) {
     return {
-      window: 'WEEKEND',
+      window: 'SUNDAY_OFF_MARKET',
       isWeekend: true,
-      minIntervalMinutes: 30,
-      description: 'Sunday Off-Market: 30-min cadence',
+      minIntervalMinutes: 30, // Normal Sunday 30-minute cadence
+      description: 'Sunday Off-Market: 30-minute cadence',
     };
   }
 
-  // Deep Night: 23:46 to 07:29 IST (zero market/corporate disclosures occur during this window)
+  // 6. Deep Night (23:46 to 07:29 IST): 30-minute cadence
   return {
     window: 'DEEP_NIGHT',
     isWeekend: false,
     minIntervalMinutes: 30,
-    description: 'Deep Night (23:46 - 07:29 IST): 30-min cadence',
+    description: 'Deep Night (23:46 - 07:29 IST): 30-minute cadence',
   };
 }
 

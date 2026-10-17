@@ -187,30 +187,30 @@ async function runTests() {
     const { getMarketCadence } = require('../lib/time/istTime');
 
     // Monday 11:30 AM IST (2026-10-19 is a Monday)
-    // 11:30 IST is 06:00 UTC
+    // 11:30 IST is 06:00 UTC (Core trading: 0-min / 1-minute polling)
     const mondayActive = new Date(Date.UTC(2026, 9, 19, 6, 0, 0));
     const cadenceActive = getMarketCadence(mondayActive);
-    const activeOk = cadenceActive.minIntervalMinutes === 0 && cadenceActive.window === 'ACTIVE_ANNOUNCEMENT_HOURS';
+    const activeOk = cadenceActive.minIntervalMinutes === 0 && cadenceActive.window === 'CORE_TRADING_HOURS';
 
-    // Monday 22:15 IST (16:45 UTC)
-    const mondayEvening = new Date(Date.UTC(2026, 9, 19, 16, 45, 0));
+    // Monday 18:30 IST (13:00 UTC) (Evening results: 2m cadence)
+    const mondayEvening = new Date(Date.UTC(2026, 9, 19, 13, 0, 0));
     const cadenceEvening = getMarketCadence(mondayEvening);
-    const eveningOk = cadenceEvening.minIntervalMinutes === 5 && cadenceEvening.window === 'LATE_EVENING_ALLOTMENTS';
+    const eveningOk = cadenceEvening.minIntervalMinutes === 2 && cadenceEvening.window === 'EVENING_RESULTS_HOURS';
 
-    // Tuesday 02:30 AM IST (21:00 UTC Monday)
+    // Tuesday 02:30 AM IST (21:00 UTC Monday) (Deep night: 30m cadence)
     const tuesdayNight = new Date(Date.UTC(2026, 9, 19, 21, 0, 0));
     const cadenceNight = getMarketCadence(tuesdayNight);
     const nightOk = cadenceNight.minIntervalMinutes === 30 && cadenceNight.window === 'DEEP_NIGHT';
 
-    // Saturday 12:00 PM IST (2026-10-24 is a Saturday, 06:30 UTC)
+    // Saturday 12:00 PM IST (2026-10-24 is a Saturday, 06:30 UTC) (Normal Saturday: 5m cadence)
     const saturdayBoard = new Date(Date.UTC(2026, 9, 24, 6, 30, 0));
     const cadenceSat = getMarketCadence(saturdayBoard);
-    const satOk = cadenceSat.minIntervalMinutes === 0 && cadenceSat.window === 'SATURDAY_BOARD_MEETINGS';
+    const satOk = cadenceSat.minIntervalMinutes === 5 && cadenceSat.window === 'SATURDAY_BOARD_MEETINGS';
 
-    // Sunday 12:00 PM IST (2026-10-25 is a Sunday, 06:30 UTC)
+    // Sunday 12:00 PM IST (2026-10-25 is a Sunday, 06:30 UTC) (Normal Sunday: 30m cadence)
     const sundayWeekend = new Date(Date.UTC(2026, 9, 25, 6, 30, 0));
     const cadenceSun = getMarketCadence(sundayWeekend);
-    const sunOk = cadenceSun.minIntervalMinutes === 30 && cadenceSun.window === 'WEEKEND';
+    const sunOk = cadenceSun.minIntervalMinutes === 30 && cadenceSun.window === 'SUNDAY_OFF_MARKET';
 
     // Restore environment
     if (prevGuard !== undefined) process.env.DISABLE_CADENCE_GUARD = prevGuard;
@@ -219,7 +219,7 @@ async function runTests() {
     report(
       'IST Market Cadence Windows',
       test5Ok,
-      `Active (0m)=${activeOk}, Evening (5m)=${eveningOk}, Night (30m)=${nightOk}, Sat (0m)=${satOk}, Sun (30m)=${sunOk}`
+      `Core (0m/1m)=${activeOk}, Evening (2m)=${eveningOk}, Night (30m)=${nightOk}, Sat (5m)=${satOk}, Sun (30m)=${sunOk}`
     );
   } catch (err) {
     report('IST Market Cadence Windows', false, err.message);
