@@ -56,6 +56,10 @@ const NOTIFICATION_TYPES = {
     icon: '/logo2.png',
     defaultTitle: 'StockWatch Update',
   },
+  'admin-approval': {
+    icon: '/logo2.png',
+    defaultTitle: 'Admin Approval Request',
+  },
 };
 
 const PRIORITY_CONFIG = {
@@ -231,6 +235,18 @@ function getNotificationActions(type) {
         {
           action: 'check-ipo',
           title: 'Check Allotment',
+        },
+        {
+          action: 'dismiss',
+          title: 'Dismiss',
+        },
+      ];
+
+    case 'admin-approval':
+      return [
+        {
+          action: 'review-user',
+          title: 'Review & Approve',
         },
         {
           action: 'dismiss',
@@ -466,6 +482,12 @@ self.addEventListener('notificationclick', function(event) {
         notificationData.ipoUrl ||
         notificationData.url ||
         '/ipo-verification';
+      break;
+
+    case 'review-user':
+      targetUrl =
+        notificationData.url ||
+        '/admin?tab=users&filter=pending';
       break;
 
     case 'view-pdf':

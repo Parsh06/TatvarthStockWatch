@@ -7,7 +7,7 @@
  * when a new user signs up or requests access to StockWatch.
  */
 
-const { db } = require('./firebaseAdmin');
+const { db, admin } = require('./firebaseAdmin');
 const { sendWebPushToUser } = require('./webPushNotifier');
 const { sendMessage, isConfigured } = require('./telegramNotifier');
 
@@ -21,40 +21,81 @@ const { sendMessage, isConfigured } = require('./telegramNotifier');
  */
 async function notifyAdminsOfNewAccessRequest({ uid, email, displayName }) {
   if (!uid) return { error: 'UID is required' };
-  const userEmail = email || 'No email provided';
+  const userEmail = (email || 'No email provided').toLowerCase().trim();
   const userName = displayName || userEmail.split('@')[0] || 'New Investor';
 
   console.log(`[ApprovalNotifier] Alerting admins of new access request from: ${userEmail} (${uid})`);
 
-  // 1. Discover all Admin users in Firestore
-  let adminUids = [];
+  // 1. Discover all Admin users in Firestore (Role query + Known admin emails fallback)
+  const adminUidSet = new Set();
   try {
     const adminSnap = await db.collection('users').where('role', '==', 'admin').get();
-    adminUids = adminSnap.docs.map(d => d.id);
+    adminSnap.docs.forEach(d => adminUidSet.add(d.id));
   } catch (err) {
-    console.warn('[ApprovalNotifier] Error discovering admin UIDs:', err.message);
+    console.warn('[ApprovalNotifier] Error discovering admin UIDs by role query:', err.message);
   }
+
+  // Fallback: Also check known founding admin emails / env vars
+  const knownAdminEmails = [
+    'korojitha@gmail.com',
+    ...(process.env.ADMIN_EMAIL ? [process.env.ADMIN_EMAIL.toLowerCase().trim()] : []),
+    ...(process.env.ADMIN_EMAILS ? process.env.ADMIN_EMAILS.split(',').map(e => e.trim().toLowerCase()) : [])
+  ].filter(Boolean);
+
+  for (const aEmail of knownAdminEmails) {
+    try {
+      const emailSnap = await db.collection('users').where('email', '==', aEmail).limit(1).get();
+      if (!emailSnap.empty) {
+        adminUidSet.add(emailSnap.docs[0].id);
+      }
+    } catch {}
+  }
+
+  const adminUids = Array.from(adminUidSet);
+  console.log(`[ApprovalNotifier] Discovered ${adminUids.length} admin(s) to notify:`, adminUids);
 
   const pushTitle = `🛡️ New Access Request: ${userName}`;
   const pushBody = `${userEmail} has registered and is waiting for your access approval.`;
   const pushUrl = `/admin?tab=users&filter=pending`;
 
-  // 2. Dispatch Web Push to Admin Devices
+  // 2. Dispatch Web Push to All Admin Devices
   let pushSentCount = 0;
+  let pushDevicesAttempted = 0;
+  const pushStore = require('./pushStore');
+
   for (const adminUid of adminUids) {
     try {
-      const res = await sendWebPushToUser(adminUid, {
-        title: pushTitle,
-        body: pushBody,
-        url: pushUrl,
-        tag: `admin-approval-${uid}`,
-        type: 'admin-approval',
-        actions: [
-          { action: 'review-user', title: 'Review & Approve' },
-          { action: 'dismiss', title: 'Later' }
-        ]
-      });
-      if (res && res.sent) pushSentCount += res.sent;
+      const devices = await pushStore.getAllDevices(adminUid);
+      pushDevicesAttempted += devices.length;
+
+      console.log(`[ApprovalNotifier] Admin ${adminUid} has ${devices.length} registered push device(s):`, 
+        devices.map(d => `${d.platform || 'unknown'}/${d.browser || 'unknown'}`).join(', ') || 'No devices'
+      );
+
+      if (devices.length > 0) {
+        const res = await sendWebPushToUser(adminUid, {
+          title: pushTitle,
+          body: pushBody,
+          url: pushUrl,
+          tag: `admin-approval-${uid}`,
+          type: 'admin-approval',
+          urgency: 'high',
+          priority: 'high',
+          timestamp: Date.now(),
+          data: {
+            uid,
+            email: userEmail,
+            displayName: userName,
+            requestedAt: new Date().toISOString(),
+          },
+          actions: [
+            { action: 'review-user', title: 'Review & Approve' },
+            { action: 'dismiss', title: 'Dismiss' }
+          ]
+        });
+
+        if (res && res.sent) pushSentCount += res.sent;
+      }
     } catch (pushErr) {
       console.warn(`[ApprovalNotifier] Push warning for admin ${adminUid}:`, pushErr.message);
     }
@@ -84,10 +125,34 @@ async function notifyAdminsOfNewAccessRequest({ uid, email, displayName }) {
     }
   }
 
-  console.log(`[ApprovalNotifier] Finished: adminsNotified=${adminUids.length}, pushSent=${pushSentCount}, telegramSent=${telegramSent}`);
+  // 4. Record Audit Log entry in Firestore
+  try {
+    await db.collection('admin_audit_logs').add({
+      actorUid: uid,
+      actorEmail: userEmail,
+      action: 'USER_ACCESS_REQUESTED',
+      targetUid: uid,
+      payload: {
+        email: userEmail,
+        displayName: userName,
+        adminsNotified: adminUids.length,
+        pushDevicesAttempted,
+        pushSentCount,
+        telegramSent,
+      },
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (auditErr) {
+    console.warn('[ApprovalNotifier] Audit log error:', auditErr.message);
+  }
+
+  console.log(`[ApprovalNotifier] Complete: adminsNotified=${adminUids.length}, devicesAttempted=${pushDevicesAttempted}, pushSent=${pushSentCount}, telegramSent=${telegramSent}`);
 
   return {
+    success: true,
     adminsCount: adminUids.length,
+    adminUids,
+    pushDevicesAttempted,
     pushSentCount,
     telegramSent,
   };

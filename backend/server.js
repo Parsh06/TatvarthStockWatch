@@ -215,23 +215,54 @@ app.post('/api/auth/onboarding-request', verifyToken, async (req, res) => {
       }
 
       if (data.approvalStatus === 'pending') {
-        return res.json({ success: true, approvalStatus: 'pending' });
+        // If notification has not been sent yet, or if forced resend was requested:
+        if (!data.approvalNotificationSent || req.body?.forceResend) {
+          await userRef.set({
+            approvalNotificationSent: true,
+            approvalNotificationSentAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+
+          const notifyResult = await notifyAdminsOfNewAccessRequest({ uid: req.uid, email, displayName }).catch((e) => {
+            console.error('[Onboarding Request] Error sending admin notification:', e.message);
+            return { error: e.message };
+          });
+
+          return res.json({
+            success: true,
+            approvalStatus: 'pending',
+            notificationDispatched: true,
+            notifyResult,
+          });
+        }
+
+        return res.json({
+          success: true,
+          approvalStatus: 'pending',
+          notificationAlreadySent: true,
+          notificationSentAt: data.approvalNotificationSentAt,
+        });
       }
 
       // First time setting approvalStatus for this account
       await userRef.set({
         approvalStatus: 'pending',
+        approvalNotificationSent: true,
+        approvalNotificationSentAt: admin.firestore.FieldValue.serverTimestamp(),
         approvalRequestedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
 
-      // Notify admins via Web Push & Telegram asynchronously
-      notifyAdminsOfNewAccessRequest({ uid: req.uid, email, displayName }).catch(() => {});
+      // Notify admins via Web Push & Telegram asynchronously with error tracking
+      const notifyResult = await notifyAdminsOfNewAccessRequest({ uid: req.uid, email, displayName }).catch((e) => {
+        console.error('[Onboarding Request] Error sending admin notification:', e.message);
+        return { error: e.message };
+      });
 
-      return res.json({ success: true, approvalStatus: 'pending', isNewRequest: true });
+      return res.json({ success: true, approvalStatus: 'pending', isNewRequest: true, notifyResult });
     }
 
     // New user document creation
     const initialStatus = wasPreviouslyApproved ? 'approved' : 'pending';
+    const isPending = initialStatus === 'pending';
     await userRef.set({
       displayName,
       email,
@@ -239,19 +270,83 @@ app.post('/api/auth/onboarding-request', verifyToken, async (req, res) => {
       entitlements: { read: false, write: false },
       disabled: false,
       approvalStatus: initialStatus,
+      approvalNotificationSent: isPending,
+      ...(isPending ? { approvalNotificationSentAt: admin.firestore.FieldValue.serverTimestamp() } : {}),
       approvalRequestedAt: admin.firestore.FieldValue.serverTimestamp(),
       ...(initialStatus === 'approved' ? { approvedAt: admin.firestore.FieldValue.serverTimestamp(), approvalRetained: true } : {}),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       prefs: { telegramEnabled: true, inAppEnabled: true, frequency: 'realtime' },
     });
 
-    if (initialStatus === 'pending') {
-      notifyAdminsOfNewAccessRequest({ uid: req.uid, email, displayName }).catch(() => {});
+    let notifyResult = null;
+    if (isPending) {
+      notifyResult = await notifyAdminsOfNewAccessRequest({ uid: req.uid, email, displayName }).catch((e) => {
+        console.error('[Onboarding Request] Error sending admin notification:', e.message);
+        return { error: e.message };
+      });
     }
 
-    res.json({ success: true, approvalStatus: initialStatus, isNewRequest: initialStatus === 'pending', retained: wasPreviouslyApproved });
+    res.json({
+      success: true,
+      approvalStatus: initialStatus,
+      isNewRequest: isPending,
+      retained: wasPreviouslyApproved,
+      notifyResult,
+    });
   } catch (err) {
     console.error('[Onboarding Request Error]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── Manual Resend Approval Notification to Admins ──────────────────────────
+app.post('/api/auth/resend-approval-notification', verifyToken, async (req, res) => {
+  try {
+    const { db, admin } = require('./lib/firebaseAdmin');
+    const { notifyAdminsOfNewAccessRequest } = require('./lib/userApprovalNotificationService');
+    const userRef = db.collection('users').doc(req.uid);
+    const snap = await userRef.get();
+
+    if (!snap.exists) {
+      return res.status(404).json({ success: false, error: 'User profile not found' });
+    }
+
+    const data = snap.data();
+    if (data.approvalStatus !== 'pending') {
+      return res.json({ success: true, approvalStatus: data.approvalStatus, message: 'Account is not pending approval.' });
+    }
+
+    // Cooldown check (2 minutes)
+    if (data.approvalNotificationSentAt) {
+      const lastSent = data.approvalNotificationSentAt?.toDate ? data.approvalNotificationSentAt.toDate() : new Date(data.approvalNotificationSentAt);
+      const elapsedMs = Date.now() - (lastSent?.getTime() || 0);
+      if (elapsedMs < 120 * 1000) {
+        const remainingSec = Math.ceil((120 * 1000 - elapsedMs) / 1000);
+        return res.status(429).json({
+          success: false,
+          error: `Administrator was notified recently. Please wait ${remainingSec}s before requesting again.`,
+          retryAfterSec: remainingSec,
+        });
+      }
+    }
+
+    const email = (req.user?.email || data.email || '').toLowerCase().trim();
+    const displayName = req.user?.name || data.displayName || '';
+
+    await userRef.set({
+      approvalNotificationSent: true,
+      approvalNotificationSentAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    const notifyResult = await notifyAdminsOfNewAccessRequest({ uid: req.uid, email, displayName });
+
+    res.json({
+      success: true,
+      message: 'Approval notification dispatched to all administrator devices successfully.',
+      notifyResult,
+    });
+  } catch (err) {
+    console.error('[Resend Approval Notification Error]', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

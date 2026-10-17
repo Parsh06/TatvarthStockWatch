@@ -19,6 +19,28 @@ import toast from 'react-hot-toast'
 export default function PendingApprovalPage() {
   const { currentUser, logout, refreshAdminProfile } = useAuth()
   const [checking, setChecking] = useState(false)
+  const [resending, setResending] = useState(false)
+
+  // On mount, ensure backend onboarding endpoint has processed this account & sent admin alert
+  React.useEffect(() => {
+    let active = true
+    async function syncOnboarding() {
+      try {
+        const { apiClient } = await import('../../services/apiClient')
+        const res = await apiClient.post('/api/auth/onboarding-request', {
+          displayName: currentUser?.displayName,
+          email: currentUser?.email,
+        })
+        if (active && res?.retained) {
+          await refreshAdminProfile()
+        }
+      } catch (err) {
+        console.warn('[PendingApproval] Initial onboarding sync warning:', err.message)
+      }
+    }
+    syncOnboarding()
+    return () => { active = false }
+  }, [currentUser?.displayName, currentUser?.email, refreshAdminProfile])
 
   async function handleCheckStatus() {
     setChecking(true)
@@ -29,6 +51,23 @@ export default function PendingApprovalPage() {
       toast.error('Unable to refresh status')
     } finally {
       setTimeout(() => setChecking(false), 500)
+    }
+  }
+
+  async function handleResendNotification() {
+    setResending(true)
+    try {
+      const { apiClient } = await import('../../services/apiClient')
+      const res = await apiClient.post('/api/auth/resend-approval-notification')
+      if (res?.success) {
+        toast.success('Administrator notified on all registered devices!', { duration: 4000 })
+      } else {
+        toast(res?.error || 'Notification was recently dispatched.')
+      }
+    } catch (err) {
+      toast.error(err.message || 'Failed to dispatch notification')
+    } finally {
+      setTimeout(() => setResending(false), 1000)
     }
   }
 
@@ -147,22 +186,33 @@ export default function PendingApprovalPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-3 pt-2">
+          <div className="space-y-3 pt-2">
             <button
-              onClick={handleCheckStatus}
-              disabled={checking}
-              className="py-3 px-4 rounded-xl border border-border bg-surface hover:bg-surfaceHover text-textPrimary font-semibold text-xs sm:text-sm transition flex items-center justify-center gap-2"
+              onClick={handleResendNotification}
+              disabled={resending}
+              className="w-full py-3.5 px-4 rounded-xl bg-primary hover:bg-primaryHover text-white font-semibold text-xs sm:text-sm shadow-lg shadow-primary/25 transition flex items-center justify-center gap-2 disabled:opacity-60"
             >
-              <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin text-primary' : ''}`} />
-              <span>{checking ? 'Checking...' : 'Check Status'}</span>
+              <BellRing className={`w-4 h-4 ${resending ? 'animate-bounce text-amber-300' : ''}`} />
+              <span>{resending ? 'Pinging Administrator...' : 'Ping Administrator / Resend Alert'}</span>
             </button>
-            <button
-              onClick={handleSignOut}
-              className="py-3 px-4 rounded-xl border border-border bg-background hover:bg-danger/10 hover:border-danger/30 hover:text-danger text-textMuted font-semibold text-xs sm:text-sm transition flex items-center justify-center gap-2"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Sign Out</span>
-            </button>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={handleCheckStatus}
+                disabled={checking}
+                className="py-3 px-4 rounded-xl border border-border bg-surface hover:bg-surfaceHover text-textPrimary font-semibold text-xs sm:text-sm transition flex items-center justify-center gap-2"
+              >
+                <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin text-primary' : ''}`} />
+                <span>{checking ? 'Checking...' : 'Check Status'}</span>
+              </button>
+              <button
+                onClick={handleSignOut}
+                className="py-3 px-4 rounded-xl border border-border bg-background hover:bg-danger/10 hover:border-danger/30 hover:text-danger text-textMuted font-semibold text-xs sm:text-sm transition flex items-center justify-center gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sign Out</span>
+              </button>
+            </div>
           </div>
         </div>
 

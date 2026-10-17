@@ -32,7 +32,7 @@ function initWebPush() {
  * @param {Object} payload - { title, body, url, tag, ... }
  * @param {number} retries - number of retries on transient failure (default 1)
  */
-async function sendWebPush(subscription, payload, retries = 1) {
+async function sendWebPush(subscription, payload, retries = 1, options = {}) {
   if (!initWebPush()) return { sent: false, expired: false };
   if (!subscription || !subscription.endpoint) return { sent: false, expired: false };
 
@@ -41,9 +41,15 @@ async function sendWebPush(subscription, payload, retries = 1) {
     payload.tag = `sw-${Date.now()}`;
   }
 
+  const pushOptions = {
+    TTL: 86400,
+    urgency: payload.urgency || 'high',
+    ...options,
+  };
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      await webpush.sendNotification(subscription, JSON.stringify(payload));
+      await webpush.sendNotification(subscription, JSON.stringify(payload), pushOptions);
       return { sent: true, expired: false };
     } catch (err) {
       // 404 or 410 = subscription is gone (user unsubscribed or browser revoked it)

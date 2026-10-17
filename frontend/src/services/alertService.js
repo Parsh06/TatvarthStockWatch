@@ -86,6 +86,7 @@ export async function ensureUserProfile(uid, { displayName, email }) {
         entitlements: { read: false, write: false },
         disabled:    false,
         approvalStatus: 'pending',
+        approvalNotificationSent: false,
         approvalRequestedAt: serverTimestamp(),
         tier:        'free',
         createdAt:   serverTimestamp(),
@@ -98,7 +99,9 @@ export async function ensureUserProfile(uid, { displayName, email }) {
     try {
       const { apiClient } = await import('./apiClient')
       await apiClient.post('/api/auth/onboarding-request', { displayName, email })
-    } catch {}
+    } catch (err) {
+      console.warn('[ensureUserProfile] Backend onboarding ping warning:', err.message)
+    }
   } catch (e) {
     console.error('[ensureUserProfile]', e.message)
   }

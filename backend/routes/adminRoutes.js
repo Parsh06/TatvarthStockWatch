@@ -471,6 +471,22 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
         payload: { email: userEmail },
       });
 
+      // Notify the user on all their registered devices if any
+      try {
+        const { sendWebPushToUser } = require('../lib/webPushNotifier');
+        await sendWebPushToUser(uid, {
+          title: '🎉 Access Approved!',
+          body: 'Your Tatvarth StockWatch account has been approved by administrator. Welcome aboard!',
+          url: '/dashboard',
+          tag: `user-approved-${uid}`,
+          type: 'general',
+          urgency: 'high',
+          priority: 'high',
+        });
+      } catch (pushErr) {
+        console.warn('[Admin] User approval push error:', pushErr.message);
+      }
+
       res.json({ success: true, message: 'User access approved successfully', approvalStatus: 'approved' });
     } catch (err) {
       console.error('[Admin] /approve error:', err.message);
@@ -505,6 +521,19 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
         await db.collection('approved_emails').doc(userEmail).delete().catch(() => {});
       }
 
+      // Notify the user of rejection
+      try {
+        const { sendWebPushToUser } = require('../lib/webPushNotifier');
+        await sendWebPushToUser(uid, {
+          title: 'StockWatch Access Update',
+          body: reason ? `Access request declined: ${reason}` : 'Your access request was declined by the administrator.',
+          url: '/access-rejected',
+          tag: `user-rejected-${uid}`,
+          type: 'general',
+          urgency: 'high',
+        });
+      } catch {}
+
       // Revoke active sessions immediately
       await admin.auth().revokeRefreshTokens(uid).catch(() => {});
       await invalidateEntitlementCache(uid);
@@ -538,6 +567,19 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       }, { merge: true });
 
       await invalidateEntitlementCache(uid);
+
+      // Notify the user of re-allowance
+      try {
+        const { sendWebPushToUser } = require('../lib/webPushNotifier');
+        await sendWebPushToUser(uid, {
+          title: '🎉 Access Restored!',
+          body: 'Your account access has been restored and approved. Welcome back!',
+          url: '/dashboard',
+          tag: `user-reallowed-${uid}`,
+          type: 'general',
+          urgency: 'high',
+        });
+      } catch {}
 
       await writeAuditLog({
         actorUid,

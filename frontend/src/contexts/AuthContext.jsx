@@ -263,8 +263,18 @@ export function AuthProvider({ children }) {
                 setRejectedReason(data.rejectedReason || '')
 
                 applyPlanState(data)
+
+                // If user is pending and notification has not been sent yet, trigger background catchup ping
+                if (data.approvalStatus === 'pending' && !data.approvalNotificationSent) {
+                  import('../services/apiClient').then(({ apiClient }) => {
+                    apiClient.post('/api/auth/onboarding-request', {
+                      displayName: user.displayName || data.displayName,
+                      email: user.email || data.email,
+                    }).catch(() => {})
+                  }).catch(() => {})
+                }
               } else {
-                // If profile hasn't been created yet, default to pending for safety
+                // If profile hasn't been created yet, default to pending for safety and sync
                 setRole('user')
                 setEntitlements({ read: false, write: false })
                 setApprovalStatus('pending')
@@ -274,6 +284,13 @@ export function AuthProvider({ children }) {
                 setPlanStatus('active')
                 setPlanExpiresAt(null)
                 setDailyAiCount(0)
+
+                import('../services/alertService').then(({ ensureUserProfile }) => {
+                  ensureUserProfile(user.uid, {
+                    displayName: user.displayName,
+                    email: user.email,
+                  }).catch(() => {})
+                }).catch(() => {})
               }
               setLoading(false)
             },
@@ -317,7 +334,17 @@ export function AuthProvider({ children }) {
       setCurrentUser({ ...DEMO_USER, email, displayName: email.split('@')[0] })
       return { user: DEMO_USER }
     }
-    return signInWithEmailAndPassword(auth, email, password)
+    const cred = await signInWithEmailAndPassword(auth, email, password)
+    try {
+      const { ensureUserProfile } = await import('../services/alertService')
+      await ensureUserProfile(cred.user.uid, {
+        displayName: cred.user.displayName,
+        email: cred.user.email,
+      })
+    } catch (e) {
+      console.warn('[Auth] Profile sync on login warning:', e.message)
+    }
+    return cred
   }
 
   async function loginWithGoogle() {
