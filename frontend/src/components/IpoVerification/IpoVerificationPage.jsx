@@ -8,6 +8,7 @@ import {
   AlertTriangle, Crown
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import clsx from 'clsx'
 import { useAuth } from '../../contexts/AuthContext'
 import { apiClient } from '../../services/apiClient'
 import toast from 'react-hot-toast'
