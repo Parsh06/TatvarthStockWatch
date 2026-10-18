@@ -131,20 +131,25 @@ function validateBasketInput(data = {}) {
   const title = String(data.title || '').trim();
   const description = String(data.description || '').trim();
   const category = String(data.category || 'Curated').trim();
-  const rawScripts = Array.isArray(data.scripts) ? data.scripts : [];
+  const rawScripts = Array.isArray(data.scripts) 
+    ? data.scripts 
+    : (Array.isArray(data.stocks) ? data.stocks : []);
   const tags = Array.isArray(data.tags) ? data.tags : [];
-  const userSlug = String(data.slug || '').trim().toLowerCase();
+  const userSlug = String(data.slug || data.userSlug || '').trim().toLowerCase();
 
-  if (title.length < 3 || title.length > 70) {
-    return { valid: false, error: 'Basket title must be between 3 and 70 characters' };
+  if (title.length < 3 || title.length > 80) {
+    const msg = 'Basket title must be between 3 and 80 characters';
+    return { valid: false, error: msg, errors: [msg] };
   }
 
-  if (description.length > 350) {
-    return { valid: false, error: 'Basket description cannot exceed 350 characters' };
+  if (description.length > 400) {
+    const msg = 'Basket description cannot exceed 400 characters';
+    return { valid: false, error: msg, errors: [msg] };
   }
 
-  if (rawScripts.length === 0 || rawScripts.length > 50) {
-    return { valid: false, error: 'A basket must contain between 1 and 50 stocks' };
+  if (rawScripts.length === 0 || rawScripts.length > 100) {
+    const msg = 'A basket must contain between 1 and 100 stocks';
+    return { valid: false, error: msg, errors: [msg] };
   }
 
   // Deep validate stocks inside basket
@@ -156,27 +161,41 @@ function validateBasketInput(data = {}) {
     if (!bCode && !sym) continue;
     if (bCode && !SCRIP_CODE_REGEX.test(bCode)) continue;
     if (sym && !NSE_SYMBOL_REGEX.test(sym)) continue;
+    const name = String(s.scriptName || s.companyName || s.name || sym || bCode).trim().slice(0, 100);
     validatedScripts.push({
       bseCode: bCode,
+      ltdCode: bCode,
+      scripCode: bCode,
       symbol: sym,
-      scriptName: String(s.scriptName || s.name || sym || bCode).trim().slice(0, 100),
+      scriptName: name,
+      companyName: name,
       exchange: ['BSE', 'NSE', 'BOTH'].includes(String(s.exchange).toUpperCase()) ? String(s.exchange).toUpperCase() : 'BOTH',
-      notes: String(s.notes || '').trim().slice(0, 200),
+      notes: String(s.notes || '').trim().slice(0, 250),
     });
   }
 
   if (validatedScripts.length === 0) {
-    return { valid: false, error: 'A basket must contain at least 1 valid stock with valid BSE code or NSE symbol' };
+    const msg = 'A basket must contain at least 1 valid stock with valid BSE code or NSE symbol';
+    return { valid: false, error: msg, errors: [msg] };
   }
 
   if (userSlug && !SLUG_REGEX.test(userSlug)) {
-    return { valid: false, error: 'Basket slug must contain only lowercase letters, numbers, and hyphens (3-60 chars)' };
+    const msg = 'Basket slug must contain only lowercase letters, numbers, and hyphens (3-60 chars)';
+    return { valid: false, error: msg, errors: [msg] };
   }
 
   const cleanTags = tags
-    .slice(0, 6)
+    .slice(0, 8)
     .map(t => String(t || '').trim().replace(/[^a-zA-Z0-9-]/g, '').slice(0, 20))
     .filter(Boolean);
+
+  const fallbackSlug = title
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 45);
+  const effectiveSlug = userSlug || fallbackSlug;
 
   return {
     valid: true,
@@ -186,6 +205,8 @@ function validateBasketInput(data = {}) {
       category: category.slice(0, 30),
       tags: cleanTags,
       scripts: validatedScripts,
+      stocks: validatedScripts,
+      slug: effectiveSlug,
       userSlug,
     },
   };

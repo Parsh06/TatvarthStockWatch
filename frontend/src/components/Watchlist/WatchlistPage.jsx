@@ -125,14 +125,8 @@ export default function WatchlistPage() {
   }
 
   function handleShareBasket() {
-    const maxBaskets = planLimits?.maxCuratedBaskets ?? 0
-    if (maxBaskets === 0) {
-      setUpgradeModal({
-        open: true,
-        title: 'Shareable Curated Baskets',
-        message: 'Curated Watchlist Baskets with viral public links are exclusively available on Pro & Premium tiers. Package high-conviction ideas and share with 1 tap.',
-        targetTier: 'pro',
-      })
+    if (watchlist.length === 0) {
+      toast.error('Your watchlist is empty. Add at least 1 stock before sharing!')
       return
     }
     setShareBasketOpen(true)
@@ -356,10 +350,10 @@ export default function WatchlistPage() {
             </button>
             <button onClick={handleShareBasket}
               disabled={watchlist.length === 0}
-              title="Share curated basket via viral public link"
+              title="Share your watchlist via public link"
               className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 rounded-lg text-sm font-medium transition disabled:opacity-50">
               <Share2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Share Basket</span>
+              <span className="hidden sm:inline">Share Watchlist</span>
             </button>
             <button onClick={handleOpenAdd}
               className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium transition">

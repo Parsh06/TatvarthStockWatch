@@ -71,14 +71,14 @@ async function runMembershipTests() {
     assert.strictEqual(PLAN_LIMITS.basic.maxWatchlist, 5, 'Basic max watchlist must be 5');
     assert.strictEqual(PLAN_LIMITS.basic.maxDailyAi, 3, 'Basic max daily AI must be 3');
     assert.strictEqual(PLAN_LIMITS.basic.maxFamilyPans, 1, 'Basic max family PANs must be 1');
-    assert.strictEqual(PLAN_LIMITS.basic.maxBaskets, 0, 'Basic cannot create baskets');
+    assert.strictEqual(PLAN_LIMITS.basic.maxBaskets, 3, 'Basic can create up to 3 baskets');
     assert.strictEqual(PLAN_LIMITS.basic.canExport, false, 'Basic cannot export data');
 
     assert(PLAN_LIMITS.pro, 'Pro plan limits must exist');
     assert.strictEqual(PLAN_LIMITS.pro.maxWatchlist, 50, 'Pro max watchlist must be 50');
     assert.strictEqual(PLAN_LIMITS.pro.maxDailyAi, Infinity, 'Pro daily AI must be unlimited');
     assert.strictEqual(PLAN_LIMITS.pro.maxFamilyPans, 10, 'Pro max family PANs must be 10');
-    assert.strictEqual(PLAN_LIMITS.pro.maxBaskets, 5, 'Pro max baskets must be 5');
+    assert.strictEqual(PLAN_LIMITS.pro.maxBaskets, 10, 'Pro max baskets must be 10');
     assert.strictEqual(PLAN_LIMITS.pro.canExport, true, 'Pro can export data');
 
     assert(PLAN_LIMITS.premium, 'Premium plan limits must exist');
@@ -385,18 +385,21 @@ async function runMembershipTests() {
     // ─────────────────────────────────────────────────────────────────────────
     console.log('🔹 SECTION 8: Testing Curated Baskets Creation Quotas...');
 
-    // Basic: 0 baskets (view & import only)
+    // Basic: 3 baskets
     const bsktB = await canCreateBasket(TEST_USER_BASIC_UID, 0);
-    assert.strictEqual(bsktB.allowed, false, 'Basic user cannot create curated baskets');
-    assert.strictEqual(bsktB.maxAllowed, 0);
+    assert.strictEqual(bsktB.allowed, true, 'Basic user can create up to 3 curated baskets');
+    assert.strictEqual(bsktB.maxAllowed, 3);
 
-    // Pro: 5 baskets
-    const bsktP4 = await canCreateBasket(TEST_USER_PRO_UID, 4);
-    assert.strictEqual(bsktP4.allowed, true, 'Pro user with 4 baskets can create 5th');
-    assert.strictEqual(bsktP4.maxAllowed, 5);
+    const bsktBMax = await canCreateBasket(TEST_USER_BASIC_UID, 3);
+    assert.strictEqual(bsktBMax.allowed, false, 'Basic user with 3 baskets cannot create 4th');
 
-    const bsktP5 = await canCreateBasket(TEST_USER_PRO_UID, 5);
-    assert.strictEqual(bsktP5.allowed, false, 'Pro user with 5 baskets cannot create 6th');
+    // Pro: 10 baskets
+    const bsktP9 = await canCreateBasket(TEST_USER_PRO_UID, 9);
+    assert.strictEqual(bsktP9.allowed, true, 'Pro user with 9 baskets can create 10th');
+    assert.strictEqual(bsktP9.maxAllowed, 10);
+
+    const bsktP10 = await canCreateBasket(TEST_USER_PRO_UID, 10);
+    assert.strictEqual(bsktP10.allowed, false, 'Pro user with 10 baskets cannot create 11th');
 
     // Premium: Unlimited
     const bsktPrem = await canCreateBasket(TEST_USER_PREMIUM_UID, 20);

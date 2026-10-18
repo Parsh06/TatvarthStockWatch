@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../../contexts/AuthContext'
+import { useWatchlist } from '../../contexts/WatchlistContext'
 import { apiClient } from '../../services/apiClient'
 import PageTransition from '../Common/PageTransition'
 import Loader from '../Common/Loader'
@@ -30,6 +31,7 @@ export default function PublicBasketPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { currentUser, isApproved, isPendingApproval, isRejected } = useAuth()
+  const { refresh: refreshWatchlist } = useWatchlist()
 
   const [basket, setBasket] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -108,8 +110,15 @@ export default function PublicBasketPage() {
     try {
       const res = await apiClient.post(`/api/baskets/${encodeURIComponent(slug)}/import`)
       if (res?.success) {
-        toast.success(`Successfully added ${res.addedCount} stocks to your Watchlist!`)
-        setTimeout(() => navigate('/watchlist'), 900)
+        await refreshWatchlist?.()
+        if (res.planCapped) {
+          toast.success(`Added ${res.addedCount} stock${res.addedCount === 1 ? '' : 's'} to Watchlist (Limit reached on ${res.plan?.toUpperCase()} tier)`, { duration: 5000 })
+        } else if (res.alreadyInWatchlistCount > 0 && res.addedCount === 0) {
+          toast('All stocks in this basket are already in your Watchlist!', { icon: 'ℹ️' })
+        } else {
+          toast.success(`Successfully added ${res.addedCount} stock${res.addedCount === 1 ? '' : 's'} to your Watchlist!`)
+        }
+        setTimeout(() => navigate('/watchlist'), 1000)
       } else {
         toast.error(res?.error || 'Failed to import basket')
       }

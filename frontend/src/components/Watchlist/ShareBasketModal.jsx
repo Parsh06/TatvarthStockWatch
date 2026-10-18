@@ -24,8 +24,44 @@ export default function ShareBasketModal({ isOpen, onClose, watchlist = [] }) {
   const [submitting, setSubmitting] = useState(false)
   const [generatedBasket, setGeneratedBasket] = useState(null)
   const [copied, setCopied] = useState(false)
+  const [fastSharing, setFastSharing] = useState(false)
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setSelectedScripts(new Set(watchlist.map(s => s.id || s.ltdCode || s.symbol)))
+      setGeneratedBasket(null)
+      if (!title) {
+        setTitle('My Curated Watchlist')
+      }
+    }
+  }, [isOpen, watchlist])
 
   if (!isOpen) return null
+
+  async function handleFastShareWatchlist() {
+    if (watchlist.length === 0) {
+      toast.error('Watchlist is empty')
+      return
+    }
+    setFastSharing(true)
+    try {
+      const res = await apiClient.post('/api/baskets/share-watchlist', {
+        title: title.trim() || undefined,
+        description: description.trim() || undefined,
+        category,
+      })
+      if (res?.success) {
+        setGeneratedBasket(res)
+        toast.success('Your entire Watchlist has been published as a shareable basket!')
+      } else {
+        toast.error(res?.error || 'Failed to share watchlist')
+      }
+    } catch (err) {
+      toast.error(err.message || 'Error sharing watchlist')
+    } finally {
+      setFastSharing(false)
+    }
+  }
 
   function toggleScript(id) {
     setSelectedScripts(prev => {
@@ -322,31 +358,51 @@ export default function ShareBasketModal({ isOpen, onClose, watchlist = [] }) {
               </div>
 
               {/* Submit CTA */}
-              <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-border">
+              <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 border-t border-border">
                 <button
                   type="button"
-                  onClick={onClose}
-                  className="px-4 py-2 rounded-xl text-sm font-medium text-textMuted hover:text-textPrimary hover:bg-surfaceHover transition"
+                  onClick={handleFastShareWatchlist}
+                  disabled={fastSharing || submitting || watchlist.length === 0}
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-semibold transition"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting || selectedScripts.size === 0}
-                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-semibold transition disabled:opacity-50 shadow-md shadow-primary/20"
-                >
-                  {submitting ? (
+                  {fastSharing ? (
                     <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Publishing...</span>
+                      <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                      <span>Generating link...</span>
                     </>
                   ) : (
                     <>
-                      <Share2 className="w-4 h-4" />
-                      <span>Publish Public Basket</span>
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>1-Tap Fast Share All</span>
                     </>
                   )}
                 </button>
+                <div className="flex items-center justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-4 py-2 rounded-xl text-sm font-medium text-textMuted hover:text-textPrimary hover:bg-surfaceHover transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting || fastSharing || selectedScripts.size === 0}
+                    className="flex items-center gap-2 px-5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-semibold transition disabled:opacity-50 shadow-md shadow-primary/20"
+                  >
+                    {submitting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Publishing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Share2 className="w-4 h-4" />
+                        <span>Publish Curated Basket</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           )}

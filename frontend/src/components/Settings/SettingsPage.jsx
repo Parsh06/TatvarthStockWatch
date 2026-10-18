@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
 import {
   User,
   Bell,
@@ -18,8 +19,21 @@ import {
   LogOut,
   Smartphone,
   Moon,
+  Sun,
   RotateCcw,
+  Crown,
+  Zap,
+  Share2,
+  Eye,
+  Copy,
+  Check,
+  Sparkles,
+  ExternalLink,
+  Laptop,
+  Plus,
+  RefreshCw,
 } from 'lucide-react'
+import clsx from 'clsx'
 import { updateProfile, deleteUser } from 'firebase/auth'
 import { useAuth } from '../../contexts/AuthContext'
 import { useWatchlist } from '../../contexts/WatchlistContext'
@@ -32,6 +46,7 @@ import { useWebPush } from '../../hooks/useWebPush'
 import { apiClient } from '../../services/apiClient'
 import { ALERT_CATEGORIES } from '../../utils/bseCategories'
 import NotificationScopeSettings from './NotificationScopeSettings'
+import ShareBasketModal from '../Watchlist/ShareBasketModal'
 import { Spinner } from '../Common/Loader'
 
 /* ------------------------------------------------------------------ */
@@ -50,7 +65,7 @@ function Section({
   return (
     <section
       id={id}
-      className={`scroll-mt-24 bg-surface border border-border rounded-2xl overflow-hidden ${className}`}
+      className={`scroll-mt-24 bg-surface border border-border rounded-2xl overflow-hidden shadow-sm ${className}`}
     >
       <div className="px-4 sm:px-6 py-4 border-b border-border/70 bg-surface/90">
         <div className="flex items-start justify-between gap-4">
@@ -165,7 +180,7 @@ function SectionAnchor({ href, icon: Icon, label }) {
   return (
     <a
       href={`#${href}`}
-      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-surface border border-border text-xs font-medium text-textMuted hover:text-textPrimary hover:border-primary/30 transition-colors whitespace-nowrap"
+      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-surface border border-border text-xs font-medium text-textMuted hover:text-textPrimary hover:border-primary/30 transition-colors whitespace-nowrap shadow-sm"
     >
       <Icon className="w-3.5 h-3.5" />
       {label}
@@ -179,7 +194,7 @@ function SaveButton({ saving, dirty, onClick, children, type = 'button' }) {
       type={type}
       onClick={onClick}
       disabled={saving || !dirty}
-      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors"
+      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-primary/20"
     >
       {saving ? <Spinner size="sm" className="scale-75" /> : <Save className="w-4 h-4" />}
       {children}
@@ -192,8 +207,21 @@ function SaveButton({ saving, dirty, onClick, children, type = 'button' }) {
 /* ------------------------------------------------------------------ */
 
 export default function SettingsPage() {
-  const { currentUser, logout } = useAuth()
+  const navigate = useNavigate()
+  const {
+    currentUser,
+    logout,
+    plan,
+    planStatus,
+    planExpiresAt,
+    dailyAiCount,
+    planLimits,
+    isAdmin,
+    isPro,
+    isPremium,
+  } = useAuth()
   const { watchlist, clearWatchlist } = useWatchlist()
+
   const {
     isSupported,
     isSubscribed,
@@ -230,6 +258,18 @@ export default function SettingsPage() {
   const [telegramStatus, setTelegramStatus] = useState(null)
   const [telegramTesting, setTelegramTesting] = useState(false)
 
+  // Curated Baskets state
+  const [myBaskets, setMyBaskets] = useState([])
+  const [basketsLoading, setBasketsLoading] = useState(false)
+  const [shareBasketOpen, setShareBasketOpen] = useState(false)
+  const [copiedSlug, setCopiedSlug] = useState(null)
+  const [deleteBasketSlug, setDeleteBasketSlug] = useState(null)
+
+  // Theme state
+  const [currentTheme, setCurrentTheme] = useState(() => {
+    return localStorage.getItem('theme') || 'dark'
+  })
+
   const loadPrefs = useCallback(async () => {
     try {
       const p = await getPrefs(currentUser?.uid)
@@ -243,9 +283,25 @@ export default function SettingsPage() {
     }
   }, [currentUser])
 
+  const loadMyBaskets = useCallback(async () => {
+    if (!currentUser?.uid) return
+    setBasketsLoading(true)
+    try {
+      const res = await apiClient.get('/api/baskets/user/my')
+      if (res?.success) {
+        setMyBaskets(res.baskets || [])
+      }
+    } catch (err) {
+      console.warn('[Settings] Failed to load my baskets:', err.message)
+    } finally {
+      setBasketsLoading(false)
+    }
+  }, [currentUser?.uid])
+
   useEffect(() => {
     loadPrefs()
-  }, [loadPrefs])
+    loadMyBaskets()
+  }, [loadPrefs, loadMyBaskets])
 
   useEffect(() => {
     if (prefsLoaded) setPrefsSnapshot(JSON.stringify(notifPrefs))
@@ -254,7 +310,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!currentUser?.uid) return
 
-    apiClient('/api/telegram-status')
+    apiClient.get('/api/telegram-status')
       .then(setTelegramStatus)
       .catch(() => setTelegramStatus({ configured: false, hasBotToken: false, hasChatId: false }))
   }, [currentUser?.uid])
@@ -263,6 +319,48 @@ export default function SettingsPage() {
     if (!currentUser) return
     setDisplayName(currentUser.displayName || '')
   }, [currentUser])
+
+  function handleThemeChange(newTheme) {
+    setCurrentTheme(newTheme)
+    localStorage.setItem('theme', newTheme)
+    const root = document.documentElement
+    if (newTheme === 'dark') {
+      root.classList.add('dark')
+    } else if (newTheme === 'light') {
+      root.classList.remove('dark')
+    } else {
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        root.classList.add('dark')
+      } else {
+        root.classList.remove('dark')
+      }
+    }
+    toast.success(`Theme switched to ${newTheme.toUpperCase()}`)
+  }
+
+  async function handleDeleteBasket(slug) {
+    try {
+      const res = await apiClient.delete(`/api/baskets/${encodeURIComponent(slug)}`)
+      if (res?.success) {
+        setMyBaskets(prev => prev.filter(b => b.slug !== slug && b.id !== slug))
+        toast.success('Curated basket deleted successfully')
+      } else {
+        toast.error(res?.error || 'Failed to delete basket')
+      }
+    } catch (err) {
+      toast.error(err.message || 'Error deleting basket')
+    } finally {
+      setDeleteBasketSlug(null)
+    }
+  }
+
+  function copyBasketLink(slug) {
+    const url = `${window.location.origin}/basket/${slug}`
+    navigator.clipboard.writeText(url)
+    setCopiedSlug(slug)
+    toast.success('Public basket link copied!')
+    setTimeout(() => setCopiedSlug(null), 2500)
+  }
 
   const notifPrefsDirty = prefsLoaded && JSON.stringify(notifPrefs) !== prefsSnapshot
   const profileDirty = displayName !== (currentUser?.displayName || '')
@@ -285,7 +383,6 @@ export default function SettingsPage() {
     )
   }, [catSearch])
 
-  // Extract initial uppercase letter for profile avatar
   const profileInitial = (displayName || currentUser?.email || 'U').trim().charAt(0).toUpperCase()
 
   const memberSince = currentUser?.metadata?.creationTime
@@ -375,10 +472,8 @@ export default function SettingsPage() {
   async function handleTelegramTest() {
     setTelegramTesting(true)
     try {
-      const data = await apiClient('/api/telegram-test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegramChatId: notifPrefs.telegramChatId }),
+      const data = await apiClient.post('/api/telegram-test', {
+        telegramChatId: notifPrefs.telegramChatId,
       })
 
       if (data.sent) toast.success('Test message sent! Check your Telegram.')
@@ -396,7 +491,7 @@ export default function SettingsPage() {
       await savePrefs(currentUser?.uid, notifPrefs)
       setPrefsSnapshot(JSON.stringify(notifPrefs))
       toast.success('Telegram settings saved')
-      const status = await apiClient('/api/telegram-status')
+      const status = await apiClient.get('/api/telegram-status')
       setTelegramStatus(status)
     } catch {
       toast.error('Failed to save Telegram settings')
@@ -449,8 +544,16 @@ export default function SettingsPage() {
     }
   }
 
+  // Quota percentages
+  const maxWatch = planLimits?.maxWatchlist || 5
+  const watchPct = maxWatch === Infinity ? 0 : Math.min(100, Math.round((watchlist.length / maxWatch) * 100))
+  const maxAi = planLimits?.maxDailyAi || 3
+  const aiPct = maxAi === Infinity ? 0 : Math.min(100, Math.round((dailyAiCount / maxAi) * 100))
+  const maxBaskets = planLimits?.maxBaskets || 3
+  const basketPct = maxBaskets === Infinity ? 0 : Math.min(100, Math.round((myBaskets.length / maxBaskets) * 100))
+
   return (
-    <div className="max-w-7xl mx-auto pb-10">
+    <div className="max-w-7xl mx-auto pb-12">
       {/* Header */}
       <div className="mb-6 sm:mb-8">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
@@ -459,9 +562,9 @@ export default function SettingsPage() {
               <ShieldCheck className="w-5 h-5 text-primary" />
               <span className="text-xs font-semibold uppercase tracking-[0.15em] text-primary">Account Center</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-textPrimary tracking-tight">Settings</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-textPrimary tracking-tight">Settings & Preferences</h1>
             <p className="text-sm sm:text-base text-textMuted mt-1 max-w-2xl">
-              Manage your profile, notifications, integrations and StockWatch preferences from one page.
+              Configure profile, membership quotas, notifications, public baskets, and market appearance.
             </p>
           </div>
 
@@ -473,49 +576,73 @@ export default function SettingsPage() {
                 if (e.key !== 'Enter') return
                 const query = e.currentTarget.value.trim().toLowerCase()
                 if (!query) return
-                const target = ['profile', 'notifications', 'categories', 'telegram', 'watchlist', 'account']
+                const target = ['profile', 'membership', 'baskets', 'notifications', 'categories', 'telegram', 'watchlist', 'appearance', 'account']
                   .find((id) => id.includes(query))
                 if (target) document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }}
-              className="w-full pl-10 pr-4 py-3 bg-surface border border-border rounded-xl text-sm text-textPrimary placeholder-textMuted/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
+              className="w-full pl-10 pr-4 py-3 bg-surface border border-border rounded-xl text-sm text-textPrimary placeholder-textMuted/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 shadow-sm"
             />
           </div>
         </div>
 
-        {/* Quick status */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-          <div className="bg-surface border border-border rounded-xl p-3.5">
+        {/* Quick status 6-col ribbon */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-5">
+          <div className="bg-surface border border-border rounded-xl p-3.5 shadow-sm">
             <div className="flex items-center gap-2 mb-1">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <span className="text-xs text-textMuted">Account</span>
             </div>
-            <p className="text-sm font-semibold text-textPrimary">{currentUser?.emailVerified ? 'Verified' : 'Unverified'}</p>
+            <p className="text-sm font-semibold text-textPrimary">{currentUser?.emailVerified ? 'Verified' : 'Active'}</p>
           </div>
 
-          <div className="bg-surface border border-border rounded-xl p-3.5">
+          <div className="bg-surface border border-border rounded-xl p-3.5 shadow-sm">
+            <div className="flex items-center gap-2 mb-1">
+              {isAdmin || isPremium ? (
+                <Crown className="w-4 h-4 text-amber-400" />
+              ) : isPro ? (
+                <Crown className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <Zap className="w-4 h-4 text-primary" />
+              )}
+              <span className="text-xs text-textMuted">Plan</span>
+            </div>
+            <p className="text-sm font-semibold text-textPrimary capitalize">
+              {isAdmin ? 'Admin VIP' : plan}
+            </p>
+          </div>
+
+          <div className="bg-surface border border-border rounded-xl p-3.5 shadow-sm">
             <div className="flex items-center gap-2 mb-1">
               <Smartphone className="w-4 h-4 text-primary" />
-              <span className="text-xs text-textMuted">Push</span>
+              <span className="text-xs text-textMuted">Push Alerts</span>
             </div>
             <p className="text-sm font-semibold text-textPrimary">{isSubscribed ? 'Active' : 'Inactive'}</p>
           </div>
 
-          <div className="bg-surface border border-border rounded-xl p-3.5">
+          <div className="bg-surface border border-border rounded-xl p-3.5 shadow-sm">
             <div className="flex items-center gap-2 mb-1">
               <Send className="w-4 h-4 text-sky-400" />
               <span className="text-xs text-textMuted">Telegram</span>
             </div>
             <p className="text-sm font-semibold text-textPrimary">
-              {telegramStatus?.configured ? 'Connected' : 'Not connected'}
+              {telegramStatus?.configured ? 'Connected' : 'Off'}
             </p>
           </div>
 
-          <div className="bg-surface border border-border rounded-xl p-3.5">
+          <div className="bg-surface border border-border rounded-xl p-3.5 shadow-sm">
             <div className="flex items-center gap-2 mb-1">
               <User className="w-4 h-4 text-primary" />
               <span className="text-xs text-textMuted">Watchlist</span>
             </div>
             <p className="text-sm font-semibold text-textPrimary">{watchlist.length} scripts</p>
+          </div>
+
+          <div className="bg-surface border border-border rounded-xl p-3.5 shadow-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <Share2 className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs text-textMuted">Public Baskets</span>
+            </div>
+            <p className="text-sm font-semibold text-textPrimary">{myBaskets.length} published</p>
           </div>
         </div>
       </div>
@@ -524,23 +651,27 @@ export default function SettingsPage() {
       <div className="sticky top-0 z-20 -mx-3 sm:-mx-4 lg:-mx-6 px-3 sm:px-4 lg:px-6 py-2.5 mb-6 bg-background/90 backdrop-blur-xl border-y border-border/60">
         <div className="flex gap-2 overflow-x-auto no-scrollbar">
           <SectionAnchor href="profile" icon={User} label="Profile" />
+          <SectionAnchor href="membership" icon={Crown} label="Membership & Limits" />
+          <SectionAnchor href="baskets" icon={Share2} label="Shared Baskets" />
           <SectionAnchor href="notifications" icon={Bell} label="Notifications" />
           <SectionAnchor href="categories" icon={Filter} label="Categories" />
           <SectionAnchor href="telegram" icon={Send} label="Telegram" />
           <SectionAnchor href="watchlist" icon={Download} label="Watchlist" />
+          <SectionAnchor href="appearance" icon={Moon} label="Appearance" />
           <SectionAnchor href="account" icon={AlertTriangle} label="Account" />
         </div>
       </div>
 
-      {/* Main content */}
+      {/* Main content sections */}
       <div className="space-y-6">
-        {/* Profile */}
+        
+        {/* 1. Profile */}
         <Section
           id="profile"
           title="Profile"
           icon={User}
-          description="Manage your account information and identity."
-          badge={currentUser?.emailVerified ? <StatusBadge tone="success"><CheckCircle className="w-3 h-3" /> Verified</StatusBadge> : <StatusBadge tone="warning">Email not verified</StatusBadge>}
+          description="Manage your identity and authentication details."
+          badge={currentUser?.emailVerified ? <StatusBadge tone="success"><CheckCircle className="w-3 h-3" /> Verified</StatusBadge> : <StatusBadge tone="neutral">Active User</StatusBadge>}
         >
           <div className="grid lg:grid-cols-[260px_minmax(0,1fr)] gap-6">
             <div className="rounded-2xl border border-border bg-background/50 p-5 flex flex-col items-center justify-center text-center min-h-[220px]">
@@ -569,7 +700,7 @@ export default function SettingsPage() {
                 disabled
               />
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-                <p className="text-xs text-textMuted">Your email is managed by Firebase Authentication.</p>
+                <p className="text-xs text-textMuted">Your account credentials are encrypted with Firebase Auth.</p>
                 <SaveButton saving={savingProfile} dirty={profileDirty} onClick={handleSaveProfile}>
                   Save Profile
                 </SaveButton>
@@ -578,7 +709,323 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        {/* Notifications */}
+        {/* 2. Membership & Quota Limits */}
+        <Section
+          id="membership"
+          title="Membership & Quota Limits"
+          icon={Crown}
+          description="Inspect your active tier, real-time quota usage, and institutional entitlements."
+          badge={
+            isAdmin ? (
+              <StatusBadge tone="success"><ShieldCheck className="w-3 h-3 text-emerald-400" /> Admin VIP</StatusBadge>
+            ) : isPremium ? (
+              <StatusBadge tone="primary"><Crown className="w-3 h-3 text-amber-400" /> Premium HNI</StatusBadge>
+            ) : isPro ? (
+              <StatusBadge tone="success"><Crown className="w-3 h-3 text-emerald-400" /> Pro Trader</StatusBadge>
+            ) : (
+              <StatusBadge tone="neutral">Basic Plan</StatusBadge>
+            )
+          }
+        >
+          <div className="space-y-6">
+            {/* Tier Hero Banner */}
+            <div className={clsx(
+              "rounded-2xl p-5 border relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4",
+              isAdmin || isPremium ? "bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-primary/10 border-amber-500/30"
+              : isPro ? "bg-gradient-to-r from-emerald-500/10 via-primary/10 to-sky-500/10 border-emerald-500/30"
+              : "bg-surface border-border"
+            )}>
+              <div className="flex items-start gap-4 z-10">
+                <div className={clsx(
+                  "w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 border shadow-inner",
+                  isAdmin || isPremium ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                  : isPro ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                  : "bg-primary/10 text-primary border-primary/20"
+                )}>
+                  {isAdmin || isPremium ? <Crown className="w-6 h-6" /> : isPro ? <Crown className="w-6 h-6" /> : <Zap className="w-6 h-6" />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-textPrimary capitalize">
+                      {isAdmin ? 'System Administrator Tier' : `${plan} Membership Tier`}
+                    </h3>
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider">
+                      {planStatus === 'active' ? 'Active' : planStatus}
+                    </span>
+                  </div>
+                  <p className="text-xs text-textMuted mt-1 leading-relaxed max-w-xl">
+                    {isAdmin
+                      ? 'You hold unrestricted root administrative authority across all features, scrapers, models, and quotas.'
+                      : isPremium
+                      ? 'Unlimited watchlist scrips, unlimited Gemini AI PDF vision summaries, unlimited family PANs, and VIP priority.'
+                      : isPro
+                      ? '50 watchlist scrips, unlimited institutional AI analysis, 10 family PANs, and 10 shareable public baskets.'
+                      : 'Free starter tier with 5 watchlist scrips, 3 daily Gemini AI statutory analyses, and 3 shareable curated baskets.'}
+                  </p>
+                  {planExpiresAt && (
+                    <p className="text-[11px] font-mono text-textMuted mt-2 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-primary" />
+                      Plan valid until: {new Date(planExpiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 z-10">
+                <button
+                  type="button"
+                  onClick={() => navigate('/plans')}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold text-xs transition shadow-md shadow-primary/20"
+                >
+                  <Crown className="w-3.5 h-3.5 text-amber-300" />
+                  <span>{plan === 'basic' ? 'Upgrade to Pro / HNI' : 'Manage Subscription'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 4 Quota Usage Meters */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              
+              {/* Watchlist Meter */}
+              <div className="bg-background/50 border border-border rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-textMuted flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-primary" />
+                    Watchlist Capacity
+                  </span>
+                  <span className="text-xs font-mono font-bold text-textPrimary">
+                    {watchlist.length} / {maxWatch === Infinity ? '∞' : maxWatch}
+                  </span>
+                </div>
+                <div className="w-full bg-surface border border-border/80 h-2 rounded-full overflow-hidden">
+                  <div
+                    className={clsx(
+                      "h-full rounded-full transition-all duration-500",
+                      watchPct >= 100 ? "bg-amber-400" : "bg-primary"
+                    )}
+                    style={{ width: maxWatch === Infinity ? '10%' : `${watchPct}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-textMuted">
+                  {maxWatch === Infinity ? 'Unlimited scrip tracking' : `${Math.max(0, maxWatch - watchlist.length)} available slots`}
+                </p>
+              </div>
+
+              {/* AI Quota Meter */}
+              <div className="bg-background/50 border border-border rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-textMuted flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    Daily Gemini AI Vision
+                  </span>
+                  <span className="text-xs font-mono font-bold text-textPrimary">
+                    {dailyAiCount} / {maxAi === Infinity ? '∞' : maxAi}
+                  </span>
+                </div>
+                <div className="w-full bg-surface border border-border/80 h-2 rounded-full overflow-hidden">
+                  <div
+                    className={clsx(
+                      "h-full rounded-full transition-all duration-500",
+                      aiPct >= 100 ? "bg-amber-400" : "bg-primary"
+                    )}
+                    style={{ width: maxAi === Infinity ? '15%' : `${aiPct}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-textMuted">
+                  {maxAi === Infinity ? 'Unlimited PDF filings' : 'Quota resets midnight IST'}
+                </p>
+              </div>
+
+              {/* Family PANs Meter */}
+              <div className="bg-background/50 border border-border rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-textMuted flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    Family PAN Accounts
+                  </span>
+                  <span className="text-xs font-mono font-bold text-textPrimary">
+                    {planLimits?.maxFamilyPans === Infinity ? 'Unlimited' : planLimits?.maxFamilyPans || 1} PANs
+                  </span>
+                </div>
+                <div className="w-full bg-surface border border-border/80 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                    style={{ width: planLimits?.maxFamilyPans === Infinity ? '100%' : '20%' }}
+                  />
+                </div>
+                <p className="text-[11px] text-textMuted">
+                  Event-driven auto allotment checks
+                </p>
+              </div>
+
+              {/* Shareable Baskets Meter */}
+              <div className="bg-background/50 border border-border rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-textMuted flex items-center gap-1.5">
+                    <Share2 className="w-3.5 h-3.5 text-sky-400" />
+                    Public Baskets
+                  </span>
+                  <span className="text-xs font-mono font-bold text-textPrimary">
+                    {myBaskets.length} / {maxBaskets === Infinity ? '∞' : maxBaskets}
+                  </span>
+                </div>
+                <div className="w-full bg-surface border border-border/80 h-2 rounded-full overflow-hidden">
+                  <div
+                    className={clsx(
+                      "h-full rounded-full transition-all duration-500",
+                      basketPct >= 100 ? "bg-amber-400" : "bg-sky-500"
+                    )}
+                    style={{ width: maxBaskets === Infinity ? '20%' : `${basketPct}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-textMuted">
+                  {maxBaskets === Infinity ? 'Unlimited viral baskets' : `${Math.max(0, maxBaskets - myBaskets.length)} basket slots open`}
+                </p>
+              </div>
+
+            </div>
+          </div>
+        </Section>
+
+        {/* 3. Shared Watchlists & Public Baskets */}
+        <Section
+          id="baskets"
+          title="Shared Watchlists & Curated Baskets"
+          icon={Share2}
+          description="Manage public links you have created. Anyone with these links can view live announcements and import stocks into their watchlist in 1 tap."
+          badge={<StatusBadge tone="primary">{myBaskets.length} published</StatusBadge>}
+        >
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-2 border-b border-border/60">
+              <p className="text-xs text-textMuted leading-relaxed max-w-xl">
+                Share high-conviction ideas with friends, WhatsApp groups, or clients. Each basket features live disclosures and 1-tap import.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={loadMyBaskets}
+                  disabled={basketsLoading}
+                  className="p-2 rounded-xl border border-border hover:bg-surface text-textMuted hover:text-textPrimary transition"
+                  title="Refresh baskets list"
+                >
+                  <RefreshCw className={clsx("w-3.5 h-3.5", basketsLoading && "animate-spin text-primary")} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShareBasketOpen(true)}
+                  disabled={watchlist.length === 0}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 rounded-xl text-xs font-semibold transition disabled:opacity-50"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Share My Watchlist</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Baskets Grid / List */}
+            {basketsLoading && myBaskets.length === 0 ? (
+              <div className="py-8 text-center">
+                <Spinner size="md" className="mx-auto" />
+                <p className="text-xs text-textMuted mt-2">Loading your published baskets...</p>
+              </div>
+            ) : myBaskets.length === 0 ? (
+              <div className="text-center py-10 rounded-2xl border border-dashed border-border bg-background/30 p-6 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/20">
+                  <Share2 className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-semibold text-textPrimary">No Shared Baskets Yet</h4>
+                <p className="text-xs text-textMuted max-w-md mx-auto leading-relaxed">
+                  You haven't published any public baskets. You can share your entire watchlist or select high-conviction stocks to create a shareable link.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShareBasketOpen(true)}
+                  disabled={watchlist.length === 0}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-primary/20 disabled:opacity-50"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Publish My First Basket</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {myBaskets.map((basket) => {
+                  const slug = basket.slug || basket.id
+                  const isCopied = copiedSlug === slug
+                  return (
+                    <div
+                      key={slug}
+                      className="rounded-2xl border border-border bg-background/50 hover:border-primary/40 transition-all p-4 flex flex-col justify-between space-y-3 shadow-sm group"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 uppercase tracking-wider">
+                            {basket.category || 'Curated'}
+                          </span>
+                          <span className="text-[11px] text-textMuted font-mono">
+                            {basket.scriptsCount || 0} stocks
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-bold text-textPrimary group-hover:text-primary transition-colors">
+                          {basket.title}
+                        </h4>
+                        {basket.description && (
+                          <p className="text-xs text-textMuted line-clamp-2 leading-relaxed">
+                            {basket.description}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-4 text-[11px] text-textMuted pt-1">
+                          <span className="flex items-center gap-1">
+                            <Eye className="w-3.5 h-3.5 text-primary" />
+                            {basket.viewsCount || 0} views
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Download className="w-3.5 h-3.5 text-emerald-400" />
+                            {basket.importsCount || 0} imports
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => copyBasketLink(slug)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-surface border border-border text-textPrimary hover:bg-surfaceHover text-xs font-semibold transition"
+                            title="Copy public link"
+                          >
+                            {isCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                            <span>{isCopied ? 'Copied' : 'Copy Link'}</span>
+                          </button>
+                          <a
+                            href={`/basket/${slug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg border border-border hover:bg-surface text-textMuted hover:text-textPrimary transition"
+                            title="Open public basket page"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setDeleteBasketSlug(slug)}
+                          className="p-1.5 rounded-lg text-textMuted hover:text-red-400 hover:bg-red-500/10 transition"
+                          title="Delete basket"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </Section>
+
+        {/* 4. Notifications */}
         <Section
           id="notifications"
           title="Notification Center"
@@ -694,17 +1141,6 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                {pushErrorDetails === 'PUSH_SERVICE_ERROR' && (
-                  <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-1.5">
-                    <p className="text-sm text-amber-500 font-semibold flex items-center gap-1.5">
-                      ⚠️ Browser Push Service Connection Issue
-                    </p>
-                    <p className="text-xs text-textMuted leading-relaxed">
-                      The browser push service could not be reached. If you are in <strong>Incognito / Private Browsing</strong> mode, please switch to a normal window. Also check that your VPN, AdBlocker, or firewall allows Google/Mozilla push services.
-                    </p>
-                  </div>
-                )}
-
                 {isSubscribed && (
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -759,7 +1195,7 @@ export default function SettingsPage() {
 
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
               <p className="text-xs text-textMuted">
-                Notification controls are saved together so the backend remains the source of truth.
+                Notification preferences are synchronized with Upstash Redis and MongoDB hot watcher filters.
               </p>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -778,7 +1214,7 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        {/* Categories */}
+        {/* 5. Alert Categories */}
         <Section
           id="categories"
           title="Alert Categories"
@@ -906,7 +1342,7 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        {/* Telegram */}
+        {/* 6. Telegram Notifications */}
         <Section
           id="telegram"
           title="Telegram Notifications"
@@ -933,7 +1369,7 @@ export default function SettingsPage() {
                     </p>
                     <p className="text-xs text-textMuted mt-1 leading-relaxed">
                       {telegramStatus?.configured
-                        ? 'Eligible StockWatch notifications can be delivered to your configured Telegram destination.'
+                        ? 'Eligible StockWatch notifications are routed to your configured Telegram destination.'
                         : !telegramStatus?.hasBotToken
                           ? 'Telegram server integration is not configured yet.'
                           : 'Add your Chat ID below to connect your destination.'}
@@ -993,7 +1429,7 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        {/* Watchlist */}
+        {/* 7. Watchlist Management */}
         <Section
           id="watchlist"
           title="Watchlist Management"
@@ -1005,7 +1441,7 @@ export default function SettingsPage() {
             <div className="space-y-1">
               <p className="text-sm font-semibold text-textPrimary">Data & Storage</p>
               <p className="text-xs text-textMuted leading-relaxed max-w-xl">
-                Export your tracked company list as a standard CSV file or clear your stored watchlist data.
+                Export your tracked company list as a standard CSV spreadsheet or clear your stored watchlist data.
               </p>
             </div>
 
@@ -1013,7 +1449,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={handleExportWatchlist}
-                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-surface hover:bg-white/5 border border-border text-textPrimary rounded-xl text-sm font-semibold transition-colors"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-surface hover:bg-white/5 border border-border text-textPrimary rounded-xl text-sm font-semibold transition-colors shadow-sm"
               >
                 <Download className="w-4 h-4 text-primary" />
                 Export CSV
@@ -1031,7 +1467,79 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        {/* Account Danger Zone */}
+        {/* 8. Appearance & Theme */}
+        <Section
+          id="appearance"
+          title="Appearance & Theme"
+          icon={Moon}
+          description="Customize the platform visual styling, ambient contrast, and color palette."
+          badge={<StatusBadge tone="primary">{currentTheme.toUpperCase()} Mode</StatusBadge>}
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-textMuted leading-relaxed">
+              Choose your preferred visual presentation. Changes are saved locally and applied instantaneously across all tabs.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                {
+                  id: 'dark',
+                  name: 'Dark Mode',
+                  desc: 'High contrast institutional slate theme for reduced eye strain.',
+                  icon: Moon,
+                },
+                {
+                  id: 'light',
+                  name: 'Light Mode',
+                  desc: 'Crisp, high-clarity paper layout with elevated card borders.',
+                  icon: Sun,
+                },
+                {
+                  id: 'system',
+                  name: 'System Default',
+                  desc: 'Automatically adapts to your operating system appearance.',
+                  icon: Laptop,
+                },
+              ].map((th) => {
+                const isSelected = currentTheme === th.id
+                const Icon = th.icon
+                return (
+                  <button
+                    key={th.id}
+                    type="button"
+                    onClick={() => handleThemeChange(th.id)}
+                    className={clsx(
+                      "p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between space-y-3",
+                      isSelected
+                        ? "bg-primary/10 border-primary shadow-sm shadow-primary/20"
+                        : "bg-background/50 border-border hover:border-border/80 hover:bg-background"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className={clsx(
+                        "w-9 h-9 rounded-xl flex items-center justify-center border",
+                        isSelected ? "bg-primary text-white border-primary" : "bg-surface text-textMuted border-border"
+                      )}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      {isSelected && <CheckCircle className="w-4 h-4 text-primary" />}
+                    </div>
+                    <div>
+                      <h4 className={clsx("text-sm font-bold", isSelected ? "text-primary" : "text-textPrimary")}>
+                        {th.name}
+                      </h4>
+                      <p className="text-xs text-textMuted mt-1 leading-relaxed">
+                        {th.desc}
+                      </p>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </Section>
+
+        {/* 9. Account Danger Zone */}
         <Section
           id="account"
           title="Account Danger Zone"
@@ -1051,7 +1559,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={logout}
-                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-surface hover:bg-white/5 border border-border text-textPrimary rounded-xl text-sm font-semibold transition-colors"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-surface hover:bg-white/5 border border-border text-textPrimary rounded-xl text-sm font-semibold transition-colors shadow-sm"
               >
                 <LogOut className="w-4 h-4" />
                 Sign Out
@@ -1060,7 +1568,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setDeleteConfirm(true)}
-                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-danger hover:bg-danger/90 text-white rounded-xl text-sm font-semibold transition-colors"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-danger hover:bg-danger/90 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm"
               >
                 <Trash2 className="w-4 h-4" />
                 Delete Account
@@ -1070,7 +1578,28 @@ export default function SettingsPage() {
         </Section>
       </div>
 
-      {/* Confirmation Dialogs */}
+      {/* Share Basket Modal */}
+      <ShareBasketModal
+        isOpen={shareBasketOpen}
+        onClose={() => {
+          setShareBasketOpen(false)
+          loadMyBaskets()
+        }}
+        watchlist={watchlist}
+      />
+
+      {/* Delete Basket Confirmation */}
+      <ConfirmDialog
+        isOpen={Boolean(deleteBasketSlug)}
+        onClose={() => setDeleteBasketSlug(null)}
+        onConfirm={() => handleDeleteBasket(deleteBasketSlug)}
+        title="Delete Public Basket"
+        message="Are you sure you want to delete this curated basket? Anyone using this public link will no longer be able to access or import it."
+        confirmText="Delete Basket"
+        danger
+      />
+
+      {/* Clear Watchlist Confirmation */}
       <ConfirmDialog
         isOpen={clearConfirm}
         onClose={() => setClearConfirm(false)}
@@ -1081,6 +1610,7 @@ export default function SettingsPage() {
         danger
       />
 
+      {/* Delete Account Confirmation */}
       <ConfirmDialog
         isOpen={deleteConfirm}
         onClose={() => setDeleteConfirm(false)}
