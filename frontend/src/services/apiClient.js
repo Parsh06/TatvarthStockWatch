@@ -24,8 +24,7 @@ const RENDER_BASE_URL = (
 ).replace(/\/$/, '')
 
 const VERCEL_BASE_URL = (
-  import.meta.env.VITE_VERCEL_API_URL ||
-  'https://tatvarth-stockwatch.vercel.app'
+  import.meta.env.VITE_VERCEL_API_URL || ''
 ).replace(/\/$/, '')
 
 const isLocalDev = Boolean(
@@ -102,8 +101,8 @@ export async function probeVercelHealth(force = false) {
   }
 }
 
-// Kick off silent background probe after application hydration
-if (typeof window !== 'undefined' && !isLocalDev) {
+// Kick off silent background probe after application hydration only if VERCEL_BASE_URL is configured
+if (typeof window !== 'undefined' && !isLocalDev && VERCEL_BASE_URL) {
   setTimeout(() => {
     probeVercelHealth().catch(() => {})
   }, 2500)
@@ -233,8 +232,10 @@ export async function apiClient(url, options = {}) {
   }
 
   // 4. General Stateless API Route: Determine primary and failover targets
-  // Check probe health periodically in the background
-  probeVercelHealth().catch(() => {})
+  // Check probe health periodically in the background only if Vercel endpoint is configured
+  if (VERCEL_BASE_URL) {
+    probeVercelHealth().catch(() => {})
+  }
 
   const primaryHost = (isVercelHealthy && VERCEL_BASE_URL) ? VERCEL_BASE_URL : RENDER_BASE_URL
   const failoverHost = (primaryHost === VERCEL_BASE_URL) ? RENDER_BASE_URL : null
@@ -276,6 +277,55 @@ export async function apiClient(url, options = {}) {
 
   return handleResponse(res, url, options)
 }
+
+// ── Convenience HTTP Methods Attached Directly to apiClient Function ─────────
+apiClient.get = (url, options = {}) => apiClient(url, { ...options, method: 'GET' })
+
+apiClient.post = (url, body, options = {}) => {
+  const isString = typeof body === 'string'
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
+  return apiClient(url, {
+    ...options,
+    method: 'POST',
+    body: isString || isFormData || body === undefined ? body : JSON.stringify(body),
+    headers: {
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(options?.headers || {}),
+    },
+  })
+}
+
+apiClient.put = (url, body, options = {}) => {
+  const isString = typeof body === 'string'
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
+  return apiClient(url, {
+    ...options,
+    method: 'PUT',
+    body: isString || isFormData || body === undefined ? body : JSON.stringify(body),
+    headers: {
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(options?.headers || {}),
+    },
+  })
+}
+
+apiClient.patch = (url, body, options = {}) => {
+  const isString = typeof body === 'string'
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
+  return apiClient(url, {
+    ...options,
+    method: 'PATCH',
+    body: isString || isFormData || body === undefined ? body : JSON.stringify(body),
+    headers: {
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(options?.headers || {}),
+    },
+  })
+}
+
+apiClient.delete = (url, options = {}) => apiClient(url, { ...options, method: 'DELETE' })
+
+export default apiClient
 
 async function handleResponse(res, url, options) {
   if (!res.ok) {

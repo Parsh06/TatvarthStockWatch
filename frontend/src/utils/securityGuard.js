@@ -6,7 +6,8 @@
  * 2. Anti-clickjacking / frame-busting protection
  * 3. DOM mutation shield (detects and removes rogue injected scripts/iframes)
  * 4. Reverse tab-nabbing / window.opener nullification
- * 5. High-security mode: DevTools shortcut blocking & debugger tripwire
+ * 5. Production Console Lockdown & Anti-Tampering Engine
+ * 6. High-security keyboard shortcut & context menu inspection blocker
  */
 
 // Trusted origins & hostnames allowed for external script execution
@@ -20,6 +21,12 @@ const TRUSTED_SCRIPT_DOMAINS = [
   'www.gstatic.com',
   'va.vercel-scripts.com',
   'cdn.jsdelivr.net',
+  'googletagmanager.com',
+  'www.googletagmanager.com',
+  'google-analytics.com',
+  'www.google-analytics.com',
+  'tagmanager.google.com',
+  'analytics.google.com',
 ];
 
 /**
@@ -29,39 +36,15 @@ const TRUSTED_SCRIPT_DOMAINS = [
 function protectAgainstClickjacking() {
   try {
     if (window.self !== window.top) {
-      // Try to bust out of iframe
       window.top.location = window.self.location;
     }
   } catch (err) {
-    // If cross-origin framing blocks access to window.top.location, blank the page
     document.documentElement.innerHTML = '<div style="background:#0F172A;color:#EF4444;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:20px;font-weight:bold;">Embedding this application in external frames is disabled for security reasons.</div>';
   }
 }
 
 /**
- * 2. Self-XSS Deterrent Console Banner
- * Prevents social engineering attacks where users are tricked into pasting malicious code in the console.
- */
-function displaySelfXssWarning() {
-  const titleStyle = 'color: #EF4444; font-size: 34px; font-weight: 900; -webkit-text-stroke: 1px black; padding: 4px;';
-  const bodyStyle = 'color: #F59E0B; font-size: 14px; font-weight: 600; line-height: 1.5; padding: 4px 0;';
-  const alertStyle = 'color: #E2E8F0; font-size: 13px; font-style: italic;';
-
-  try {
-    console.log('%c⚠️ STOP! ATTENTION! ⚠️', titleStyle);
-    console.log(
-      '%cThis browser console is intended strictly for authorized engineering and diagnostics. ' +
-      'If someone told you to copy and paste code here to "hack", "unlock VIP plans", or "bypass approval", ' +
-      'IT IS A SCAM to compromise your session and steal your account data.\n\n' +
-      'Do not paste any code here!',
-      bodyStyle
-    );
-    console.log('%cTatvarth StockWatch Security Shield Active — All security violations are monitored.', alertStyle);
-  } catch {}
-}
-
-/**
- * 3. Reverse Tab-nabbing Protection
+ * 2. Reverse Tab-nabbing Protection
  * Disconnects opener access on opened tabs.
  */
 function protectWindowOpener() {
@@ -73,7 +56,7 @@ function protectWindowOpener() {
 }
 
 /**
- * 4. DOM Mutation Shield
+ * 3. DOM Mutation Shield
  * Watches for rogue script or iframe tags injected by malicious browser extensions or XSS attempts.
  */
 function initDomMutationShield() {
@@ -99,7 +82,6 @@ function initDomMutationShield() {
                 node.remove();
               }
             } catch {
-              // Invalid URL format
               console.warn(`[Security Guard] Blocked malformed resource element: <${tagName}>`);
               node.remove();
             }
@@ -116,10 +98,64 @@ function initDomMutationShield() {
 }
 
 /**
- * 5. High-Security Inspection Traps
- * Activates shortcut locks and passive debugger traps when VITE_NETWORK_GUARD is enabled.
+ * 4. Production Console Lockdown & Anti-Tampering Engine
+ * Neutralizes console inputs, execution, and inspection in production.
+ */
+function lockDownConsole() {
+  if (import.meta.env.DEV) return;
+
+  try {
+    const noop = () => {};
+    const methods = [
+      'log', 'info', 'warn', 'error', 'debug', 'dir', 'dirxml',
+      'table', 'trace', 'group', 'groupCollapsed', 'groupEnd',
+      'time', 'timeLog', 'timeEnd', 'count', 'countReset', 'assert'
+    ];
+
+    // Wipe console methods
+    methods.forEach((method) => {
+      try {
+        window.console[method] = noop;
+      } catch {}
+    });
+
+    // Auto-wipe console so nothing typed or outputted stays visible
+    setInterval(() => {
+      try {
+        window.console.clear();
+      } catch {}
+    }, 400);
+
+    // Block dynamic code execution via eval
+    try {
+      window.eval = function() {
+        throw new Error('[Security Guard] Console script execution is strictly disabled.');
+      };
+    } catch {}
+
+    // Freeze console object to prevent unpatching
+    try {
+      Object.freeze(window.console);
+    } catch {}
+
+    // Prevent overriding window.console
+    try {
+      Object.defineProperty(window, 'console', {
+        value: window.console,
+        writable: false,
+        configurable: false,
+      });
+    } catch {}
+  } catch {}
+}
+
+/**
+ * 5. Inspection Keyboard Shortcuts & Context Menu Lockdown
+ * Blocks F12, Ctrl+Shift+I/J/C, Ctrl+U, and right-click inspection in production.
  */
 function enableInspectionLockdown() {
+  if (import.meta.env.DEV) return;
+
   // A. Disable Right-Click Context Menu
   document.addEventListener('contextmenu', (e) => {
     e.preventDefault();
@@ -153,32 +189,15 @@ function enableInspectionLockdown() {
       return;
     }
   }, { passive: false });
-
-  // C. Passive Debugger Tripwire
-  setInterval(() => {
-    const before = Date.now();
-    // eslint-disable-next-line no-debugger
-    debugger;
-    const after = Date.now();
-    if (after - before > 120) {
-      document.body.innerHTML = '<div style="background:#0F172A;color:#EF4444;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:22px;font-weight:bold;">Security violation detected. Access denied.</div>';
-    }
-  }, 1000);
 }
 
 /**
  * Main Initialization Entry Point
  */
 export function initSecurityGuard() {
-  // Always-on baseline defenses
   protectAgainstClickjacking();
-  displaySelfXssWarning();
   protectWindowOpener();
   initDomMutationShield();
-
-  // Elevated lockdown if explicitly configured in environment
-  if (import.meta.env.VITE_NETWORK_GUARD === 'ON') {
-    enableInspectionLockdown();
-    console.log('🛡️ Full High-Security Inspection Lockdown Active');
-  }
+  enableInspectionLockdown();
+  lockDownConsole();
 }
