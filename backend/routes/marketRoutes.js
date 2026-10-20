@@ -23,6 +23,21 @@ module.exports = function marketRoutes(verifyToken) {
     }
   });
 
+  // POST /api/market/fii-dii/sync
+  // Manually triggers or forces FII/DII sync and notification dispatch
+  router.post('/fii-dii/sync', verifyToken, async (req, res) => {
+    try {
+      const force = req.query.force === 'true' || req.body?.force === true;
+      const notify = req.query.notify !== 'false' && req.body?.notify !== false;
+      const { syncDailyFiiDii } = require('../services/fiiDiiService');
+      const result = await syncDailyFiiDii({ force, notify });
+      res.json(result);
+    } catch (err) {
+      console.error('Failed to trigger FII/DII sync:', err.message);
+      res.status(500).json({ error: 'Failed to trigger FII/DII sync', details: err.message });
+    }
+  });
+
   // GET /api/market/volume-spurt
   // Returns real-time BSE Volume Spurt data with 45-second cache and force refresh support.
   router.get('/volume-spurt', verifyToken, async (req, res) => {

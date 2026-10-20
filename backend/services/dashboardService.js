@@ -580,6 +580,7 @@ async function getGlobalMarketData() {
         agmResult,
         spurtsResult,
         dealsResult,
+        fiiDiiResult,
       ] = await Promise.all([
         safe('indices',          fetchIndices),
         safe('announcementStats', fetchAnnouncementStatsAndCategories),
@@ -726,6 +727,7 @@ async function getDashboardOverview(uid) {
     agmResult,
     spurtsResult,
     dealsResult,
+    fiiDiiResult,
   } = globalData;
 
   const annData = annStatsResult.status === 'success' ? annStatsResult.data : null;
@@ -743,6 +745,7 @@ async function getDashboardOverview(uid) {
       agms:             { status: agmResult.status        },
       volumeSpurts:     { status: spurtsResult.status     },
       deals:            { status: dealsResult.status      },
+      fiiDii:           { status: fiiDiiResult?.status || 'unknown' },
       watchlist:        { status: watchlistSummaryResult.status  },
     },
 

@@ -10,13 +10,17 @@
  * - Official Source: https://www.nseindia.com/api/fiidiiTradeReact
  * - Reuses existing NSE session cookies from nseScraper (0 extra session overhead)
  * - Persistent Storage: MongoDB collection 'fii_dii_history' (rolling 30 trading days)
- * - In-Memory Cache: 30m TTL during market/evening, 12h once finalized
+ * - In-Memory Cache: 15m TTL during market/evening, 12h once finalized
  * - Zero Backend Load: Evening sync once/day; all client reads served from cache in <5ms
+ * - Automated Broadcast Alert: Fires strictly ONCE per trading day when fresh data drops
  */
 
 const axios = require('axios');
 const { getNSECookies } = require('../lib/nseScraper');
 const { getDb } = require('../lib/mongoClient');
+const { getISTDateTime, getISTDateString } = require('../lib/time/istTime');
+const { broadcastWebPushToAll } = require('../lib/webPushNotifier');
+const { sendMessage, isConfigured: isTelegramConfigured } = require('../lib/telegramNotifier');
 
 const NSE_FII_DII_URL = 'https://www.nseindia.com/api/fiidiiTradeReact';
 
@@ -158,6 +162,87 @@ async function getFiiDiiHistory(limit = 10) {
 }
 
 /**
+ * Atomically broadcasts the once-per-day FII / DII market notification.
+ * Uses MongoDB 'alert_dedup_locks' to guarantee strictly 1 notification per trading date.
+ */
+async function dispatchFiiDiiBroadcast(record) {
+  if (!record || !record.date) return { broadcast: false, reason: 'invalid_record' };
+
+  const lockId = `fiidii_broadcast_${record.date}`;
+  let lockAcquired = false;
+
+  try {
+    const db = await getDb();
+    const dedupCol = db.collection('alert_dedup_locks');
+    await dedupCol.insertOne({
+      _id: lockId,
+      type: 'fiidii_daily_broadcast',
+      date: record.date,
+      displayDate: record.displayDate,
+      createdAt: new Date(),
+    });
+    lockAcquired = true;
+  } catch (err) {
+    if (err.code === 11000) {
+      console.log(`[FiiDiiService] Daily notification already sent for ${record.date} (dedup lock active)`);
+      return { broadcast: false, reason: 'already_sent_today' };
+    }
+    console.warn('[FiiDiiService] Dedup lock error:', err.message);
+    return { broadcast: false, reason: 'dedup_error' };
+  }
+
+  if (!lockAcquired) return { broadcast: false };
+
+  console.log(`[FiiDiiService] 📢 Dispatching once-daily FII/DII broadcast for ${record.displayDate}...`);
+
+  const isNetBuyer = record.totalNet >= 0;
+  const netSign = isNetBuyer ? '+' : '';
+  const fiiSign = record.fii.netValue >= 0 ? '+' : '';
+  const diiSign = record.dii.netValue >= 0 ? '+' : '';
+
+  // 1. Web Push broadcast to all active devices
+  try {
+    const pushPayload = {
+      title: `📊 FII / DII Institutional Flow (${record.displayDate})`,
+      body: `Institutions ended Net ${isNetBuyer ? 'Buyers (+₹' + record.totalNet + ' Cr 🟢)' : 'Sellers (₹' + record.totalNet + ' Cr 🔴)'}. FII: ${fiiSign}₹${record.fii.netValue} Cr | DII: ${diiSign}₹${record.dii.netValue} Cr. Tap to inspect!`,
+      url: 'https://tatvarthstockwatch.web.app/dashboard',
+      tag: lockId,
+      severity: 'info',
+    };
+    broadcastWebPushToAll(pushPayload).catch(err => {
+      console.warn('[FiiDiiService] Push broadcast background warning:', err.message);
+    });
+  } catch (err) {
+    console.warn('[FiiDiiService] Web Push broadcast error:', err.message);
+  }
+
+  // 2. Telegram Broadcast Channel / Admin message
+  try {
+    if (isTelegramConfigured()) {
+      const telegramText =
+        `📊 <b>Today's FII / DII Cash Market Activity</b>\n` +
+        `🗓 <b>Trading Date:</b> <code>${record.displayDate}</code>\n\n` +
+        `${isNetBuyer ? '🟢' : '🔴'} <b>Combined Institutional Net:</b> <code>${netSign}₹${record.totalNet} Cr</code> (${isNetBuyer ? 'Net Inflow' : 'Net Outflow'})\n\n` +
+        `🌐 <b>FII / FPI (Foreign Institutions):</b>\n` +
+        `• Net: <code>${fiiSign}₹${record.fii.netValue} Cr</code> ${record.fii.netValue >= 0 ? '🟢 Net Buyer' : '🔴 Net Seller'}\n` +
+        `• Gross Buy: ₹${new Intl.NumberFormat('en-IN').format(record.fii.buyValue)} Cr | Gross Sell: ₹${new Intl.NumberFormat('en-IN').format(record.fii.sellValue)} Cr\n\n` +
+        `🏛 <b>DII (Domestic Mutual Funds & Institutions):</b>\n` +
+        `• Net: <code>${diiSign}₹${record.dii.netValue} Cr</code> ${record.dii.netValue >= 0 ? '🟢 Net Buyer' : '🔴 Net Seller'}\n` +
+        `• Gross Buy: ₹${new Intl.NumberFormat('en-IN').format(record.dii.buyValue)} Cr | Gross Sell: ₹${new Intl.NumberFormat('en-IN').format(record.dii.sellValue)} Cr\n\n` +
+        `⚡️ <a href="https://tatvarthstockwatch.web.app/dashboard">Tap here to view full Institutional Flow on StockWatch</a>`;
+
+      sendMessage(telegramText).catch(err => {
+        console.warn('[FiiDiiService] Telegram message warning:', err.message);
+      });
+    }
+  } catch (err) {
+    console.warn('[FiiDiiService] Telegram alert error:', err.message);
+  }
+
+  return { broadcast: true, date: record.date };
+}
+
+/**
  * Main public method to get latest FII/DII summary + history.
  * Employs multi-tier caching (Memory → MongoDB → Live Fetch fallback).
  */
@@ -204,29 +289,81 @@ async function getLatestFiiDiiData(forceRefresh = false) {
 }
 
 /**
- * Evening cron synchronizer — called once daily during evening market hours (17:30+ IST).
- * Zero load: if today's trade date is already saved, skips fetch.
+ * Evening cron synchronizer — called during evening market hours (17:30+ IST).
+ *
+ * Highly Optimized:
+ * 1. Checks if today is Mon-Fri trading day.
+ * 2. Checks if today's trade date is ALREADY saved in MongoDB. If yes, skips (0 API calls to NSE).
+ * 3. If not saved, fetches from NSE. If NSE returns today's date, saves, invalidates cache,
+ *    and sends the once-daily broadcast notification!
+ * 4. If NSE still returns yesterday's date, it waits and does NOT notify until today's figures drop.
  */
-async function syncDailyFiiDii() {
+async function syncDailyFiiDii(options = {}) {
+  const force = Boolean(options.force);
+  const notify = options.notify !== false; // default true
+
+  const nowIST = getISTDateTime();
+  const todayIST = nowIST.dateIST;
+  const dayOfWeek = new Date().getDay(); // 0 = Sun, 6 = Sat
+  const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+  const isEvening = (nowIST.istHour > 17 || (nowIST.istHour === 17 && nowIST.istMinute >= 30)) && nowIST.istHour < 24;
+
+  if (!force && !isWeekday) {
+    return { synced: false, reason: 'weekend' };
+  }
+
+  if (!force && !isEvening) {
+    return { synced: false, reason: 'outside_evening_window' };
+  }
+
   try {
+    // 1. Check if today's record is ALREADY stored in MongoDB
+    const db = await getDb();
+    const existing = await db.collection('fii_dii_history').findOne({ date: todayIST });
+
+    if (existing && !force) {
+      // Data already fetched and stored for today!
+      // Check if notification was sent (e.g. if server crashed right before notification)
+      const lockDoc = await db.collection('alert_dedup_locks').findOne({ _id: `fiidii_broadcast_${todayIST}` });
+      if (!lockDoc && notify) {
+        await dispatchFiiDiiBroadcast(existing);
+      }
+      return { synced: true, date: todayIST, alreadyUpToDate: true };
+    }
+
+    // 2. Not in DB yet or forced: fetch fresh from NSE
     const live = await fetchFromNse();
-    if (live && live.date) {
-      await upsertFiiDiiRecord(live);
-      // Invalidate memory cache so dashboard reflects new figures immediately
-      _cachedResult = null;
-      _cacheExpiresAt = 0;
-      console.log(`[FiiDiiService] Synced daily FII/DII for ${live.displayDate}: FII Net ${live.fii.netValue} Cr | DII Net ${live.dii.netValue} Cr`);
-      return { synced: true, date: live.displayDate };
+    if (!live || !live.date) {
+      return { synced: false, reason: 'empty_nse_response' };
+    }
+
+    // Save whatever valid record was fetched into MongoDB
+    await upsertFiiDiiRecord(live);
+    _cachedResult = null;
+    _cacheExpiresAt = 0;
+
+    // 3. Verify if NSE actually provided TODAY'S data
+    if (live.date === todayIST || force) {
+      console.log(`[FiiDiiService] ✅ Fresh FII/DII data published for today (${live.displayDate}): FII Net ${live.fii.netValue} Cr | DII Net ${live.dii.netValue} Cr`);
+      if (notify) {
+        await dispatchFiiDiiBroadcast(live);
+      }
+      return { synced: true, date: live.date, newlyPublished: true };
+    } else {
+      console.log(`[FiiDiiService] NSE still serving previous session (${live.displayDate}). Awaiting today's (${todayIST}) release.`);
+      return { synced: false, pendingToday: true, nseDate: live.displayDate };
     }
   } catch (err) {
-    console.warn('[FiiDiiService] Evening sync warning:', err.message);
+    console.warn('[FiiDiiService] Evening sync error:', err.message);
+    return { synced: false, error: err.message };
   }
-  return { synced: false };
 }
 
 module.exports = {
   getLatestFiiDiiData,
   syncDailyFiiDii,
+  dispatchFiiDiiBroadcast,
+  fetchFromNse,
   normalizeFiiDiiData,
   parseNseDate,
 };

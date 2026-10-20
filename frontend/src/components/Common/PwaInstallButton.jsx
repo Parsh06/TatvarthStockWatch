@@ -1,23 +1,20 @@
 import React from 'react';
 import { Download, Smartphone } from 'lucide-react';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
-import PwaIosInstallModal from './PwaIosInstallModal';
+import PwaUniversalInstallModal from './PwaUniversalInstallModal';
 
 export default function PwaInstallButton({ variant = 'topbar', className = '' }) {
   const {
-    isInstallable,
     isInstalled,
     isIos,
-    showIosModal,
+    hasNativePrompt,
+    showModal,
+    closeModal,
     promptInstall,
-    closeIosModal,
   } = usePwaInstall();
 
   // If already running as installed standalone PWA, hide install triggers
   if (isInstalled) return null;
-
-  // On non-iOS browsers, only show when beforeinstallprompt fired or forced
-  if (!isInstallable && !isIos) return null;
 
   if (variant === 'sidebar') {
     return (
@@ -34,7 +31,12 @@ export default function PwaInstallButton({ variant = 'topbar', className = '' })
             <p className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">Add to Home Screen</p>
           </div>
         </button>
-        <PwaIosInstallModal isOpen={showIosModal} onClose={closeIosModal} />
+        <PwaUniversalInstallModal
+          isOpen={showModal}
+          onClose={closeModal}
+          isIos={isIos}
+          onNativePrompt={hasNativePrompt ? promptInstall : null}
+        />
       </>
     );
   }
@@ -50,7 +52,12 @@ export default function PwaInstallButton({ variant = 'topbar', className = '' })
         <Download className="w-3.5 h-3.5 shrink-0" />
         <span className="hidden sm:inline">Install App</span>
       </button>
-      <PwaIosInstallModal isOpen={showIosModal} onClose={closeIosModal} />
+      <PwaUniversalInstallModal
+        isOpen={showModal}
+        onClose={closeModal}
+        isIos={isIos}
+        onNativePrompt={hasNativePrompt ? promptInstall : null}
+      />
     </>
   );
 }

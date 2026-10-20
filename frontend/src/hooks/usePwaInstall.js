@@ -3,14 +3,14 @@ import { useState, useEffect, useCallback } from 'react';
 /**
  * usePwaInstall hook
  *
- * Provides reactive PWA install state, prompt handler, and iOS Safari detection.
+ * Provides reactive PWA install state, prompt handler, and platform detection.
+ * Works universally on iOS Safari, Android Chrome, and Desktop Chrome/Edge/Firefox.
  */
 export function usePwaInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [isInstallable, setIsInstallable] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isIos, setIsIos] = useState(false);
-  const [showIosModal, setShowIosModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     // 1. Check if already installed or running in standalone mode
@@ -31,24 +31,17 @@ export function usePwaInstall() {
 
     setIsIos(isIosDevice);
 
-    // If iOS and not in standalone, user can install via Add to Home Screen
-    if (isIosDevice && !isStandalone) {
-      setIsInstallable(true);
-    }
-
     // 3. Listen for browser's beforeinstallprompt (Chrome, Edge, Android)
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      setIsInstallable(true);
     };
 
     // 4. Listen for appinstalled
     const handleAppInstalled = () => {
       setIsInstalled(true);
-      setIsInstallable(false);
       setDeferredPrompt(null);
-      setShowIosModal(false);
+      setShowModal(false);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -61,40 +54,35 @@ export function usePwaInstall() {
   }, []);
 
   const promptInstall = useCallback(async () => {
-    if (isIos) {
-      setShowIosModal(true);
-      return { outcome: 'ios_modal' };
-    }
-
-    if (!deferredPrompt) {
-      return { outcome: 'unavailable' };
-    }
-
-    try {
-      deferredPrompt.prompt();
-      const choiceResult = await deferredPrompt.userChoice;
-      if (choiceResult.outcome === 'accepted') {
-        setIsInstalled(true);
-        setIsInstallable(false);
+    if (deferredPrompt) {
+      try {
+        deferredPrompt.prompt();
+        const choiceResult = await deferredPrompt.userChoice;
+        if (choiceResult.outcome === 'accepted') {
+          setIsInstalled(true);
+        }
+        setDeferredPrompt(null);
+        return choiceResult;
+      } catch (err) {
+        console.warn('[PWA] Prompt error:', err.message);
       }
-      setDeferredPrompt(null);
-      return choiceResult;
-    } catch (err) {
-      console.warn('[PWA] Prompt error:', err.message);
-      return { outcome: 'error' };
     }
-  }, [deferredPrompt, isIos]);
 
-  const closeIosModal = useCallback(() => {
-    setShowIosModal(false);
-  }, []);
+    // If no native prompt available or on iOS, open the guidance sheet
+    setShowModal(true);
+    return { outcome: 'modal' };
+  }, [deferredPrompt]);
+
+  const openModal = useCallback(() => setShowModal(true), []);
+  const closeModal = useCallback(() => setShowModal(false), []);
 
   return {
-    isInstallable,
     isInstalled,
     isIos,
-    showIosModal,
+    hasNativePrompt: Boolean(deferredPrompt),
+    showModal,
+    openModal,
+    closeModal,
     promptInstall,
-    closeIosModal,
   };
 }
