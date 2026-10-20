@@ -6,8 +6,12 @@
  * Tracks Foreign Institutional Investors (FII/FPI) and Domestic Institutional
  * Investors (DII) Cash Market daily activity (Buy, Sell, Net values in ₹ Crores).
  *
+ * Dual Data Ingestion:
+ * 1. All Exchanges (NSE, BSE, MSEI): https://www.nseindia.com/api/fiidiiTradeReact
+ * 2. NSE Segment Only:               https://www.nseindia.com/api/fiidiiTradeNse
+ * 3. Derived Delta (BSE + MSEI contribution): combined - nseOnly
+ *
  * Architecture:
- * - Official Source: https://www.nseindia.com/api/fiidiiTradeReact
  * - Reuses existing NSE session cookies from nseScraper (0 extra session overhead)
  * - Persistent Storage: MongoDB collection 'fii_dii_history' (rolling 30 trading days)
  * - In-Memory Cache: 15m TTL during market/evening, 12h once finalized
@@ -22,13 +26,14 @@ const { getISTDateTime, getISTDateString } = require('../lib/time/istTime');
 const { broadcastWebPushToAll } = require('../lib/webPushNotifier');
 const { sendMessage, isConfigured: isTelegramConfigured } = require('../lib/telegramNotifier');
 
-const NSE_FII_DII_URL = 'https://www.nseindia.com/api/fiidiiTradeReact';
+const NSE_FII_DII_COMBINED_URL = 'https://www.nseindia.com/api/fiidiiTradeReact';
+const NSE_FII_DII_NSE_ONLY_URL = 'https://www.nseindia.com/api/fiidiiTradeNse';
 
 const HEADERS = {
-  'User-Agent':      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
-  'Accept':          'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Referer':         'https://www.nseindia.com',
+  'User-Agent':      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
+  'Accept':          '*/*',
+  'Accept-Language': 'en-US,en;q=0.9,en-IN;q=0.8',
+  'Referer':         'https://www.nseindia.com/reports/fii-dii',
   'Connection':      'keep-alive',
 };
 
@@ -56,9 +61,9 @@ function parseNseDate(dateStr) {
 }
 
 /**
- * Normalizes raw NSE array into a structured FII/DII record
+ * Normalizes raw NSE array into a structured FII/DII category record
  */
-function normalizeFiiDiiData(rawArray) {
+function normalizeCategoryData(rawArray) {
   if (!Array.isArray(rawArray) || rawArray.length === 0) return null;
 
   let displayDate = '';
@@ -83,6 +88,8 @@ function normalizeFiiDiiData(rawArray) {
 
   const isoDate = parseNseDate(displayDate);
   const totalNet = Math.round((fii.netValue + dii.netValue) * 100) / 100;
+  const totalBuy = Math.round((fii.buyValue + dii.buyValue) * 100) / 100;
+  const totalSell = Math.round((fii.sellValue + dii.sellValue) * 100) / 100;
 
   let sentiment = 'neutral';
   if (totalNet >= 500) sentiment = 'strong_inflow';
@@ -96,30 +103,80 @@ function normalizeFiiDiiData(rawArray) {
     fii,
     dii,
     totalNet,
+    totalBuy,
+    totalSell,
     sentiment,
-    updatedAt: new Date().toISOString(),
   };
 }
 
 /**
- * Directly fetches latest FII/DII data from NSE API using session cookies
+ * Fetches both All-Exchanges and NSE-Only datasets in parallel using shared session cookies
  */
 async function fetchFromNse() {
   const cookies = await getNSECookies();
-  const response = await axios.get(NSE_FII_DII_URL, {
-    headers: {
-      ...HEADERS,
-      Cookie: cookies || '',
-    },
-    timeout: 10000,
-    validateStatus: (status) => status === 200,
-  });
+  const requestHeaders = {
+    ...HEADERS,
+    Cookie: cookies || '',
+  };
 
-  if (!Array.isArray(response.data)) {
+  const [resReact, resNse] = await Promise.all([
+    axios.get(NSE_FII_DII_COMBINED_URL, {
+      headers: requestHeaders,
+      timeout: 10000,
+      validateStatus: (s) => s === 200,
+    }),
+    axios.get(NSE_FII_DII_NSE_ONLY_URL, {
+      headers: requestHeaders,
+      timeout: 10000,
+      validateStatus: (s) => s === 200,
+    }).catch(err => {
+      console.warn('[FiiDiiService] NSE-only endpoint warning:', err.message);
+      return { data: null };
+    }),
+  ]);
+
+  const combined = normalizeCategoryData(resReact.data);
+  const nseOnly = resNse.data ? normalizeCategoryData(resNse.data) : null;
+
+  if (!combined) {
     throw new Error('Invalid response structure from NSE fiidii API');
   }
 
-  return normalizeFiiDiiData(response.data);
+  // Calculate other exchanges (BSE + MSEI contribution)
+  let otherExchanges = null;
+  if (combined && nseOnly) {
+    const diiBuy = Math.round((combined.dii.buyValue - nseOnly.dii.buyValue) * 100) / 100;
+    const diiSell = Math.round((combined.dii.sellValue - nseOnly.dii.sellValue) * 100) / 100;
+    const diiNet = Math.round((combined.dii.netValue - nseOnly.dii.netValue) * 100) / 100;
+
+    const fiiBuy = Math.round((combined.fii.buyValue - nseOnly.fii.buyValue) * 100) / 100;
+    const fiiSell = Math.round((combined.fii.sellValue - nseOnly.fii.sellValue) * 100) / 100;
+    const fiiNet = Math.round((combined.fii.netValue - nseOnly.fii.netValue) * 100) / 100;
+
+    otherExchanges = {
+      dii: { buyValue: diiBuy, sellValue: diiSell, netValue: diiNet },
+      fii: { buyValue: fiiBuy, sellValue: fiiSell, netValue: fiiNet },
+      totalNet: Math.round((fiiNet + diiNet) * 100) / 100,
+      totalBuy: Math.round((fiiBuy + diiBuy) * 100) / 100,
+      totalSell: Math.round((fiiSell + diiSell) * 100) / 100,
+    };
+  }
+
+  return {
+    date: combined.date,
+    displayDate: combined.displayDate,
+    combined,
+    nseOnly: nseOnly || combined,
+    otherExchanges,
+    // Top-level compatibility fields
+    fii: combined.fii,
+    dii: combined.dii,
+    totalNet: combined.totalNet,
+    totalBuy: combined.totalBuy,
+    totalSell: combined.totalSell,
+    sentiment: combined.sentiment,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 /**
@@ -153,8 +210,27 @@ async function getFiiDiiHistory(limit = 10) {
       .limit(limit)
       .toArray();
 
+    // Ensure all historical records have combined and nseOnly fallbacks
+    const normalized = records.map(r => {
+      const combined = r.combined || {
+        fii: r.fii,
+        dii: r.dii,
+        totalNet: r.totalNet,
+        totalBuy: (r.fii?.buyValue || 0) + (r.dii?.buyValue || 0),
+        totalSell: (r.fii?.sellValue || 0) + (r.dii?.sellValue || 0),
+        sentiment: r.sentiment,
+        displayDate: r.displayDate,
+      };
+      const nseOnly = r.nseOnly || combined;
+      return {
+        ...r,
+        combined,
+        nseOnly,
+      };
+    });
+
     // Return in chronological order (oldest to newest) for chart rendering
-    return records.reverse();
+    return normalized.reverse();
   } catch (err) {
     console.warn('[FiiDiiService] Failed to fetch history from MongoDB:', err.message);
     return [];
@@ -195,16 +271,19 @@ async function dispatchFiiDiiBroadcast(record) {
 
   console.log(`[FiiDiiService] 📢 Dispatching once-daily FII/DII broadcast for ${record.displayDate}...`);
 
-  const isNetBuyer = record.totalNet >= 0;
+  const combined = record.combined || record;
+  const nseOnly = record.nseOnly || record;
+
+  const isNetBuyer = combined.totalNet >= 0;
   const netSign = isNetBuyer ? '+' : '';
-  const fiiSign = record.fii.netValue >= 0 ? '+' : '';
-  const diiSign = record.dii.netValue >= 0 ? '+' : '';
+  const fiiSign = combined.fii.netValue >= 0 ? '+' : '';
+  const diiSign = combined.dii.netValue >= 0 ? '+' : '';
 
   // 1. Web Push broadcast to all active devices
   try {
     const pushPayload = {
-      title: `📊 FII / DII Institutional Flow (${record.displayDate})`,
-      body: `Institutions ended Net ${isNetBuyer ? 'Buyers (+₹' + record.totalNet + ' Cr 🟢)' : 'Sellers (₹' + record.totalNet + ' Cr 🔴)'}. FII: ${fiiSign}₹${record.fii.netValue} Cr | DII: ${diiSign}₹${record.dii.netValue} Cr. Tap to inspect!`,
+      title: `📊 FII & DII Market Activity (${record.displayDate})`,
+      body: `Institutions ended Net ${isNetBuyer ? 'Buyers (+₹' + combined.totalNet + ' Cr 🟢)' : 'Sellers (₹' + combined.totalNet + ' Cr 🔴)'}. All Exchanges: FII ${fiiSign}₹${combined.fii.netValue} Cr | DII ${diiSign}₹${combined.dii.netValue} Cr. Tap for full breakdown!`,
       url: 'https://tatvarthstockwatch.web.app/dashboard',
       tag: lockId,
       severity: 'info',
@@ -222,14 +301,15 @@ async function dispatchFiiDiiBroadcast(record) {
       const telegramText =
         `📊 <b>Today's FII / DII Cash Market Activity</b>\n` +
         `🗓 <b>Trading Date:</b> <code>${record.displayDate}</code>\n\n` +
-        `${isNetBuyer ? '🟢' : '🔴'} <b>Combined Institutional Net:</b> <code>${netSign}₹${record.totalNet} Cr</code> (${isNetBuyer ? 'Net Inflow' : 'Net Outflow'})\n\n` +
-        `🌐 <b>FII / FPI (Foreign Institutions):</b>\n` +
-        `• Net: <code>${fiiSign}₹${record.fii.netValue} Cr</code> ${record.fii.netValue >= 0 ? '🟢 Net Buyer' : '🔴 Net Seller'}\n` +
-        `• Gross Buy: ₹${new Intl.NumberFormat('en-IN').format(record.fii.buyValue)} Cr | Gross Sell: ₹${new Intl.NumberFormat('en-IN').format(record.fii.sellValue)} Cr\n\n` +
-        `🏛 <b>DII (Domestic Mutual Funds & Institutions):</b>\n` +
-        `• Net: <code>${diiSign}₹${record.dii.netValue} Cr</code> ${record.dii.netValue >= 0 ? '🟢 Net Buyer' : '🔴 Net Seller'}\n` +
-        `• Gross Buy: ₹${new Intl.NumberFormat('en-IN').format(record.dii.buyValue)} Cr | Gross Sell: ₹${new Intl.NumberFormat('en-IN').format(record.dii.sellValue)} Cr\n\n` +
-        `⚡️ <a href="https://tatvarthstockwatch.web.app/dashboard">Tap here to view full Institutional Flow on StockWatch</a>`;
+        `${isNetBuyer ? '🟢' : '🔴'} <b>All-Exchanges Net Flow (NSE + BSE + MSEI):</b>\n` +
+        `• <b>Combined Net:</b> <code>${netSign}₹${combined.totalNet} Cr</code> (${isNetBuyer ? 'Net Inflow' : 'Net Outflow'})\n` +
+        `• <b>FII / FPI Net:</b> <code>${fiiSign}₹${combined.fii.netValue} Cr</code> (Buy: ₹${combined.fii.buyValue} Cr | Sell: ₹${combined.fii.sellValue} Cr)\n` +
+        `• <b>DII Net:</b> <code>${diiSign}₹${combined.dii.netValue} Cr</code> (Buy: ₹${combined.dii.buyValue} Cr | Sell: ₹${combined.dii.sellValue} Cr)\n\n` +
+        `🟠 <b>NSE Segment Only:</b>\n` +
+        `• <b>NSE Total Net:</b> <code>${nseOnly.totalNet >= 0 ? '+' : ''}₹${nseOnly.totalNet} Cr</code>\n` +
+        `• <b>FII Net on NSE:</b> <code>${nseOnly.fii.netValue >= 0 ? '+' : ''}₹${nseOnly.fii.netValue} Cr</code>\n` +
+        `• <b>DII Net on NSE:</b> <code>${nseOnly.dii.netValue >= 0 ? '+' : ''}₹${nseOnly.dii.netValue} Cr</code>\n\n` +
+        `⚡️ <a href="https://tatvarthstockwatch.web.app/dashboard">Open Tatvarth StockWatch to view interactive charts & details</a>`;
 
       sendMessage(telegramText).catch(err => {
         console.warn('[FiiDiiService] Telegram message warning:', err.message);
@@ -290,13 +370,6 @@ async function getLatestFiiDiiData(forceRefresh = false) {
 
 /**
  * Evening cron synchronizer — called during evening market hours (17:30+ IST).
- *
- * Highly Optimized:
- * 1. Checks if today is Mon-Fri trading day.
- * 2. Checks if today's trade date is ALREADY saved in MongoDB. If yes, skips (0 API calls to NSE).
- * 3. If not saved, fetches from NSE. If NSE returns today's date, saves, invalidates cache,
- *    and sends the once-daily broadcast notification!
- * 4. If NSE still returns yesterday's date, it waits and does NOT notify until today's figures drop.
  */
 async function syncDailyFiiDii(options = {}) {
   const force = Boolean(options.force);
@@ -322,8 +395,7 @@ async function syncDailyFiiDii(options = {}) {
     const existing = await db.collection('fii_dii_history').findOne({ date: todayIST });
 
     if (existing && !force) {
-      // Data already fetched and stored for today!
-      // Check if notification was sent (e.g. if server crashed right before notification)
+      // Check if notification was sent
       const lockDoc = await db.collection('alert_dedup_locks').findOne({ _id: `fiidii_broadcast_${todayIST}` });
       if (!lockDoc && notify) {
         await dispatchFiiDiiBroadcast(existing);
@@ -337,14 +409,13 @@ async function syncDailyFiiDii(options = {}) {
       return { synced: false, reason: 'empty_nse_response' };
     }
 
-    // Save whatever valid record was fetched into MongoDB
     await upsertFiiDiiRecord(live);
     _cachedResult = null;
     _cacheExpiresAt = 0;
 
     // 3. Verify if NSE actually provided TODAY'S data
     if (live.date === todayIST || force) {
-      console.log(`[FiiDiiService] ✅ Fresh FII/DII data published for today (${live.displayDate}): FII Net ${live.fii.netValue} Cr | DII Net ${live.dii.netValue} Cr`);
+      console.log(`[FiiDiiService] ✅ Fresh FII/DII data published for today (${live.displayDate}): Combined Net ${live.combined?.totalNet} Cr | NSE Net ${live.nseOnly?.totalNet} Cr`);
       if (notify) {
         await dispatchFiiDiiBroadcast(live);
       }
@@ -364,6 +435,6 @@ module.exports = {
   syncDailyFiiDii,
   dispatchFiiDiiBroadcast,
   fetchFromNse,
-  normalizeFiiDiiData,
+  normalizeCategoryData,
   parseNseDate,
 };
