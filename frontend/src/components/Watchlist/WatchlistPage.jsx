@@ -344,33 +344,33 @@ export default function WatchlistPage() {
               {triggering ? 'Fetching...' : 'Fetch Latest Data'}
             </button>
             <button onClick={handleOpenBulk}
-              className="flex items-center gap-1.5 px-3 py-2 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/25 rounded-lg text-sm font-medium transition">
+              className="flex items-center gap-1.5 px-3 py-2 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 dark:bg-sky-500/10 dark:hover:bg-sky-500/20 dark:text-sky-400 dark:border-sky-500/25 rounded-lg text-sm font-medium transition shadow-sm">
               <Upload className="w-4 h-4" />
               <span className="hidden sm:inline">Bulk Add</span>
             </button>
             <button onClick={handleShareBasket}
               disabled={watchlist.length === 0}
               title="Share your watchlist via public link"
-              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 rounded-lg text-sm font-medium transition disabled:opacity-50">
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/25 rounded-lg text-sm font-medium transition disabled:opacity-50 shadow-sm">
               <Share2 className="w-4 h-4" />
               <span className="hidden sm:inline">Share Watchlist</span>
             </button>
             <button onClick={handleOpenAdd}
-              className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium transition">
+              className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium transition shadow-sm">
               <Plus className="w-4 h-4" />
               <span className="hidden sm:inline">Add Script</span>
             </button>
             <button onClick={() => setClearConfirm(true)}
               disabled={watchlist.length === 0}
-              className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg text-sm font-medium transition disabled:opacity-50">
+              className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:text-red-500 dark:border-transparent rounded-lg text-sm font-medium transition disabled:opacity-50 shadow-sm">
               <Trash2 className="w-4 h-4" />
               <span className="hidden sm:inline">Clear All</span>
             </button>
             <button
               onClick={() => { setBulkMode(!bulkMode); setSelected(new Set()) }}
               className={clsx(
-                'px-3 py-2 text-sm font-medium rounded-lg border transition',
-                bulkMode ? 'bg-primary/20 border-primary text-primary' : 'border-border text-textMuted hover:text-textPrimary'
+                'px-3 py-2 text-sm font-medium rounded-lg border transition shadow-sm',
+                bulkMode ? 'bg-primary/20 border-primary text-primary' : 'bg-slate-100 dark:bg-surface border-slate-200 dark:border-border text-textMuted hover:text-textPrimary'
               )}
             >
               {bulkMode ? 'Cancel' : 'Select'}
@@ -378,17 +378,17 @@ export default function WatchlistPage() {
             <a href="/api/watchlist/export" download
                onClick={handleExportCsv}
                className={clsx(
-                 "flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm transition",
+                 "flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm transition shadow-sm",
                  planLimits?.canExportCsv
-                   ? "border-border text-textMuted hover:text-textPrimary hover:border-primary/40"
-                   : "border-amber-500/30 text-amber-400 bg-amber-500/5 hover:bg-amber-500/15"
+                   ? "bg-slate-100 dark:bg-surface border-slate-200 dark:border-border text-textMuted hover:text-textPrimary hover:border-primary/40"
+                   : "border-amber-300 dark:border-amber-500/30 text-amber-800 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/5 hover:bg-amber-100 dark:hover:bg-amber-500/15"
                )}
                title={planLimits?.canExportCsv ? "Export watchlist to CSV" : "Pro Feature: Export to CSV"}>
               <Download className="w-4 h-4" />
               {!planLimits?.canExportCsv && <span className="text-[10px] font-bold uppercase">PRO</span>}
             </a>
             <a href="/api/email-preview" target="_blank" rel="noopener noreferrer"
-               className="flex items-center gap-1.5 px-3 py-2 border border-border text-textMuted hover:text-textPrimary hover:border-primary/40 rounded-lg text-sm transition"
+               className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 dark:border-border bg-slate-100 dark:bg-surface text-textMuted hover:text-textPrimary hover:border-primary/40 rounded-lg text-sm transition shadow-sm"
                title="Email preview">
               <Mail className="w-4 h-4" />
             </a>
@@ -399,32 +399,32 @@ export default function WatchlistPage() {
 
       {/* ── Bulk action bar ── */}
       {bulkMode && selected.size > 0 && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-primary/10 border border-primary/30 rounded-xl">
+        <div className="flex items-center gap-3 px-4 py-3 bg-primary/10 border border-primary/30 rounded-xl shadow-sm">
           <span className="text-sm text-primary font-medium">{selected.size} selected</span>
           <button onClick={() => setBulkRemoveConfirm(true)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 rounded-lg text-xs font-medium transition">
+            className="flex items-center gap-2 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 dark:bg-red-500/10 dark:hover:bg-red-500/20 dark:text-red-400 dark:border-red-500/25 rounded-lg text-xs font-medium transition shadow-sm">
             <Trash2 className="w-3.5 h-3.5" /> Remove Selected
           </button>
         </div>
       )}
 
       {/* ── Filters ── */}
-      <div className="flex flex-col sm:flex-row gap-2 glass-panel p-2 rounded-2xl shadow-inner">
+      <div className="flex flex-col sm:flex-row gap-2 glass-panel p-2 rounded-2xl shadow-sm">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or code…"
-            className="w-full bg-black/20 border border-white/5 rounded-xl pl-9 pr-4 py-2.5 text-textPrimary placeholder-textMuted/40 focus:outline-none focus:ring-1 focus:ring-primary/50 text-sm shadow-sm transition-all" />
+            className="w-full bg-slate-100/90 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl pl-9 pr-4 py-2.5 text-textPrimary placeholder:text-textMuted/60 focus:outline-none focus:ring-1 focus:ring-primary/50 text-sm shadow-sm transition-all" />
         </div>
         <select value={exchange} onChange={(e) => setExchange(e.target.value)}
-          className="bg-black/20 border border-white/5 rounded-xl px-3 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-sm shadow-sm cursor-pointer transition-all">
+          className="bg-slate-100/90 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl px-3 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-sm shadow-sm cursor-pointer transition-all">
           <option value="">All Exchanges</option>
           <option value="BSE">BSE</option>
           <option value="NSE">NSE</option>
           <option value="BOTH">BOTH</option>
         </select>
         <select value={sort} onChange={(e) => setSort(e.target.value)}
-          className="bg-black/20 border border-white/5 rounded-xl px-3 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-sm shadow-sm cursor-pointer transition-all">
+          className="bg-slate-100/90 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl px-3 py-2.5 text-textPrimary focus:outline-none focus:ring-1 focus:ring-primary/50 text-sm shadow-sm cursor-pointer transition-all">
           {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </div>
@@ -438,7 +438,7 @@ export default function WatchlistPage() {
               'shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition hover:-translate-y-0.5 shadow-sm',
               activeGroup === ''
                 ? 'bg-primary/20 border-primary text-primary'
-                : 'bg-white/5 border-white/10 text-textMuted hover:text-textPrimary hover:border-primary/40'
+                : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-textMuted hover:text-textPrimary hover:border-primary/40'
             )}
           >
             All <span className="text-xs opacity-70">{watchlist.length}</span>

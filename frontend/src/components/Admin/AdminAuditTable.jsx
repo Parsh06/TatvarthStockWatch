@@ -11,27 +11,27 @@ import toast from 'react-hot-toast'
 const ACTION_CONFIG = {
   DISABLE_USER: {
     label: 'Disabled User',
-    color: 'text-danger bg-danger/10 border-danger/30',
+    color: 'text-rose-700 bg-rose-50 border-rose-200 dark:text-danger dark:bg-danger/10 dark:border-danger/30',
     icon: UserX,
   },
   ENABLE_USER: {
     label: 'Enabled User',
-    color: 'text-success bg-success/10 border-success/30',
+    color: 'text-emerald-800 bg-emerald-50 border-emerald-200 dark:text-success dark:bg-success/10 dark:border-success/30',
     icon: UserCheck,
   },
   SET_ROLE: {
     label: 'Changed Role',
-    color: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
+    color: 'text-amber-800 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/30',
     icon: Shield,
   },
   DELETE_WATCHLIST_ENTRY: {
     label: 'Deleted Watchlist',
-    color: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
+    color: 'text-blue-700 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-500/10 dark:border-blue-500/30',
     icon: Trash2,
   },
   DELETE_PUSH_DEVICE: {
     label: 'Removed Push Device',
-    color: 'text-purple-400 bg-purple-500/10 border-purple-500/30',
+    color: 'text-purple-700 bg-purple-50 border-purple-200 dark:text-purple-400 dark:bg-purple-500/10 dark:border-purple-500/30',
     icon: Trash2,
   },
 }
@@ -90,11 +90,11 @@ export default function AdminAuditTable({ logs = [], loading = false, onRefresh 
               placeholder="Filter by admin, target UID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-3 py-1.5 text-xs bg-surface border border-border rounded-xl text-textPrimary placeholder:text-textMuted/60 focus:outline-none focus:border-primary/50 transition w-56 sm:w-64"
+              className="pl-9 pr-3 py-1.5 text-xs bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border rounded-xl text-textPrimary placeholder:text-textMuted/60 focus:outline-none focus:border-primary/50 transition w-56 sm:w-64"
             />
           </div>
 
-          <div className="flex items-center gap-1.5 bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs">
+          <div className="flex items-center gap-1.5 bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border rounded-xl px-2.5 py-1.5 text-xs">
             <Filter className="w-3.5 h-3.5 text-textMuted" />
             <select
               value={actionFilter}
@@ -119,7 +119,7 @@ export default function AdminAuditTable({ logs = [], loading = false, onRefresh 
         <div className="flex items-center gap-2">
           <button
             onClick={handleExportCsv}
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-textPrimary bg-surface border border-border hover:bg-surfaceHover transition shadow-sm"
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-700 dark:text-textPrimary bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border hover:bg-slate-200 dark:hover:bg-surfaceHover transition shadow-sm"
             title="Export audit log as CSV"
           >
             <Download className="w-3.5 h-3.5 text-primary" />
@@ -129,7 +129,7 @@ export default function AdminAuditTable({ logs = [], loading = false, onRefresh 
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-textMuted hover:text-textPrimary bg-surface border border-border hover:bg-surfaceHover transition disabled:opacity-50"
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-700 dark:text-textMuted hover:text-textPrimary bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border hover:bg-slate-200 dark:hover:bg-surfaceHover transition disabled:opacity-50"
           >
             <RefreshCw className={clsx('w-3.5 h-3.5', loading && 'animate-spin')} />
             Refresh
@@ -141,7 +141,7 @@ export default function AdminAuditTable({ logs = [], loading = false, onRefresh 
       <div className="glass-panel overflow-hidden rounded-2xl border border-border">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-surface/60 border-b border-border/40 text-textMuted font-semibold uppercase tracking-wider">
+            <thead className="bg-slate-100/90 dark:bg-surface/60 border-b border-border text-slate-700 dark:text-textMuted font-semibold uppercase tracking-wider">
               <tr>
                 <th className="px-4 py-3">Timestamp</th>
                 <th className="px-4 py-3">Admin (Actor)</th>
@@ -232,7 +232,7 @@ export default function AdminAuditTable({ logs = [], loading = false, onRefresh 
 
                       {/* Payload / Details */}
                       <td className="px-4 py-3 text-textMuted">
-                        <pre className="text-[11px] font-mono bg-black/20 dark:bg-black/40 px-2 py-1 rounded max-w-xs truncate overflow-hidden">
+                        <pre className="text-[11px] font-mono bg-slate-100 dark:bg-black/40 border border-slate-200/80 dark:border-transparent text-slate-800 dark:text-textMuted px-2 py-1 rounded max-w-xs truncate overflow-hidden">
                           {JSON.stringify(log.payload || {})}
                         </pre>
                       </td>

@@ -425,22 +425,23 @@ stockwatch/
 ### CSS Variables (defined in `frontend/src/index.css`)
 
 ```css
-/* Light mode */
---bg-base: #f8f9fa         --bg-surface: #ffffff
---bg-surface-hover: rgba(255,255,255,0.6)
---border: rgba(14,165,233,0.15)
---text-primary: #111827     --text-muted: #4B5563
---glass-bg: rgba(255,255,255,0.7)
---glass-border: rgba(255,255,255,0.9)
+/* Light mode (Crisp Executive Slate — WCAG AAA Compliant) */
+--bg-base: #f8fafc          --bg-surface: #ffffff
+--bg-surface-hover: #f1f5f9 --border: #e2e8f0
+--text-primary: #0f172a     --text-muted: #64748b
+--glass-bg: rgba(255, 255, 255, 0.85)
+--glass-border: #e2e8f0
 
 /* Brand accents */
---accent-teal: #38E1C6      --accent-blue: #0EA5E9
---accent-amber: #F5B942     --accent-danger: #F43F5E
+--accent-teal: #0d9488      --accent-blue: #0284c7
+--accent-amber: #d97706     --accent-danger: #e11d48
 
-/* Dark mode overrides */
---bg-base: #09090b           --bg-surface: #18181b
---bg-surface-hover: #27272a  --border: #27272a
---text-primary: #fafafa      --text-muted: #a1a1aa
+/* Dark mode overrides (Pitch Luxury Dark) */
+--bg-base: #09090b          --bg-surface: #18181b
+--bg-surface-hover: #27272a --border: #27272a
+--text-primary: #fafafa     --text-muted: #a1a1aa
+--glass-bg: rgba(24, 24, 27, 0.7)
+--glass-border: rgba(255, 255, 255, 0.08)
 ```
 
 ### Tailwind Tokens (defined in `tailwind.config.js`)
@@ -796,6 +797,7 @@ this `GEMINI.md` file MUST be updated to reflect the change.
 | 2026-10-20 | Fix Missing React Hooks in PublicBasketPage: Resolved runtime `ReferenceError: useState is not defined` crash when loading public basket links (`/basket/:slug`) by importing `React, { useState, useEffect }` from `'react'` in `PublicBasketPage.jsx`. Also imported `useEffect` explicitly in `ShareBasketModal.jsx`. Deep scanned all frontend files to guarantee zero unimported hooks across the SPA. Verified clean Vite production build | `frontend/src/components/Watchlist/PublicBasketPage.jsx`, `frontend/src/components/Watchlist/ShareBasketModal.jsx`, `GEMINI.md` |
 | 2026-10-20 | Complete PublicBasketPage Luxury UI/UX Redesign, Tatvarth Branding & 1-Tap Import Flow: Overhauled the public basket page (`/basket/:slug`, e.g. `/basket/okok`) to 100% align with Tatvarth StockWatch's official design system: 1. Official Header & Branding: Added `/logo2.png` inside an elevated container with subtle glow, official `TatvarthStockWatch` typography (`font-display`), and an interactive dark/light Sun/Moon theme switcher synchronized with `document.documentElement.classList` and `localStorage`. 2. Luxury Hero Card: Added category pill, verified publisher badge, publication date, view and import metrics, and primary 1-tap import action deck with spinning loader, celebratory checkmark, and direct link to My Watchlist. 3. Holdings Grid: Responsive 3-column stock cards with company names, BSE/NSE tickers, exchange badge, thematic notes, TradingView chart links, and corporate filings links. 4. Today's Disclosures: Live feed showing real-time statutory announcements for stocks in the basket. 5. Viral Social Ribbon: 1-click share buttons for WhatsApp, Twitter/X, Telegram, and Copy Link. 6. Guest Onboarding: Built modal guiding unauthenticated users to `/login?redirect=/basket/:slug?autoImport=1` with automatic import execution upon login. Verified clean Vite production build (exit 0) | `frontend/src/components/Watchlist/PublicBasketPage.jsx`, `GEMINI.md` |
 | 2026-10-20 | Public Basket Preloader Single Logo & Light Mode Aesthetics Polish: 1. Single Preloader Logo: Replaced redundant loading container with the original luxury platform `<Preloader />`, eliminating the duplicate stacked logo so only the signature animated gold/cyan emblem and live feed progress bar display. 2. Light Theme Overhaul: Calibrated light-mode contrast, borders, and shadows across all elements (`bg-white`, `border-slate-200/90`, `text-slate-900`, `shadow-xl shadow-slate-200/50`) eliminating washed-out pills and backgrounds. 3. Import Button Aesthetics: Replaced broken gradient with a rich institutional `bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600` with luminous animated shimmer sweep and active state transitions. Added `accentTeal`, `accentBlue`, and `accentAmber` to `tailwind.config.js`. Verified production Vite build | `frontend/src/components/Watchlist/PublicBasketPage.jsx`, `frontend/tailwind.config.js`, `GEMINI.md` |
+| 2026-10-20 | Complete Executive White / Light Theme Redesign & WCAG AAA Contrast Overhaul Across All 20+ Pages: 1. Root Design System: Overhauled CSS variables in `index.css` (`--bg-base: #f8fafc`, `--bg-surface: #ffffff`, `--bg-surface-hover: #f1f5f9`, `--border: #e2e8f0`, `--text-primary: #0f172a`, `--text-muted: #64748b`) with crisp slate borders, ambient tints, and luxury glass-panel elevation without dark blobs. Converted `getCategoryColor` and `getExchangeColor` in `formatters.js` to pastel light styles with rich dark variants. 2. App Shell & Navigation: Upgraded `Sidebar.jsx`, `Topbar.jsx`, and `Preloader.jsx` (removed duplicate brand logo wrapper; single luxury preloader preserved). 3. Corporate Announcements & AI: Refactored `AnnouncementCard.jsx`, `AnnouncementFilters.jsx`, `AnnouncementsPage.jsx`, `AllAnnouncementsPage.jsx`, and `AiAnalysisPanel.jsx` (sentiment badges, importance pills, risk level indicators, and section wrappers). 4. Watchlist & Curated Baskets: Upgraded `ScriptCard.jsx`, `WatchlistPage.jsx`, `PublicBasketPage.jsx`, and `ShareBasketModal.jsx` with crisp scrip tags, group tabs, and luminous action buttons. 5. Market Calendars & Tables: Redesigned table headers, filters, and row highlights across `GainersLosersPage.jsx`, `ResultCalendarPage.jsx`, `BulkBlockPage.jsx`, `BoardMeetingsPage.jsx`, `AGMUpdatesPage.jsx`, `VolumeSpurtTable.jsx`, `IPOGmpPage.jsx`, `InsiderTradingPage.jsx`, and `CorporateCalendarPage.jsx`. 6. Family IPO Allotment: Upgraded status pills, Excel export button, and metric cards in `IpoVerificationPage.jsx`. 7. Monetization & Admin Control Center: Redesigned tier badge colors, annual switcher, and comparison matrix in `PlansPage.jsx` and `UpgradePromptModal.jsx`; restyled `AdminAuditTable.jsx`, `UserTable.jsx`, `UserDrawer.jsx`, `RoleEditModal.jsx`, `PlanEditModal.jsx`, `DisableUserModal.jsx`, and `RejectUserModal.jsx`. Dark mode remains 100% unaltered. Production Vite build verified (exit 0) | `frontend/src/index.css`, `frontend/src/utils/formatters.js`, `frontend/src/components/Common/Preloader.jsx`, `frontend/src/components/Layout/Sidebar.jsx`, `frontend/src/components/Layout/Topbar.jsx`, `frontend/src/components/Watchlist/ScriptCard.jsx`, `frontend/src/components/Watchlist/WatchlistPage.jsx`, `frontend/src/components/Announcements/AnnouncementCard.jsx`, `frontend/src/components/Announcements/AnnouncementFilters.jsx`, `frontend/src/components/Announcements/AnnouncementsPage.jsx`, `frontend/src/components/AllAnnouncements/AllAnnouncementsPage.jsx`, `frontend/src/components/Common/AiAnalysisPanel.jsx`, `frontend/src/components/GainersLosers/GainersLosersPage.jsx`, `frontend/src/components/ResultCalendar/ResultCalendarPage.jsx`, `frontend/src/components/BulkBlock/BulkBlockPage.jsx`, `frontend/src/components/BoardMeetings/BoardMeetingsPage.jsx`, `frontend/src/components/AGMUpdates/AGMUpdatesPage.jsx`, `frontend/src/components/VolumeSpurt/VolumeSpurtTable.jsx`, `frontend/src/components/IPO/IPOGmpPage.jsx`, `frontend/src/components/CompanyData/CompanyDataPage.jsx`, `frontend/src/components/Common/CommandPalette.jsx`, `frontend/src/components/Dashboard/PrimaryIndicesWidget.jsx`, `frontend/src/components/Dashboard/MarketMoversWidget.jsx`, `frontend/src/components/InsiderTrading/InsiderTradingPage.jsx`, `frontend/src/components/IpoVerification/IpoVerificationPage.jsx`, `frontend/src/components/CorporateCalendar/CorporateCalendarPage.jsx`, `frontend/src/components/Watchlist/PublicBasketPage.jsx`, `frontend/src/components/Watchlist/ShareBasketModal.jsx`, `frontend/src/components/Plans/PlansPage.jsx`, `frontend/src/components/Plans/UpgradePromptModal.jsx`, `frontend/src/components/Admin/AdminAuditTable.jsx`, `frontend/src/components/Admin/UserTable.jsx`, `frontend/src/components/Admin/UserDrawer.jsx`, `frontend/src/components/Admin/RoleEditModal.jsx`, `frontend/src/components/Admin/PlanEditModal.jsx`, `frontend/src/components/Admin/DisableUserModal.jsx`, `frontend/src/components/Admin/RejectUserModal.jsx`, `GEMINI.md` |
 
 ---
 

@@ -206,8 +206,8 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
                   <span className={clsx(
                     'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider',
                     user.role === 'admin'
-                      ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                      : 'bg-surface text-textMuted border-border'
+                      ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30'
+                      : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-surface dark:text-textMuted dark:border-border'
                   )}>
                     {user.role || 'user'}
                   </span>
@@ -216,10 +216,10 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
                     <span className={clsx(
                       'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider',
                       user.approvalStatus === 'pending'
-                        ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                        ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30'
                         : user.approvalStatus === 'rejected'
-                          ? 'bg-danger/15 text-danger border-danger/30'
-                          : 'bg-success/15 text-success border-success/30'
+                          ? 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-danger/15 dark:text-danger dark:border-danger/30'
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-success/15 dark:text-success dark:border-success/30'
                     )}>
                       {user.approvalStatus === 'pending' ? '⏳ Pending' : user.approvalStatus === 'rejected' ? '⛔ Declined' : '✓ Approved'}
                     </span>
@@ -228,8 +228,8 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
                   <span className={clsx(
                     'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider',
                     user.disabled
-                      ? 'bg-danger/15 text-danger border-danger/30'
-                      : 'bg-success/15 text-success border-success/30'
+                      ? 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-danger/15 dark:text-danger dark:border-danger/30'
+                      : 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-success/15 dark:text-success dark:border-success/30'
                   )}>
                     {user.disabled ? 'Disabled' : 'Active'}
                   </span>
@@ -239,14 +239,14 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
                   </span>
                 </div>
               </div>
-              <button onClick={onClose} className="p-2 rounded-xl text-textMuted hover:text-textPrimary hover:bg-white/5 transition flex-shrink-0">
+              <button onClick={onClose} className="p-2 rounded-xl text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-white/5 transition flex-shrink-0">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Approval Quick Action Bar */}
             {canWrite && user.role !== 'admin' && (
-              <div className="mt-4 p-3 rounded-2xl bg-surface/80 border border-border flex items-center justify-between gap-2">
+              <div className="mt-4 p-3 rounded-2xl bg-slate-50 dark:bg-surface/80 border border-slate-200 dark:border-border flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-textPrimary">Access Gate Authorization</p>
                   <p className="text-[11px] text-textMuted truncate">
@@ -274,7 +274,7 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
                       </button>
                       <button
                         onClick={() => setShowRejectModal(true)}
-                        className="px-2.5 py-1.5 rounded-xl border border-danger/30 bg-danger/10 hover:bg-danger/20 text-danger font-semibold text-xs transition"
+                        className="px-2.5 py-1.5 rounded-xl border border-rose-200 dark:border-danger/30 bg-rose-50 dark:bg-danger/10 hover:bg-rose-100 dark:hover:bg-danger/20 text-rose-700 dark:text-danger font-semibold text-xs transition"
                       >
                         Reject
                       </button>
@@ -292,7 +292,7 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
                           toast.error(e.message || 'Failed to re-allow')
                         }
                       }}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/40 font-bold text-xs transition flex items-center gap-1.5"
+                      className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 dark:hover:bg-emerald-500 text-emerald-800 dark:text-emerald-400 dark:hover:text-white border border-emerald-200 dark:border-emerald-500/40 font-bold text-xs transition flex items-center gap-1.5"
                     >
                       <UserCheck className="w-3.5 h-3.5" />
                       <span>Re-Allow Access</span>
@@ -302,7 +302,7 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
                   {(user.approvalStatus === 'approved' || !user.approvalStatus) && (
                     <button
                       onClick={() => setShowRejectModal(true)}
-                      className="px-2.5 py-1.5 rounded-xl border border-danger/30 bg-danger/10 hover:bg-danger/20 text-danger font-semibold text-xs transition flex items-center gap-1"
+                      className="px-2.5 py-1.5 rounded-xl border border-rose-200 dark:border-danger/30 bg-rose-50 dark:bg-danger/10 hover:bg-rose-100 dark:hover:bg-danger/20 text-rose-700 dark:text-danger font-semibold text-xs transition flex items-center gap-1"
                     >
                       <ShieldAlert className="w-3.5 h-3.5" />
                       <span>Revoke Access</span>
@@ -314,17 +314,17 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
 
             {/* Rejection reason banner */}
             {user.approvalStatus === 'rejected' && user.rejectedReason && (
-              <div className="mt-3 px-3 py-2 rounded-xl bg-danger/10 border border-danger/20 text-xs text-danger">
+              <div className="mt-3 px-3 py-2 rounded-xl bg-rose-50 dark:bg-danger/10 border border-rose-200 dark:border-danger/20 text-xs text-rose-700 dark:text-danger">
                 <span className="font-semibold">Rejection Reason:</span> {user.rejectedReason}
               </div>
             )}
 
             {/* Membership Tier & Entitlements Section */}
-            <div className="mt-4 p-3.5 rounded-2xl bg-gradient-to-r from-surface to-surfaceHover border border-border flex items-center justify-between">
+            <div className="mt-4 p-3.5 rounded-2xl bg-slate-50 dark:bg-gradient-to-r dark:from-surface dark:to-surfaceHover border border-slate-200 dark:border-border flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className={clsx(
                   "w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs border",
-                  user.plan === 'premium' ? "bg-amber-500/20 text-amber-300 border-amber-500/30" : user.plan === 'pro' ? "bg-primary/20 text-primary border-primary/30" : "bg-white/5 text-textMuted border-white/10"
+                  user.plan === 'premium' ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/30" : user.plan === 'pro' ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-primary/20 dark:text-primary dark:border-primary/30" : "bg-slate-100 text-slate-700 border-slate-200 dark:bg-white/5 dark:text-textMuted dark:border-white/10"
                 )}>
                   <Crown className="w-4 h-4" />
                 </div>
@@ -333,7 +333,7 @@ export default function UserDrawer({ user, onClose, onUpdate }) {
                     <p className="text-xs font-bold text-textPrimary uppercase tracking-wider">{user.plan || 'BASIC'} PLAN</p>
                     <span className={clsx(
                       "text-[9px] font-bold px-1.5 py-0.2 rounded uppercase",
-                      user.planStatus === 'expired' ? "bg-danger/20 text-danger" : "bg-success/20 text-success"
+                      user.planStatus === 'expired' ? "bg-rose-50 text-rose-800 border border-rose-200 dark:bg-danger/20 dark:text-danger" : "bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-success/20 dark:text-success"
                     )}>
                       {user.planStatus || 'ACTIVE'}
                     </span>

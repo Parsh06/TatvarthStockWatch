@@ -677,7 +677,7 @@ export default function AllAnnouncementsPage() {
           <div className="flex flex-wrap justify-center gap-3 mt-6">
             {QUICK_RANGES.map((r) => (
               <button key={r.label} onClick={() => applyQuickRange(r)}
-                className="text-xs px-4 py-2 border border-white/10 text-textMuted hover:border-primary/40 hover:text-textPrimary rounded-xl transition bg-black/20 hover:bg-primary/10 font-semibold shadow-sm">
+                className="text-xs px-4 py-2 border border-slate-200 dark:border-white/10 text-textMuted hover:border-primary/40 hover:text-textPrimary rounded-xl transition bg-slate-100 hover:bg-slate-200 dark:bg-black/20 dark:hover:bg-primary/10 font-semibold shadow-sm">
                 {r.label}
               </button>
             ))}

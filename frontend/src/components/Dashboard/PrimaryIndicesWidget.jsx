@@ -17,7 +17,7 @@ function IndexCard({ index, primary = false }) {
       </p>
       <div className={clsx(
         'flex items-center gap-1 mt-2 text-sm font-semibold',
-        isUp ? 'text-emerald-400' : 'text-danger'
+        isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-danger'
       )}>
         {isUp ? <TrendingUp className="w-3.5 h-3.5 flex-shrink-0" /> : <TrendingDown className="w-3.5 h-3.5 flex-shrink-0" />}
         <span className="tabular-nums">

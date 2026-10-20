@@ -121,14 +121,14 @@ export default function PlanEditModal({ user, onClose, onSuccess }) {
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-textMuted hover:text-textPrimary hover:bg-white/5 transition"
+              className="p-2 rounded-xl text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-white/5 transition"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Current Status Pill */}
-          <div className="mb-5 p-3 rounded-2xl bg-white/[0.02] border border-border flex items-center justify-between text-xs">
+          <div className="mb-5 p-3 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-border flex items-center justify-between text-xs">
             <div>
               <span className="text-textMuted">Status: </span>
               <span className={clsx(
@@ -162,11 +162,11 @@ export default function PlanEditModal({ user, onClose, onSuccess }) {
                       "p-3 rounded-2xl border text-left transition-all duration-200 relative flex flex-col justify-between",
                       isSelected
                         ? p.id === 'premium'
-                          ? "bg-amber-500/15 border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.15)] ring-1 ring-amber-500/40"
+                          ? "bg-amber-50 dark:bg-amber-500/15 border-amber-400 dark:border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.15)] ring-1 ring-amber-400 dark:ring-amber-500/40"
                           : p.id === 'pro'
-                          ? "bg-primary/15 border-primary/60 shadow-[0_0_15px_rgba(99,102,241,0.15)] ring-1 ring-primary/40"
-                          : "bg-surfaceHover border-border/90"
-                        : "bg-surface border-border hover:border-border/80"
+                          ? "bg-primary/10 dark:bg-primary/15 border-primary/40 dark:border-primary/60 shadow-[0_0_15px_rgba(99,102,241,0.15)] ring-1 ring-primary/40"
+                          : "bg-slate-100 dark:bg-surfaceHover border-slate-300 dark:border-border/90"
+                        : "bg-slate-50 dark:bg-surface border-slate-200 dark:border-border hover:border-slate-300 dark:hover:border-border/80"
                     )}
                   >
                     <div>
@@ -202,8 +202,8 @@ export default function PlanEditModal({ user, onClose, onSuccess }) {
                     className={clsx(
                       "px-2.5 py-2 rounded-xl border text-xs font-semibold transition-all text-center",
                       duration === d.id
-                        ? "bg-primary/20 border-primary text-primary"
-                        : "bg-surface border-border text-textMuted hover:text-textPrimary"
+                        ? "bg-primary/15 dark:bg-primary/20 border-primary text-primary"
+                        : "bg-slate-50 dark:bg-surface border-slate-200 dark:border-border text-slate-700 dark:text-textMuted hover:text-textPrimary hover:border-slate-300 dark:hover:border-border/80"
                     )}
                   >
                     <div>{d.label}</div>
@@ -224,12 +224,12 @@ export default function PlanEditModal({ user, onClose, onSuccess }) {
               placeholder="e.g., Paid via UPI ref 987654321 / Special partner access"
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-xs text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-primary/50"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100/90 dark:bg-background border border-slate-200 dark:border-border text-xs text-textPrimary placeholder:text-textMuted/60 focus:outline-none focus:border-primary/50"
             />
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-border">
+          <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-200 dark:border-border">
             {currentPlan !== 'basic' && (
               <button
                 type="button"
@@ -246,7 +246,7 @@ export default function PlanEditModal({ user, onClose, onSuccess }) {
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2.5 rounded-xl text-xs font-semibold border border-border text-textMuted hover:text-textPrimary hover:bg-surfaceHover transition"
+                className="flex-1 px-4 py-2.5 rounded-xl text-xs font-semibold border border-slate-200 dark:border-border text-slate-700 dark:text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-surfaceHover transition"
               >
                 Cancel
               </button>

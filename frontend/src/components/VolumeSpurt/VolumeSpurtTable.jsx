@@ -78,7 +78,7 @@ export default function VolumeSpurtTable({ stocks, search }) {
       className="overflow-x-auto overflow-y-auto max-h-[600px] scrollbar-hide"
     >
       <table className="w-full text-left text-sm whitespace-nowrap">
-        <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
+        <thead className="bg-slate-100/90 dark:bg-black/20 border-b border-border text-[11px] uppercase tracking-wider text-slate-700 dark:text-textMuted sticky top-0 z-10 backdrop-blur-md">
           <tr>
             {th('Securities Code', 'bseCode')}
             {th('Securities Name', 'symbol')}
@@ -91,7 +91,7 @@ export default function VolumeSpurtTable({ stocks, search }) {
             {th('Change %', 'changePct', 'text-right')}
           </tr>
         </thead>
-        <tbody className="divide-y divide-white/5">
+        <tbody className="divide-y divide-border/60">
           {sorted.map((stock) => {
             const isUp = stock.changePct >= 0
             return (

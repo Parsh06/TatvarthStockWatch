@@ -55,7 +55,7 @@ export default function UpgradePromptModal({ isOpen, onClose, feature = 'general
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.93, y: 16 }}
           transition={{ duration: 0.22, ease: 'easeOut' }}
-          className="glass-panel w-full max-w-md p-6 sm:p-7 rounded-3xl relative border border-primary/30 shadow-2xl overflow-hidden"
+          className="glass-panel w-full max-w-md p-6 sm:p-7 rounded-3xl relative border border-slate-200 dark:border-primary/30 shadow-2xl overflow-hidden"
           onClick={e => e.stopPropagation()}
         >
           {/* Ambient inner glow */}
@@ -65,7 +65,7 @@ export default function UpgradePromptModal({ isOpen, onClose, feature = 'general
           {/* Close button */}
           <button
             onClick={onClose}
-            className="absolute top-5 right-5 p-1.5 rounded-xl text-textMuted hover:text-textPrimary hover:bg-white/10 transition z-10"
+            className="absolute top-5 right-5 p-1.5 rounded-xl text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-white/10 transition z-10"
           >
             <X className="w-4 h-4" />
           </button>
@@ -92,7 +92,7 @@ export default function UpgradePromptModal({ isOpen, onClose, feature = 'general
           </div>
 
           {/* Value Props Pill Box */}
-          <div className="p-3.5 rounded-2xl bg-surface/70 border border-border/80 mb-6 space-y-2 text-xs">
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-surface/70 border border-slate-200 dark:border-border/80 mb-6 space-y-2 text-xs">
             <div className="flex items-center gap-2 text-textPrimary font-semibold">
               <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
               <span>{config.highlight}</span>

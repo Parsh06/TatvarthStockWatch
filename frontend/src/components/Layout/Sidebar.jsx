@@ -63,8 +63,8 @@ export default function Sidebar({ collapsed, onToggle }) {
       )}
     >
       {/* Logo */}
-      <div className={clsx('flex items-center h-[72px] border-b border-white/5 px-4', collapsed ? 'justify-center' : 'gap-3')}>
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-white/5 shadow-inner border border-white/5">
+      <div className={clsx('flex items-center h-[72px] border-b border-border px-4', collapsed ? 'justify-center' : 'gap-3')}>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-100 dark:bg-white/5 shadow-sm border border-slate-200/80 dark:border-white/5">
           <img src="/logo2.png" alt="Logo" className="w-6 h-6 object-contain" />
         </div>
         {!collapsed && <span className="font-bold text-textPrimary text-lg tracking-tight">Tatvarth</span>}
@@ -85,8 +85,8 @@ export default function Sidebar({ collapsed, onToggle }) {
               clsx(
                 'group flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200',
                 isActive
-                  ? 'bg-primary/20 text-primary shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]'
-                  : 'text-textMuted hover:bg-white/5 hover:text-textPrimary hover:-translate-y-[1px]',
+                  ? 'bg-primary/10 text-primary border border-primary/20 shadow-sm font-semibold'
+                  : 'text-textMuted hover:bg-slate-100 dark:hover:bg-white/5 hover:text-textPrimary hover:-translate-y-[1px]',
                 collapsed && 'justify-center'
               )
             }
@@ -138,7 +138,7 @@ export default function Sidebar({ collapsed, onToggle }) {
                 ? 'text-amber-400/90 hover:bg-amber-500/10 hover:text-amber-300'
                 : isPro
                 ? 'text-primary hover:bg-primary/10 hover:text-primary/90'
-                : 'text-textMuted hover:bg-white/5 hover:text-textPrimary hover:-translate-y-[1px]',
+                : 'text-textMuted hover:bg-slate-100 dark:hover:bg-white/5 hover:text-textPrimary hover:-translate-y-[1px]',
               collapsed && 'justify-center'
             )
           }
@@ -176,8 +176,8 @@ export default function Sidebar({ collapsed, onToggle }) {
               clsx(
                 'group flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200',
                 isActive
-                  ? 'bg-primary/20 text-primary shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]'
-                  : 'text-textMuted hover:bg-white/5 hover:text-textPrimary hover:-translate-y-[1px]',
+                  ? 'bg-primary/10 text-primary border border-primary/20 shadow-sm font-semibold'
+                  : 'text-textMuted hover:bg-slate-100 dark:hover:bg-white/5 hover:text-textPrimary hover:-translate-y-[1px]',
                 collapsed && 'justify-center'
               )
             }
@@ -192,9 +192,9 @@ export default function Sidebar({ collapsed, onToggle }) {
       </nav>
 
       {/* User section */}
-      <div className="border-t border-white/5 p-4">
+      <div className="border-t border-border p-4">
         {!collapsed && (
-          <div className="flex items-center gap-3 px-2 py-2 mb-3 bg-white/5 rounded-xl border border-white/5">
+          <div className="flex items-center gap-3 px-2 py-2 mb-3 bg-slate-100/90 dark:bg-white/5 rounded-xl border border-slate-200/90 dark:border-white/5">
             <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-primary to-blue-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-lg">
               {initials}
             </div>
@@ -220,7 +220,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       {/* Collapse toggle */}
       <button
         onClick={onToggle}
-        className="absolute -right-3.5 top-1/2 -translate-y-1/2 w-7 h-7 bg-surface border border-white/10 rounded-full flex items-center justify-center text-textMuted hover:text-textPrimary hover:bg-white/10 transition-all shadow-lg z-40"
+        className="absolute -right-3.5 top-1/2 -translate-y-1/2 w-7 h-7 bg-surface border border-border rounded-full flex items-center justify-center text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-white/10 transition-all shadow-md z-40"
       >
         {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>

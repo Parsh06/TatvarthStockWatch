@@ -141,7 +141,7 @@ function Section({ title, icon: Icon, children, defaultOpen = true }) {
   return (
     <div className="glass-panel rounded-2xl overflow-hidden shadow-lg mb-6">
       <button
-        className="w-full flex items-center justify-between gap-2 px-6 py-4 border-b border-white/5 bg-black/20 hover:bg-black/40 transition-colors text-left backdrop-blur-md"
+        className="w-full flex items-center justify-between gap-2 px-6 py-4 border-b border-border bg-slate-50 hover:bg-slate-100 dark:bg-black/20 dark:hover:bg-black/40 transition-colors text-left backdrop-blur-md"
         onClick={() => setOpen((v) => !v)}>
         <div className="flex items-center gap-3">
           <div className="p-1.5 rounded-lg bg-primary/20 text-primary">
@@ -440,11 +440,11 @@ export default function CompanyDataPage() {
                   <p className="text-xs text-textMuted mt-0.5 mb-2">{quote.sector}</p>
                 )}
                 <div className="flex items-center gap-3 flex-wrap mt-2">
-                  <code className="text-xs font-mono text-textMuted bg-black/20 px-2.5 py-1 rounded-lg border border-white/10 shadow-inner">
+                  <code className="text-xs font-mono text-slate-800 dark:text-textMuted bg-slate-100 dark:bg-black/20 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-white/10 shadow-sm">
                     BSE: {item?.bseCode}
                   </code>
                   {item?.symbol && (
-                    <code className="text-xs font-mono text-textMuted bg-black/20 px-2.5 py-1 rounded-lg border border-white/10 shadow-inner">
+                    <code className="text-xs font-mono text-slate-800 dark:text-textMuted bg-slate-100 dark:bg-black/20 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-white/10 shadow-sm">
                       NSE: {item.symbol}
                     </code>
                   )}

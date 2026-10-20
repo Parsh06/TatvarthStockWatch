@@ -12,13 +12,13 @@ import Loader from '../Common/Loader'
 // ── Category definitions ────────────────────────────────────────────────────
 const CATS = [
   { key: '',              label: 'All',            color: 'bg-primary/15 text-primary border-primary/30',               dot: 'bg-primary',      textColor: 'text-primary' },
-  { key: 'Board Meeting', label: 'Board Meeting',  color: 'bg-blue-500/15 text-blue-500 dark:text-blue-400 border-blue-500/30', dot: 'bg-blue-500',    textColor: 'text-blue-500 dark:text-blue-400' },
-  { key: 'Dividend',      label: 'Dividend',       color: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30', dot: 'bg-emerald-500', textColor: 'text-emerald-600 dark:text-emerald-400' },
-  { key: 'Bonus',         label: 'Bonus',          color: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30', dot: 'bg-amber-500',   textColor: 'text-amber-600 dark:text-amber-400' },
-  { key: 'AGM',           label: 'AGM',            color: 'bg-violet-500/15 text-violet-600 dark:text-violet-400 border-violet-500/30', dot: 'bg-violet-500',  textColor: 'text-violet-600 dark:text-violet-400' },
-  { key: 'Rights Issue',  label: 'Rights',         color: 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30', dot: 'bg-orange-500',  textColor: 'text-orange-600 dark:text-orange-400' },
-  { key: 'Stock Split',   label: 'Split',          color: 'bg-pink-500/15 text-pink-600 dark:text-pink-400 border-pink-500/30', dot: 'bg-pink-500',    textColor: 'text-pink-600 dark:text-pink-400' },
-  { key: 'Buyback',       label: 'Buyback',        color: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30', dot: 'bg-rose-500',    textColor: 'text-rose-600 dark:text-rose-400' },
+  { key: 'Board Meeting', label: 'Board Meeting',  color: 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/30', dot: 'bg-blue-500',    textColor: 'text-blue-700 dark:text-blue-400' },
+  { key: 'Dividend',      label: 'Dividend',       color: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30', dot: 'bg-emerald-500', textColor: 'text-emerald-700 dark:text-emerald-400' },
+  { key: 'Bonus',         label: 'Bonus',          color: 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30', dot: 'bg-amber-500',   textColor: 'text-amber-700 dark:text-amber-400' },
+  { key: 'AGM',           label: 'AGM',            color: 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-violet-500/15 dark:text-violet-400 dark:border-violet-500/30', dot: 'bg-violet-500',  textColor: 'text-purple-700 dark:text-violet-400' },
+  { key: 'Rights Issue',  label: 'Rights',         color: 'bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-500/15 dark:text-orange-400 dark:border-orange-500/30', dot: 'bg-orange-500',  textColor: 'text-orange-700 dark:text-orange-400' },
+  { key: 'Stock Split',   label: 'Split',          color: 'bg-pink-50 text-pink-800 border-pink-200 dark:bg-pink-500/15 dark:text-pink-400 dark:border-pink-500/30', dot: 'bg-pink-500',    textColor: 'text-pink-700 dark:text-pink-400' },
+  { key: 'Buyback',       label: 'Buyback',        color: 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-500/15 dark:text-rose-400 dark:border-rose-500/30', dot: 'bg-rose-500',    textColor: 'text-rose-700 dark:text-rose-400' },
 ]
 
 const QUICK_RANGES = [
@@ -113,7 +113,7 @@ function Dropdown({ value, options, onChange, placeholder = 'Select…', classNa
     <div ref={ref} className={clsx('relative', className)}>
       <button
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-border rounded-xl text-xs text-textMuted hover:text-textPrimary hover:border-primary/40 transition w-full"
+        className="flex items-center gap-1.5 px-3 py-2 bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border rounded-xl text-xs text-slate-700 dark:text-textMuted hover:text-textPrimary hover:border-primary/40 transition w-full"
       >
         <span className="flex-1 text-left truncate">
           {selected?.label || placeholder}
@@ -272,7 +272,7 @@ export default function CorporateCalendarPage() {
         <div className="flex items-center gap-2 flex-shrink-0">
           <button
             onClick={() => fetchEvents(true)} disabled={loading}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-surface border border-border rounded-xl text-xs font-semibold text-textMuted hover:text-textPrimary hover:border-primary/40 disabled:opacity-50 transition shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border rounded-xl text-xs font-semibold text-slate-700 dark:text-textMuted hover:text-textPrimary hover:border-primary/40 disabled:opacity-50 transition shadow-sm"
           >
             <RefreshCw className={clsx('w-3.5 h-3.5', loading && 'animate-spin')} />
             <span className="hidden sm:inline ml-1">Refresh</span>
@@ -291,7 +291,7 @@ export default function CorporateCalendarPage() {
                 'text-[11px] px-3 py-1.5 rounded-xl font-semibold transition border shadow-sm',
                 fromDate === r.from() && toDate === r.to()
                   ? 'bg-primary/15 border-primary/40 text-primary font-bold'
-                  : 'bg-surface hover:bg-surfaceHover border-border text-textMuted hover:text-textPrimary'
+                  : 'bg-slate-100/90 dark:bg-surface hover:bg-slate-200 dark:hover:bg-surfaceHover border-slate-200 dark:border-border text-slate-700 dark:text-textMuted hover:text-textPrimary'
               )}
             >
               {r.label}
@@ -299,7 +299,7 @@ export default function CorporateCalendarPage() {
           ))}
         </div>
 
-        <div className="flex items-center gap-2 bg-surface hover:bg-surfaceHover border border-border rounded-xl px-3 py-1.5 flex-shrink-0 shadow-sm transition-colors">
+        <div className="flex items-center gap-2 bg-slate-100/90 dark:bg-surface hover:bg-slate-200/80 dark:hover:bg-surfaceHover border border-slate-200 dark:border-border rounded-xl px-3 py-1.5 flex-shrink-0 shadow-sm transition-colors">
           <input
             type="date"
             value={fromDate}
@@ -322,7 +322,7 @@ export default function CorporateCalendarPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search company or code…"
-            className="w-full pl-7 pr-7 py-2 bg-surface border border-border rounded-xl text-xs text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-primary/40 transition shadow-sm"
+            className="w-full pl-7 pr-7 py-2 bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border rounded-xl text-xs text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-primary/40 transition shadow-sm"
           />
           {search && (
             <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-textMuted hover:text-textPrimary">
@@ -338,7 +338,7 @@ export default function CorporateCalendarPage() {
             'flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition flex-shrink-0 shadow-sm',
             wlOnly
               ? 'bg-primary/15 text-primary border-primary/40 font-bold'
-              : 'bg-surface text-textMuted border-border hover:border-primary/40 hover:text-textPrimary'
+              : 'bg-slate-100/90 dark:bg-surface text-slate-700 dark:text-textMuted border-slate-200 dark:border-border hover:border-primary/40 hover:text-textPrimary'
           )}
         >
           <Filter className="w-3.5 h-3.5" />
@@ -364,7 +364,7 @@ export default function CorporateCalendarPage() {
                 'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition hover:-translate-y-0.5 shadow-sm',
                 activeCat === key
                   ? color
-                  : 'bg-surface text-textMuted border-border hover:border-primary/40 hover:text-textPrimary'
+                  : 'bg-slate-100/90 dark:bg-surface text-slate-700 dark:text-textMuted border-slate-200 dark:border-border hover:border-primary/40 hover:text-textPrimary'
               )}
             >
               {key && <span className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0', activeCat === key ? dot : 'bg-textMuted/40')} />}
@@ -372,7 +372,7 @@ export default function CorporateCalendarPage() {
               {count > 0 && (
                 <span className={clsx(
                   'text-[10px] px-1.5 py-0.5 rounded-full ml-0.5 font-mono',
-                  activeCat === key ? 'bg-primary/10' : 'bg-black/5 dark:bg-white/10 text-textMuted'
+                  activeCat === key ? 'bg-primary/10' : 'bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-textMuted'
                 )}>
                   {count}
                 </span>
@@ -391,7 +391,7 @@ export default function CorporateCalendarPage() {
               className="w-40"
             />
             {activePurpose && (
-              <button onClick={() => setActivePurpose('')} className="p-2 text-textMuted hover:text-primary transition bg-surface border border-border rounded-xl">
+              <button onClick={() => setActivePurpose('')} className="p-2 text-textMuted hover:text-primary transition bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border rounded-xl">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
@@ -432,7 +432,7 @@ export default function CorporateCalendarPage() {
               >
                 <div className={clsx(
                   "text-center py-2.5 border-b border-border",
-                  isToday ? "bg-emerald-600 text-white font-bold shadow-md" : "bg-black/[0.03] dark:bg-white/[0.03] text-textPrimary"
+                  isToday ? "bg-emerald-600 text-white font-bold shadow-md" : "bg-slate-100/80 dark:bg-white/[0.03] text-textPrimary"
                 )}>
                   <div className="text-[12px] font-black uppercase tracking-widest">{formatHeaderDay(dateStr)}</div>
                   <div className={clsx("text-[11px] font-medium", isToday ? "text-emerald-100" : "text-textMuted")}>{formatHeaderDate(dateStr)}</div>
@@ -513,7 +513,7 @@ function CompactEventCard({ event: e, meta, onOpenModal }) {
           {e.company || '—'}
         </span>
         {e.bseCode && (
-          <span className="text-[9px] font-mono font-bold text-textMuted bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded flex-shrink-0">
+          <span className="text-[9px] font-mono font-bold text-slate-700 dark:text-textMuted bg-slate-100 dark:bg-white/10 border border-slate-200 dark:border-transparent px-1.5 py-0.5 rounded flex-shrink-0">
             BSE
           </span>
         )}

@@ -241,7 +241,7 @@ export default function IPOGmpPage() {
             placeholder="Search by company name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-black/20 border border-white/10 rounded-xl pl-10 pr-4 py-2 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all shadow-inner placeholder:text-textMuted/50"
+            className="w-full bg-slate-100/90 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-2 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all shadow-sm placeholder:text-textMuted/60 text-textPrimary"
           />
         </div>
 
@@ -330,7 +330,7 @@ export default function IPOGmpPage() {
         ) : (
           <div className="overflow-x-auto flex-1 scrollbar-hide">
             <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
+              <thead className="bg-slate-100/90 dark:bg-black/20 border-b border-border text-[11px] uppercase tracking-wider text-slate-700 dark:text-textMuted sticky top-0 z-10 backdrop-blur-md">
                 <tr>
                   <th className="px-4 py-3 font-medium">Company</th>
                   <th className="px-4 py-3 font-medium">Dates</th>
@@ -344,7 +344,7 @@ export default function IPOGmpPage() {
                   <th className="px-4 py-3 font-medium text-right">Gain %</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-border/60">
                 {processedIpos.length === 0 ? (
                   <tr>
                     <td colSpan="10" className="px-4 py-16 text-center text-textMuted">
@@ -474,7 +474,7 @@ export default function IPOGmpPage() {
         )}
 
         {/* Footer / Pagination */}
-        <div className="px-4 py-3 border-t border-white/5 bg-black/20 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-textMuted">
+        <div className="px-4 py-3 border-t border-border bg-slate-50 dark:bg-black/20 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-textMuted">
           <span>Showing {processedIpos.length} of {ipos.length} IPOs {totalItems > 0 && `(Total across pages: ${totalItems})`}</span>
           
           {totalPages > 1 && (

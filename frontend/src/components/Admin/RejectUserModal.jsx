@@ -56,7 +56,7 @@ export default function RejectUserModal({ user, onClose, onSuccess }) {
                 Decline access for <span className="text-textPrimary font-semibold">{user.displayName || user.email}</span>. The user will be redirected to the access declined screen.
               </p>
             </div>
-            <button onClick={onClose} className="p-1.5 rounded-lg text-textMuted hover:text-textPrimary hover:bg-white/5 transition">
+            <button onClick={onClose} className="p-1.5 rounded-lg text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-white/5 transition">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -68,21 +68,21 @@ export default function RejectUserModal({ user, onClose, onSuccess }) {
               onChange={e => setReason(e.target.value)}
               placeholder="e.g. Account not authorized for this environment, unauthorized organization email…"
               rows={3}
-              className="w-full px-4 py-3 rounded-xl bg-surface border border-border text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-danger/40 resize-none transition"
+              className="w-full px-4 py-3 rounded-xl bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border text-sm text-textPrimary placeholder:text-textMuted/70 focus:outline-none focus:border-danger/40 resize-none transition"
             />
             <p className="text-[11px] text-textMuted mt-1.5">
               This reason will be visible to the user on their rejection screen.
             </p>
           </div>
 
-          <p className="text-xs text-danger/80 bg-danger/10 border border-danger/20 rounded-xl px-3 py-2 mb-5">
+          <p className="text-xs text-danger dark:text-danger/90 bg-rose-50 dark:bg-danger/10 border border-rose-200 dark:border-danger/20 rounded-xl px-3 py-2 mb-5">
             ⚠️ Active session tokens will be revoked immediately. You can re-allow and approve this account at any time.
           </p>
 
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-border text-textMuted hover:text-textPrimary hover:border-border/80 transition"
+              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 dark:border-border text-slate-700 dark:text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-surfaceHover transition"
             >
               Cancel
             </button>

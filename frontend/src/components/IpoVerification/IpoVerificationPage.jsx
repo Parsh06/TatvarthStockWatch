@@ -1125,11 +1125,11 @@ export default function IpoVerificationPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         {record.allottedShares > 0 ? (
-                          <div className="px-3 py-1.5 rounded-full bg-success/10 text-success border border-success/20 text-xs font-black tracking-wide">
+                          <div className="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-success/10 dark:text-success dark:border-success/20 text-xs font-black tracking-wide">
                             ALLOTTED
                           </div>
                         ) : (
-                          <div className="px-3 py-1.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-bold tracking-wide">
+                          <div className="px-3 py-1.5 rounded-full bg-sky-50 text-sky-800 border border-sky-200 dark:bg-primary/10 dark:text-primary dark:border-primary/20 text-xs font-bold tracking-wide">
                             NOT ALLOTTED
                           </div>
                         )}
@@ -1220,7 +1220,7 @@ export default function IpoVerificationPage() {
                           type="button"
                           onClick={handleRetryFailedApplicants}
                           disabled={bulkVerifying}
-                          className="px-4 py-2.5 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20 hover:bg-amber-500/20 disabled:opacity-50 text-xs font-bold transition-all flex items-center gap-2 shrink-0"
+                          className="px-4 py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20 dark:hover:bg-amber-500/20 disabled:opacity-50 text-xs font-bold transition-all flex items-center gap-2 shrink-0"
                         >
                           <RefreshCw className={`w-4 h-4 ${bulkVerifying ? 'animate-spin' : ''}`} />
                           Retry Failed ({errorCount})
@@ -1230,7 +1230,7 @@ export default function IpoVerificationPage() {
                       <button
                         type="button"
                         onClick={handleExportExcel}
-                        className="px-4 py-2.5 rounded-2xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 text-xs font-bold transition-all flex items-center gap-2 shrink-0"
+                        className="px-4 py-2.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20 dark:hover:bg-emerald-500/20 text-xs font-bold transition-all flex items-center gap-2 shrink-0"
                       >
                         <FileSpreadsheet className="w-4 h-4" />
                         Export Excel Report (.xlsx)
@@ -1245,25 +1245,25 @@ export default function IpoVerificationPage() {
                       <p className="text-[10px] font-extrabold text-textMuted uppercase tracking-wider mt-1">Total Checked</p>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-success/5 border border-success/15 text-center">
-                      <p className="text-2xl font-black text-success">{allottedCount}</p>
-                      <p className="text-[10px] font-extrabold text-success uppercase tracking-wider mt-1">Allotted 🎉</p>
+                    <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 dark:bg-success/5 dark:border-success/15 text-center">
+                      <p className="text-2xl font-black text-emerald-700 dark:text-success">{allottedCount}</p>
+                      <p className="text-[10px] font-extrabold text-emerald-800 dark:text-success uppercase tracking-wider mt-1">Allotted 🎉</p>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 text-center">
-                      <p className="text-2xl font-black text-primary">{appliedNotAllottedCount}</p>
-                      <p className="text-[10px] font-extrabold text-primary uppercase tracking-wider mt-1">Not Allotted</p>
+                    <div className="p-4 rounded-2xl bg-sky-50/80 border border-sky-200/80 dark:bg-primary/5 dark:border-primary/10 text-center">
+                      <p className="text-2xl font-black text-sky-700 dark:text-primary">{appliedNotAllottedCount}</p>
+                      <p className="text-[10px] font-extrabold text-sky-800 dark:text-primary uppercase tracking-wider mt-1">Not Allotted</p>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-danger/5 border border-danger/10 text-center">
-                      <p className="text-2xl font-black text-danger">{didNotApplyCount}</p>
-                      <p className="text-[10px] font-extrabold text-danger uppercase tracking-wider mt-1">Did Not Apply</p>
+                    <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-200/80 dark:bg-danger/5 dark:border-danger/10 text-center">
+                      <p className="text-2xl font-black text-rose-700 dark:text-danger">{didNotApplyCount}</p>
+                      <p className="text-[10px] font-extrabold text-rose-800 dark:text-danger uppercase tracking-wider mt-1">Did Not Apply</p>
                     </div>
 
                     {errorCount > 0 && (
-                      <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/10 text-center col-span-2 sm:col-span-1">
-                        <p className="text-2xl font-black text-amber-500">{errorCount}</p>
-                        <p className="text-[10px] font-extrabold text-amber-500 uppercase tracking-wider mt-1">Retry Needed</p>
+                      <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 dark:bg-amber-500/5 dark:border-amber-500/10 text-center col-span-2 sm:col-span-1">
+                        <p className="text-2xl font-black text-amber-700 dark:text-amber-500">{errorCount}</p>
+                        <p className="text-[10px] font-extrabold text-amber-800 dark:text-amber-500 uppercase tracking-wider mt-1">Retry Needed</p>
                       </div>
                     )}
                   </div>
@@ -1279,7 +1279,7 @@ export default function IpoVerificationPage() {
                         className={`px-3 py-1.5 rounded-xl transition-all ${
                           streamFilter === 'all'
                             ? 'bg-primary text-white'
-                            : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                            : 'bg-slate-100/90 dark:bg-background text-slate-700 dark:text-textMuted hover:text-textPrimary border border-slate-200 dark:border-border'
                         }`}
                       >
                         All ({totalChecked})
@@ -1291,7 +1291,7 @@ export default function IpoVerificationPage() {
                         className={`px-3 py-1.5 rounded-xl transition-all ${
                           streamFilter === 'allotted'
                             ? 'bg-success text-white'
-                            : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                            : 'bg-slate-100/90 dark:bg-background text-slate-700 dark:text-textMuted hover:text-textPrimary border border-slate-200 dark:border-border'
                         }`}
                       >
                         Allotted ({allottedCount})
@@ -1303,7 +1303,7 @@ export default function IpoVerificationPage() {
                         className={`px-3 py-1.5 rounded-xl transition-all ${
                           streamFilter === 'not_allotted'
                             ? 'bg-primary text-white'
-                            : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                            : 'bg-slate-100/90 dark:bg-background text-slate-700 dark:text-textMuted hover:text-textPrimary border border-slate-200 dark:border-border'
                         }`}
                       >
                         Not Allotted ({appliedNotAllottedCount})
@@ -1315,7 +1315,7 @@ export default function IpoVerificationPage() {
                         className={`px-3 py-1.5 rounded-xl transition-all ${
                           streamFilter === 'did_not_apply'
                             ? 'bg-danger text-white'
-                            : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                            : 'bg-slate-100/90 dark:bg-background text-slate-700 dark:text-textMuted hover:text-textPrimary border border-slate-200 dark:border-border'
                         }`}
                       >
                         Not Applied ({didNotApplyCount})
@@ -1328,7 +1328,7 @@ export default function IpoVerificationPage() {
                           className={`px-3 py-1.5 rounded-xl transition-all ${
                             streamFilter === 'error'
                               ? 'bg-amber-500 text-white'
-                              : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                              : 'bg-slate-100/90 dark:bg-background text-slate-700 dark:text-textMuted hover:text-textPrimary border border-slate-200 dark:border-border'
                           }`}
                         >
                           Errors ({errorCount})
@@ -1402,20 +1402,20 @@ export default function IpoVerificationPage() {
                           <div className="flex-shrink-0 self-start sm:self-center w-full sm:w-auto">
                             {result.status === 'found' ? (
                               result.records?.some(r => r.allottedShares > 0) ? (
-                                <div className="px-3 py-1.5 rounded-xl bg-success/10 text-success border border-success/20 text-xs font-black tracking-wide text-center">
+                                <div className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-success/10 dark:text-success dark:border-success/20 text-xs font-black tracking-wide text-center">
                                   ALLOTTED 🎉
                                 </div>
                               ) : (
-                                <div className="px-3 py-1.5 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-bold tracking-wide text-center">
+                                <div className="px-3 py-1.5 rounded-xl bg-sky-50 text-sky-800 border border-sky-200 dark:bg-primary/10 dark:text-primary dark:border-primary/20 text-xs font-bold tracking-wide text-center">
                                   APPLIED (NOT ALLOTTED)
                                 </div>
                               )
                             ) : result.status === 'error' ? (
-                              <div className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 text-xs font-bold tracking-wide text-center">
+                              <div className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-500 dark:border-amber-500/20 text-xs font-bold tracking-wide text-center">
                                 RETRY NEEDED
                               </div>
                             ) : (
-                              <div className="px-3 py-1.5 rounded-xl bg-danger/10 text-danger border border-danger/20 text-xs font-bold tracking-wide text-center">
+                              <div className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 dark:bg-danger/10 dark:text-danger dark:border-danger/20 text-xs font-bold tracking-wide text-center">
                                 IPO NOT APPLIED
                               </div>
                             )}

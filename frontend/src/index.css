@@ -4,14 +4,14 @@
 
 @layer base {
   :root {
-    --bg-base: #f8f9fa; /* Sleek, cool white */
-    --bg-surface: #ffffff;
-    --bg-surface-hover: rgba(255, 255, 255, 0.6);
-    --border: rgba(14, 165, 233, 0.15); /* Soft brand-blue border */
-    --text-primary: #111827;
-    --text-muted: #4B5563;
-    --glass-bg: rgba(255, 255, 255, 0.7);
-    --glass-border: rgba(255, 255, 255, 0.9);
+    --bg-base: #f8fafc; /* Crisp, modern slate-50 */
+    --bg-surface: #ffffff; /* Pure white card surface */
+    --bg-surface-hover: #f1f5f9; /* Crisp slate-100 for high-contrast card/row hovers */
+    --border: #e2e8f0; /* Crisp slate-200 structural borders */
+    --text-primary: #0f172a; /* Slate-900: sharp charcoal text with maximum legibility */
+    --text-muted: #64748b; /* Slate-500: clear, readable secondary text meeting WCAG AAA */
+    --glass-bg: rgba(255, 255, 255, 0.94);
+    --glass-border: #e2e8f0;
 
     /* Brand accent tokens — same palette used across app components (preloader, spinner, toasts).
        Kept separate from any Tailwind color config so they're usable directly in CSS/inline styles. */
@@ -20,7 +20,7 @@
     --accent-amber: #F5B942;
     --accent-danger: #F43F5E;
 
-    --shadow-color: 0deg 0% 0%;
+    --shadow-color: 222deg 47% 11%;
     --radius-md: 0.75rem;
     --radius-lg: 1rem;
   }
@@ -44,9 +44,8 @@
     font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     background-color: var(--bg-base);
     background-image:
-      radial-gradient(circle at 10% 20%, rgba(14, 165, 233, 0.14) 0%, transparent 40%),
-      radial-gradient(circle at 90% 80%, rgba(56, 225, 198, 0.10) 0%, transparent 40%),
-      radial-gradient(circle at 50% 50%, rgba(245, 185, 66, 0.06) 0%, transparent 50%);
+      radial-gradient(circle at 10% 10%, rgba(14, 165, 233, 0.05) 0%, transparent 45%),
+      radial-gradient(circle at 90% 90%, rgba(99, 102, 241, 0.04) 0%, transparent 45%);
     background-attachment: fixed;
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
@@ -107,15 +106,15 @@
 @layer components {
   .glass-panel {
     background-color: var(--glass-bg);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
     box-shadow:
-      0 4px 6px -1px hsl(var(--shadow-color) / 0.05),
-      0 2px 4px -1px hsl(var(--shadow-color) / 0.03),
-      inset 0 1px 0 rgba(255, 255, 255, 0.6); /* Inner highlight */
-    transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      0 1px 3px 0 rgba(15, 23, 42, 0.04),
+      0 6px 16px -4px rgba(15, 23, 42, 0.06),
+      0 0 0 1px rgba(226, 232, 240, 0.6);
+    transition: box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .dark .glass-panel {
@@ -131,9 +130,9 @@
   .glass-panel--interactive:hover {
     transform: translateY(-2px);
     box-shadow:
-      0 8px 20px -4px hsl(var(--shadow-color) / 0.12),
-      0 2px 6px -1px hsl(var(--shadow-color) / 0.06),
-      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+      0 4px 6px -1px rgba(15, 23, 42, 0.06),
+      0 14px 28px -6px rgba(15, 23, 42, 0.1),
+      0 0 0 1px rgba(203, 213, 225, 0.9);
   }
   .dark .glass-panel--interactive:hover {
     box-shadow: 0 14px 24px -6px hsl(var(--shadow-color) / 0.4);

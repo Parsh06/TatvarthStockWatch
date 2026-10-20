@@ -71,7 +71,7 @@ export default function RoleEditModal({ user, onClose, onSuccess }) {
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-textMuted hover:text-textPrimary hover:bg-white/5 transition"
+              className="p-2 rounded-xl text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-white/5 transition"
             >
               <X className="w-5 h-5" />
             </button>
@@ -94,9 +94,9 @@ export default function RoleEditModal({ user, onClose, onSuccess }) {
                   className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-sm font-semibold transition-all duration-200 ${
                     selectedRole === r
                       ? r === 'admin'
-                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-400'
-                        : 'bg-primary/15 border-primary/40 text-primary'
-                      : 'bg-surface border-border text-textMuted hover:text-textPrimary hover:border-border/80'
+                        ? 'bg-amber-50 dark:bg-amber-500/15 border-amber-300 dark:border-amber-500/40 text-amber-800 dark:text-amber-400'
+                        : 'bg-primary/10 dark:bg-primary/15 border-primary/30 dark:border-primary/40 text-primary'
+                      : 'bg-slate-100/80 dark:bg-surface border-slate-200 dark:border-border text-slate-700 dark:text-textMuted hover:text-textPrimary hover:border-slate-300 dark:hover:border-border/80'
                   }`}
                 >
                   {r === 'admin' ? <ShieldCheck className="w-4 h-4" /> : <ShieldX className="w-4 h-4" />}
@@ -120,7 +120,7 @@ export default function RoleEditModal({ user, onClose, onSuccess }) {
                   { key: 'read', label: 'Read Access', desc: 'Can view all admin data', val: readEntitlement, onChange: handleReadChange },
                   { key: 'write', label: 'Write Access', desc: 'Can modify users, roles, and data', val: writeEntitlement, onChange: handleWriteChange },
                 ].map(({ key, label, desc, val, onChange }) => (
-                  <label key={key} className="flex items-center justify-between p-4 rounded-xl bg-surface border border-border cursor-pointer hover:border-border/80 transition">
+                  <label key={key} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-surface border border-slate-200 dark:border-border cursor-pointer hover:border-slate-300 dark:hover:border-border/80 transition">
                     <div>
                       <p className="text-sm font-semibold text-textPrimary">{label}</p>
                       <p className="text-xs text-textMuted mt-0.5">{desc}</p>
@@ -130,7 +130,7 @@ export default function RoleEditModal({ user, onClose, onSuccess }) {
                       aria-checked={val}
                       onClick={() => onChange(!val)}
                       className={`relative w-11 h-6 rounded-full transition-all duration-200 flex-shrink-0 ${
-                        val ? 'bg-amber-500' : 'bg-border'
+                        val ? 'bg-amber-500' : 'bg-slate-300 dark:bg-border'
                       }`}
                     >
                       <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${
@@ -145,7 +145,7 @@ export default function RoleEditModal({ user, onClose, onSuccess }) {
 
           {/* Warning */}
           {selectedRole === 'admin' && writeEntitlement && (
-            <p className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2 mb-5">
+            <p className="text-xs text-amber-800 dark:text-amber-400/80 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl px-3 py-2 mb-5">
               ⚠️ Write access grants full control over all users and their data. Grant carefully.
             </p>
           )}
@@ -154,7 +154,7 @@ export default function RoleEditModal({ user, onClose, onSuccess }) {
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-border text-textMuted hover:text-textPrimary hover:border-border/80 transition"
+              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 dark:border-border text-slate-700 dark:text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-surfaceHover transition"
             >
               Cancel
             </button>

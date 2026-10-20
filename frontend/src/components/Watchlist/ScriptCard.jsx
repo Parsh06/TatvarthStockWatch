@@ -57,7 +57,7 @@ function ScriptCard({ script, annStats = {}, onOpenDrawer, bulkMode, isSelected,
           className={clsx(
             'absolute top-4 left-4 z-10 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 cursor-pointer',
             bulkMode || isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
-            isSelected ? 'bg-primary border-primary scale-110 shadow-lg shadow-primary/30' : 'border-border bg-background/80 hover:border-primary/50'
+            isSelected ? 'bg-primary border-primary scale-110 shadow-lg shadow-primary/30' : 'border-slate-300 dark:border-border bg-white dark:bg-background/80 hover:border-primary/50'
           )}
           onClick={(e) => { e.stopPropagation(); onSelect(script.id) }}
         >
@@ -82,15 +82,13 @@ function ScriptCard({ script, annStats = {}, onOpenDrawer, bulkMode, isSelected,
                 {script.scriptName}
               </button>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                {code   && <code className="text-[10px] sm:text-[11px] font-mono font-medium text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">{code}</code>}
-                {symbol && <code className="text-[10px] sm:text-[11px] font-mono font-medium text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded border border-orange-400/20">{symbol}</code>}
+                {code   && <code className="text-[10px] sm:text-[11px] font-mono font-medium text-blue-700 bg-blue-50 border border-blue-200 dark:text-blue-400 dark:bg-blue-400/10 dark:border-blue-400/20 px-2 py-0.5 rounded">{code}</code>}
+                {symbol && <code className="text-[10px] sm:text-[11px] font-mono font-medium text-orange-700 bg-orange-50 border border-orange-200 dark:text-orange-400 dark:bg-orange-400/10 dark:border-orange-400/20 px-2 py-0.5 rounded">{symbol}</code>}
               </div>
             </div>
             <span className={clsx(
               'shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg whitespace-nowrap mt-0.5 uppercase tracking-wide border',
-              getExchangeColor(script.exchange) === 'text-blue-400 bg-blue-400/15' ? 'bg-blue-400/10 text-blue-400 border-blue-400/20' :
-              getExchangeColor(script.exchange) === 'text-orange-400 bg-orange-400/15' ? 'bg-orange-400/10 text-orange-400 border-orange-400/20' :
-              'bg-primary/10 text-primary border-primary/20'
+              getExchangeColor(script.exchange)
             )}>
               {script.exchange || 'BSE'}
             </span>
@@ -100,8 +98,8 @@ function ScriptCard({ script, annStats = {}, onOpenDrawer, bulkMode, isSelected,
           <div className="flex-1 mt-2">
             {count > 0 ? (
               <div className="flex flex-col items-start gap-2.5">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold shadow-[0_0_12px_rgba(245,185,66,0.15)]">
-                  <Bell className="w-3.5 h-3.5 fill-amber-400/20" />
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30 rounded-xl text-xs font-bold shadow-sm">
+                  <Bell className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                   {count} Announcement{count !== 1 ? 's' : ''}
                 </span>
                 {lastDate && (
@@ -120,10 +118,10 @@ function ScriptCard({ script, annStats = {}, onOpenDrawer, bulkMode, isSelected,
           </div>
 
           {/* Row 3 — actions */}
-          <div className="flex items-center gap-2.5 pt-3.5 border-t border-white/5 mt-auto">
+          <div className="flex items-center gap-2.5 pt-3.5 border-t border-border mt-auto">
             <button
               onClick={(e) => { e.stopPropagation(); navigate(`/announcements?script=${code}`) }}
-              className="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-3 py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white text-xs font-bold rounded-xl transition-all duration-200 shadow-sm hover:shadow-primary/20 hover:-translate-y-0.5"
+              className="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-3 py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white text-xs font-bold rounded-xl transition-all duration-200 border border-primary/20 shadow-sm hover:shadow-primary/20 hover:-translate-y-0.5"
             >
               <BarChart2 className="w-3.5 h-3.5 flex-shrink-0" />
               <span className="truncate">Announcements</span>
@@ -132,7 +130,7 @@ function ScriptCard({ script, annStats = {}, onOpenDrawer, bulkMode, isSelected,
               onClick={(e) => { e.stopPropagation(); setConfirmOpen(true) }}
               aria-label={`Remove ${script.scriptName} from watchlist`}
               title="Remove from watchlist"
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-textMuted hover:text-red-400 bg-surface/40 hover:bg-red-500/10 rounded-xl transition-all duration-200 border border-transparent hover:border-red-500/20 shadow-sm hover:-translate-y-0.5"
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-textMuted hover:text-rose-600 dark:hover:text-red-400 bg-slate-100 dark:bg-surface/40 hover:bg-rose-50 dark:hover:bg-red-500/10 rounded-xl transition-all duration-200 border border-slate-200 dark:border-transparent hover:border-rose-200 dark:hover:border-red-500/20 shadow-sm hover:-translate-y-0.5"
             >
               <Trash2 className="w-4 h-4" />
             </button>

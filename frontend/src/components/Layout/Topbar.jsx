@@ -84,7 +84,7 @@ export default function Topbar({ sidebarWidth, onSearch, theme, toggleTheme }) {
         <div className="relative" ref={notifRef}>
           <button
             onClick={() => setNotifOpen(!notifOpen)}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-textMuted hover:text-textPrimary hover:bg-white/5 transition relative"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-white/5 transition relative"
           >
             <Bell className="w-4 h-4" />
             {unreadCount > 0 && (
@@ -111,7 +111,7 @@ export default function Topbar({ sidebarWidth, onSearch, theme, toggleTheme }) {
                   notifications.slice(0, 5).map((n) => (
                     <div
                       key={n.id}
-                      className={clsx('px-4 py-3 border-b border-border/50 hover:bg-white/5 transition', !n.read && 'bg-primary/5')}
+                      className={clsx('px-4 py-3 border-b border-border/50 hover:bg-slate-50 dark:hover:bg-white/5 transition', !n.read && 'bg-primary/5')}
                     >
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <span className="text-xs font-medium text-textMuted">{n.scriptName}</span>
@@ -130,9 +130,9 @@ export default function Topbar({ sidebarWidth, onSearch, theme, toggleTheme }) {
         <div className="relative" ref={userRef}>
           <button
             onClick={() => setUserMenuOpen(!userMenuOpen)}
-            className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-lg hover:bg-white/5 transition"
+            className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 transition"
           >
-            <div className="w-7 h-7 rounded-full bg-primary/30 flex items-center justify-center text-primary text-xs font-bold">
+            <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold border border-primary/25">
               {initials}
             </div>
             <div className="hidden sm:flex flex-col items-start leading-tight">
@@ -142,10 +142,10 @@ export default function Topbar({ sidebarWidth, onSearch, theme, toggleTheme }) {
               <span className={clsx(
                 "text-[9px] font-bold px-1 rounded uppercase tracking-wider",
                 isPremium
-                  ? "bg-amber-500/20 text-amber-300"
+                  ? "bg-amber-500/20 text-amber-500 dark:text-amber-300 border border-amber-500/30"
                   : isPro
-                  ? "bg-primary/20 text-primary"
-                  : "bg-surface text-textMuted border border-border"
+                  ? "bg-primary/15 text-primary border border-primary/25"
+                  : "bg-slate-100 dark:bg-surface text-textMuted border border-border"
               )}>
                 {isPremium ? 'HNI Premium' : isPro ? 'Pro' : 'Free'}
               </span>
@@ -155,14 +155,14 @@ export default function Topbar({ sidebarWidth, onSearch, theme, toggleTheme }) {
 
           {userMenuOpen && (
             <div className="absolute right-0 top-12 w-56 bg-surface border border-border rounded-xl shadow-2xl overflow-hidden py-1">
-              <div className="px-4 py-3 border-b border-border bg-white/[0.02]">
+              <div className="px-4 py-3 border-b border-border bg-slate-50/80 dark:bg-white/[0.02]">
                 <p className="text-sm font-medium text-textPrimary truncate">{currentUser?.displayName || 'User'}</p>
                 <p className="text-xs text-textMuted truncate">{currentUser?.email}</p>
                 <div className="mt-2 flex items-center justify-between text-xs">
                   <span className="text-textMuted">Tier:</span>
                   <span className={clsx(
-                    "font-bold text-[10px] px-1.5 py-0.5 rounded uppercase",
-                    isPremium ? "bg-amber-500/20 text-amber-300" : isPro ? "bg-primary/20 text-primary" : "bg-white/10 text-textMuted"
+                    "font-bold text-[10px] px-1.5 py-0.5 rounded uppercase border",
+                    isPremium ? "bg-amber-500/20 text-amber-500 dark:text-amber-300 border-amber-500/30" : isPro ? "bg-primary/15 text-primary border-primary/25" : "bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-textMuted border-slate-200 dark:border-transparent"
                   )}>
                     {plan?.toUpperCase() || 'BASIC'}
                   </span>
@@ -172,9 +172,9 @@ export default function Topbar({ sidebarWidth, onSearch, theme, toggleTheme }) {
               <Link
                 to="/plans"
                 onClick={() => setUserMenuOpen(false)}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-amber-400 hover:bg-amber-500/10 transition font-medium"
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition font-medium"
               >
-                <Crown className="w-4 h-4 text-amber-400" />
+                <Crown className="w-4 h-4 text-amber-500 dark:text-amber-400" />
                 <span>{isPremium ? 'Manage Membership' : isPro ? 'Upgrade to Premium' : 'Upgrade to Pro'}</span>
               </Link>
 

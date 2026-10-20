@@ -639,7 +639,7 @@ export default function ResultCalendarPage() {
               placeholder={activeTab === 'calendar' ? "Company, code, symbol..." : "Company, industry, quarter, code..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl pl-10 pr-9 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all placeholder:text-textMuted/50 text-textPrimary"
+              className="w-full bg-slate-100/90 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-9 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all placeholder:text-textMuted/60 text-textPrimary"
             />
             {searchQuery && (
               <button
@@ -665,7 +665,7 @@ export default function ResultCalendarPage() {
                   setFromDate(e.target.value)
                   setDatePreset('custom')
                 }}
-                className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer"
+                className="w-full bg-slate-100/90 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer"
               />
             </div>
 
@@ -679,7 +679,7 @@ export default function ResultCalendarPage() {
                   setToDate(e.target.value)
                   setDatePreset('custom')
                 }}
-                className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer"
+                className="w-full bg-slate-100/90 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer"
               />
             </div>
 
@@ -690,7 +690,7 @@ export default function ResultCalendarPage() {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer appearance-none pr-8"
+                  className="w-full bg-slate-100/90 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer appearance-none pr-8"
                 >
                   <option value="date-asc" className="bg-surface text-textPrimary">Date (Nearest first)</option>
                   <option value="date-desc" className="bg-surface text-textPrimary">Date (Furthest first)</option>
@@ -709,7 +709,7 @@ export default function ResultCalendarPage() {
               <select
                 value={declaredIndustryFilter}
                 onChange={(e) => setDeclaredIndustryFilter(e.target.value)}
-                className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer truncate"
+                className="w-full bg-slate-100/90 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all text-textPrimary cursor-pointer truncate"
               >
                 <option value="all" className="bg-surface text-textPrimary">All Industries ({declaredIndustries.length})</option>
                 {declaredIndustries.map(ind => (
@@ -721,9 +721,9 @@ export default function ResultCalendarPage() {
             {/* Quick Status View */}
             <div className="lg:col-span-3 space-y-1.5">
               <label className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">Report Segment</label>
-              <div className="w-full bg-black/20 dark:bg-black/30 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-textMuted flex items-center justify-between">
+              <div className="w-full bg-slate-100/90 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-textMuted flex items-center justify-between">
                 <span>Segment C (Equities)</span>
-                <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-textPrimary">Live BSE</span>
+                <span className="text-[10px] bg-slate-200 dark:bg-white/10 px-2 py-0.5 rounded text-textPrimary">Live BSE</span>
               </div>
             </div>
           </>
@@ -857,7 +857,7 @@ export default function ResultCalendarPage() {
             {activeTab === 'calendar' && (
               <div className="overflow-x-auto flex-1 scrollbar-hide">
                 <table className="w-full text-left text-sm whitespace-nowrap">
-                  <thead className="bg-black/20 dark:bg-black/40 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
+                  <thead className="bg-slate-100/90 dark:bg-black/40 border-b border-border text-[11px] uppercase tracking-wider text-slate-700 dark:text-textMuted sticky top-0 z-10 backdrop-blur-md">
                     <tr>
                       <th className="px-4 py-3.5 font-semibold">BSE Code</th>
                       <th className="px-4 py-3.5 font-semibold">Company Name</th>
@@ -867,7 +867,7 @@ export default function ResultCalendarPage() {
                       <th className="px-4 py-3.5 font-semibold text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5">
+                  <tbody className="divide-y divide-border/60">
                     {filteredCalendarResults.length === 0 ? (
                       <tr>
                         <td colSpan="6" className="px-4 py-20 text-center text-textMuted">
@@ -987,7 +987,7 @@ export default function ResultCalendarPage() {
             {activeTab === 'declared' && (
               <div className="overflow-x-auto flex-1 scrollbar-hide">
                 <table className="w-full text-left text-sm whitespace-nowrap">
-                  <thead className="bg-black/20 dark:bg-black/40 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
+                  <thead className="bg-slate-100/90 dark:bg-black/40 border-b border-border text-[11px] uppercase tracking-wider text-slate-700 dark:text-textMuted sticky top-0 z-10 backdrop-blur-md">
                     <tr>
                       <th className="px-4 py-3.5 font-semibold">BSE Code</th>
                       <th className="px-4 py-3.5 font-semibold">Company Name</th>
@@ -998,7 +998,7 @@ export default function ResultCalendarPage() {
                       <th className="px-4 py-3.5 font-semibold text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5">
+                  <tbody className="divide-y divide-border/60">
                     {filteredDeclaredResults.length === 0 ? (
                       <tr>
                         <td colSpan="7" className="px-4 py-20 text-center text-textMuted">

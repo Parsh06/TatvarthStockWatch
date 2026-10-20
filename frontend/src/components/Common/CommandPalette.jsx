@@ -202,10 +202,10 @@ export default function CommandPalette() {
           </div>
           
           {/* Footer */}
-          <div className="hidden sm:flex items-center justify-between px-4 py-2.5 bg-black/20 border-t border-border text-[10px] text-textMuted">
+          <div className="hidden sm:flex items-center justify-between px-4 py-2.5 bg-slate-50 dark:bg-black/20 border-t border-border text-[10px] text-textMuted">
             <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1"><kbd className="font-mono bg-white/5 border border-border px-1.5 py-0.5 rounded">↑</kbd><kbd className="font-mono bg-white/5 border border-border px-1.5 py-0.5 rounded">↓</kbd> to navigate</span>
-              <span className="flex items-center gap-1"><kbd className="font-mono bg-white/5 border border-border px-1.5 py-0.5 rounded">ENTER</kbd> to select</span>
+              <span className="flex items-center gap-1"><kbd className="font-mono bg-slate-100 dark:bg-white/5 border border-border px-1.5 py-0.5 rounded">↑</kbd><kbd className="font-mono bg-slate-100 dark:bg-white/5 border border-border px-1.5 py-0.5 rounded">↓</kbd> to navigate</span>
+              <span className="flex items-center gap-1"><kbd className="font-mono bg-slate-100 dark:bg-white/5 border border-border px-1.5 py-0.5 rounded">ENTER</kbd> to select</span>
             </div>
             <span>Powered by Tatvarth Search</span>
           </div>

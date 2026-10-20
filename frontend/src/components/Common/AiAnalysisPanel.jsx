@@ -97,9 +97,9 @@ function RiskRow({ label, value }) {
   if (!hasVal(value)) return null
   return (
     <div className="flex items-start gap-2 text-sm py-2.5 border-b border-red-500/10 last:border-b-0">
-      <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+      <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
       <div className="min-w-0">
-        <span className="text-red-400 font-semibold text-xs">{label}: </span>
+        <span className="text-rose-700 dark:text-red-400 font-semibold text-xs">{label}: </span>
         <span className="text-textPrimary">{value}</span>
       </div>
     </div>
@@ -113,9 +113,9 @@ function SentimentBadge({ value }) {
   return (
     <span className={clsx(
       'inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide border whitespace-nowrap',
-      lc === 'positive' && 'bg-emerald-400/10 text-emerald-400 border-emerald-400/25',
-      lc === 'negative' && 'bg-red-400/10 text-red-400 border-red-400/25',
-      lc === 'neutral'  && 'bg-surface text-textMuted border-border',
+      lc === 'positive' && 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-400 dark:border-emerald-400/25',
+      lc === 'negative' && 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-red-400/10 dark:text-red-400 dark:border-red-400/25',
+      lc === 'neutral'  && 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-surface dark:text-textMuted dark:border-border',
     )}>
       {lc === 'positive' ? <TrendingUp className="w-3 h-3" /> : lc === 'negative' ? <TrendingDown className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
       {value}
@@ -130,9 +130,9 @@ function ImportanceBadge({ value }) {
   return (
     <span className={clsx(
       'inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide border whitespace-nowrap',
-      lc === 'high'   && 'bg-amber-400/10 text-amber-400 border-amber-400/25',
-      lc === 'medium' && 'bg-blue-400/10 text-blue-400 border-blue-400/25',
-      lc === 'low'    && 'bg-surface text-textMuted border-border',
+      lc === 'high'   && 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-400 dark:border-amber-400/25',
+      lc === 'medium' && 'bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-400/10 dark:text-blue-400 dark:border-blue-400/25',
+      lc === 'low'    && 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-surface dark:text-textMuted dark:border-border',
     )}>
       {value} Importance
     </span>
@@ -144,7 +144,7 @@ function Section({ icon: Icon, title, children, iconColor = 'text-primary', bord
   return (
     <div className={clsx(
       'rounded-xl border p-3.5 sm:p-4 transition-colors duration-200',
-      borderColor || 'border-white/5 bg-surface/30'
+      borderColor || 'border-border bg-slate-50/70 dark:bg-surface/30'
     )}>
       <div className="flex items-center gap-2 mb-3">
         <div className={clsx('p-1 rounded-md flex-shrink-0', iconColor.replace('text-', 'bg-') + '/10')}>
@@ -273,7 +273,7 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached, announc
   })()
 
   return (
-    <div className="mt-3 border border-primary/20 bg-gradient-to-br from-primary/5 to-violet-900/5 rounded-2xl overflow-hidden">
+    <div className="mt-3 border border-primary/25 bg-gradient-to-br from-blue-50/70 via-surface to-indigo-50/40 dark:from-primary/5 dark:to-violet-900/5 rounded-2xl overflow-hidden shadow-sm">
       <style>{`
         @keyframes tswPanelIn {
           from { opacity: 0; transform: translateY(-6px); }
@@ -421,7 +421,7 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached, announc
 
               {/* Margins */}
               {hasMargins && (
-                <div className="flex flex-wrap gap-x-5 gap-y-2 mt-1 pt-3 border-t border-white/5">
+                <div className="flex flex-wrap gap-x-5 gap-y-2 mt-1 pt-3 border-t border-border">
                   {Object.entries(fin.marginAnalysis).map(([k, v]) =>
                     hasVal(v) ? (
                       <div key={k} className="text-xs text-textMuted">
@@ -435,15 +435,15 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached, announc
 
               {/* Exceptional Items */}
               {hasVal(fin.exceptionalItems) && (
-                <div className="mt-3 pt-3 border-t border-amber-500/15 flex items-start gap-2">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-300 leading-relaxed"><span className="font-bold">Exceptional Items: </span>{fin.exceptionalItems}</p>
+                <div className="mt-3 pt-3 border-t border-amber-500/20 flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed"><span className="font-bold">Exceptional Items: </span>{fin.exceptionalItems}</p>
                 </div>
               )}
 
               {/* Balance Sheet */}
               {hasBalanceSheet && (
-                <div className="mt-3 pt-3 border-t border-white/5">
+                <div className="mt-3 pt-3 border-t border-border">
                   <p className="text-[10px] font-bold text-textMuted uppercase tracking-wider mb-2 flex items-center gap-1">
                     <Banknote className="w-3 h-3" /> Balance Sheet Snapshot
                   </p>
@@ -462,7 +462,7 @@ export default function AiAnalysisPanel({ analysis, generatedAt, cached, announc
 
               {/* Cash Flow */}
               {hasCashFlow && (
-                <div className="mt-3 pt-3 border-t border-white/5">
+                <div className="mt-3 pt-3 border-t border-border">
                   <p className="text-[10px] font-bold text-textMuted uppercase tracking-wider mb-2 flex items-center gap-1">
                     <ArrowRightLeft className="w-3 h-3" /> Cash Flow Highlights
                   </p>

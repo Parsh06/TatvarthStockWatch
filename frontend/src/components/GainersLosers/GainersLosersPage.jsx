@@ -275,12 +275,12 @@ export default function GainersLosersPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 glass-panel rounded-2xl p-4">
         
         {/* Gainers / Losers Switch */}
-        <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 shadow-inner">
+        <div className="flex items-center bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl p-1 shadow-inner">
           <button
             onClick={() => setType('gainer')}
             className={clsx(
               "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-all",
-              type === 'gainer' ? "bg-emerald-500/20 text-emerald-400 shadow-sm" : "text-textMuted hover:text-textPrimary"
+              type === 'gainer' ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400 font-semibold shadow-sm" : "text-textMuted hover:text-textPrimary"
             )}
           >
             <ArrowUpRight className="w-4 h-4" /> Gainers
@@ -289,7 +289,7 @@ export default function GainersLosersPage() {
             onClick={() => setType('loser')}
             className={clsx(
               "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-all",
-              type === 'loser' ? "bg-danger/20 text-danger shadow-sm" : "text-textMuted hover:text-textPrimary"
+              type === 'loser' ? "bg-rose-100 text-rose-800 dark:bg-danger/20 dark:text-danger font-semibold shadow-sm" : "text-textMuted hover:text-textPrimary"
             )}
           >
             <ArrowDownRight className="w-4 h-4" /> Losers
@@ -301,7 +301,7 @@ export default function GainersLosersPage() {
           
           {/* NSE Index Category Selector */}
           {exchange === 'NSE' && (
-            <div className="flex items-center gap-2 bg-black/20 border border-white/5 rounded-xl px-3 py-1.5 shadow-inner">
+            <div className="flex items-center gap-2 bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl px-3 py-1.5 shadow-inner">
               <Filter className="w-3.5 h-3.5 text-primary" />
               <select
                 value={nseCategory}
@@ -318,12 +318,12 @@ export default function GainersLosersPage() {
           )}
 
           {/* BSE / NSE Switch */}
-          <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 shadow-inner">
+          <div className="flex items-center bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl p-1 shadow-inner">
             <button
               onClick={() => setExchange('BSE')}
               className={clsx(
                 "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-all",
-                exchange === 'BSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+                exchange === 'BSE' ? "bg-white text-primary shadow-sm dark:bg-primary/20 dark:text-primary font-semibold" : "text-textMuted hover:text-textPrimary"
               )}
             >
               BSE
@@ -332,7 +332,7 @@ export default function GainersLosersPage() {
               onClick={() => setExchange('NSE')}
               className={clsx(
                 "flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-all",
-                exchange === 'NSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+                exchange === 'NSE' ? "bg-white text-primary shadow-sm dark:bg-primary/20 dark:text-primary font-semibold" : "text-textMuted hover:text-textPrimary"
               )}
             >
               NSE
@@ -367,7 +367,7 @@ export default function GainersLosersPage() {
           )}
           
           {/* Card Header with Dynamic Title & Single Download Button */}
-          <div className="bg-white/5 border-b border-white/5 px-6 py-4 font-semibold flex items-center justify-between sticky top-0 z-20">
+          <div className="bg-slate-50 dark:bg-white/5 border-b border-border px-6 py-4 font-semibold flex items-center justify-between sticky top-0 z-20">
             <div className="flex items-center gap-2.5">
               <span className="text-textPrimary tracking-tight font-semibold">
                 {exchange} {type === 'gainer' ? 'Gainers' : 'Losers'} {exchange === 'NSE' ? `(${activeCategoryLabel})` : ''}
@@ -383,7 +383,7 @@ export default function GainersLosersPage() {
               onClick={handleDownloadCsv}
               disabled={downloading || data.length === 0}
               title={`Download ${exchange} Top ${type === 'gainer' ? 'Gainers' : 'Losers'} CSV`}
-              className="flex items-center gap-2 px-3.5 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 rounded-xl text-xs font-semibold transition-all disabled:opacity-50 shadow-sm"
+              className="flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 dark:border-emerald-500/40 dark:text-emerald-400 rounded-xl text-xs font-semibold transition-all disabled:opacity-50 shadow-sm"
             >
               <Download className={clsx("w-3.5 h-3.5", downloading && "animate-bounce")} />
               <span>{downloading ? 'Downloading...' : 'Download CSV'}</span>
@@ -399,7 +399,7 @@ export default function GainersLosersPage() {
             className="overflow-y-auto overflow-x-auto flex-1 relative scrollbar-hide"
           >
             <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
+              <thead className="bg-slate-100/90 dark:bg-black/20 border-b border-border text-[11px] uppercase tracking-wider text-slate-700 dark:text-textMuted sticky top-0 z-10 backdrop-blur-md">
                 <tr>
                   {columns.map((colHeader, idx) => (
                     <th 

@@ -44,7 +44,7 @@ export default function PlansPage() {
       period: 'forever',
       popular: false,
       tierBadge: 'Free Tier',
-      badgeColor: 'bg-surface border-border text-textMuted',
+      badgeColor: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-surface dark:border-border dark:text-textMuted',
       accentColor: 'border-border',
       features: [
         { title: 'Watchlist Capacity', value: '5 Scrips', bold: true },
@@ -71,7 +71,7 @@ export default function PlansPage() {
       period: isAnnual ? 'per month, billed annually' : 'per month',
       popular: true,
       tierBadge: 'Most Popular',
-      badgeColor: 'bg-primary/15 border-primary/30 text-primary',
+      badgeColor: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-primary/15 dark:border-primary/30 dark:text-primary',
       accentColor: 'border-primary/50 shadow-primary/10',
       features: [
         { title: 'Watchlist Capacity', value: 'Up to 50 Scrips', bold: true },
@@ -98,7 +98,7 @@ export default function PlansPage() {
       period: isAnnual ? 'per month, billed annually' : 'per month',
       popular: false,
       tierBadge: 'Institutional Tier',
-      badgeColor: 'bg-amber-500/15 border-amber-500/30 text-amber-400',
+      badgeColor: 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:border-amber-500/30 dark:text-amber-400',
       accentColor: 'border-amber-500/50 shadow-amber-500/10',
       features: [
         { title: 'Watchlist Capacity', value: 'Unlimited Scrips', bold: true },
@@ -240,7 +240,7 @@ export default function PlansPage() {
             </span>
             <button
               onClick={() => setBillingCycle(c => c === 'monthly' ? 'annual' : 'monthly')}
-              className="relative w-12 h-6 rounded-full bg-surface border border-border transition-colors p-0.5 focus:outline-none"
+              className="relative w-12 h-6 rounded-full bg-slate-200 dark:bg-surface border border-slate-300 dark:border-border transition-colors p-0.5 focus:outline-none"
             >
               <div className={`w-5 h-5 rounded-full bg-primary transition-transform duration-200 ${isAnnual ? 'translate-x-6' : 'translate-x-0'}`} />
             </button>
@@ -248,7 +248,7 @@ export default function PlansPage() {
               <span className={`text-xs font-semibold ${isAnnual ? 'text-textPrimary' : 'text-textMuted'}`}>
                 Annual Billing
               </span>
-              <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-full animate-pulse">
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/25 px-2 py-0.5 rounded-full animate-pulse">
                 Save ~25%
               </span>
             </div>
@@ -349,11 +349,11 @@ export default function PlansPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-border bg-surface/50 text-textMuted">
+                  <tr className="border-b border-border bg-slate-100/90 dark:bg-surface/50 text-slate-700 dark:text-textMuted">
                     <th className="py-3.5 px-5 font-semibold">Features</th>
                     <th className="py-3.5 px-4 font-semibold text-center">Basic (₹0)</th>
                     <th className="py-3.5 px-4 font-semibold text-center text-primary">Pro (₹999)</th>
-                    <th className="py-3.5 px-4 font-semibold text-center text-amber-400">Premium (₹1,999)</th>
+                    <th className="py-3.5 px-4 font-semibold text-center text-amber-500 dark:text-amber-400">Premium (₹1,999)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -361,49 +361,49 @@ export default function PlansPage() {
                     <td className="py-3 px-5 font-medium text-textPrimary">Watchlist Scrip Limit</td>
                     <td className="py-3 px-4 text-center text-textMuted">5 Scrips</td>
                     <td className="py-3 px-4 text-center font-bold text-primary">50 Scrips</td>
-                    <td className="py-3 px-4 text-center font-bold text-amber-400">Unlimited</td>
+                    <td className="py-3 px-4 text-center font-bold text-amber-500 dark:text-amber-400">Unlimited</td>
                   </tr>
                   <tr>
                     <td className="py-3 px-5 font-medium text-textPrimary">Gemini AI PDF Analysis</td>
                     <td className="py-3 px-4 text-center text-textMuted">3 / day</td>
                     <td className="py-3 px-4 text-center font-bold text-primary">Unlimited</td>
-                    <td className="py-3 px-4 text-center font-bold text-amber-400">Priority Queue</td>
+                    <td className="py-3 px-4 text-center font-bold text-amber-500 dark:text-amber-400">Priority Queue</td>
                   </tr>
                   <tr>
                     <td className="py-3 px-5 font-medium text-textPrimary">Saved Family PANs</td>
                     <td className="py-3 px-4 text-center text-textMuted">1 PAN</td>
                     <td className="py-3 px-4 text-center font-bold text-primary">10 PANs</td>
-                    <td className="py-3 px-4 text-center font-bold text-amber-400">Unlimited</td>
+                    <td className="py-3 px-4 text-center font-bold text-amber-500 dark:text-amber-400">Unlimited</td>
                   </tr>
                   <tr>
                     <td className="py-3 px-5 font-medium text-textPrimary">Automated IPO Allotment Check</td>
                     <td className="py-3 px-4 text-center text-textMuted">1 PAN</td>
                     <td className="py-3 px-4 text-center font-bold text-primary">All 10 PANs</td>
-                    <td className="py-3 px-4 text-center font-bold text-amber-400">All PANs + Export</td>
+                    <td className="py-3 px-4 text-center font-bold text-amber-500 dark:text-amber-400">All PANs + Export</td>
                   </tr>
                   <tr>
                     <td className="py-3 px-5 font-medium text-textPrimary">Excel & CSV Report Downloads</td>
                     <td className="py-3 px-4 text-center text-textMuted/40">&mdash;</td>
-                    <td className="py-3 px-4 text-center text-emerald-500 font-bold">✓ Included</td>
-                    <td className="py-3 px-4 text-center text-emerald-500 font-bold">✓ Included</td>
+                    <td className="py-3 px-4 text-center text-emerald-600 dark:text-emerald-500 font-bold">✓ Included</td>
+                    <td className="py-3 px-4 text-center text-emerald-600 dark:text-emerald-500 font-bold">✓ Included</td>
                   </tr>
                   <tr>
                     <td className="py-3 px-5 font-medium text-textPrimary">Shareable Watchlist Baskets</td>
                     <td className="py-3 px-4 text-center text-textMuted">View/Import only</td>
                     <td className="py-3 px-4 text-center font-bold text-primary">5 Baskets</td>
-                    <td className="py-3 px-4 text-center font-bold text-amber-400">Unlimited</td>
+                    <td className="py-3 px-4 text-center font-bold text-amber-500 dark:text-amber-400">Unlimited</td>
                   </tr>
                   <tr>
                     <td className="py-3 px-5 font-medium text-textPrimary">Custom Keyword Radar Triggers</td>
                     <td className="py-3 px-4 text-center text-textMuted/40">&mdash;</td>
                     <td className="py-3 px-4 text-center text-textMuted/40">&mdash;</td>
-                    <td className="py-3 px-4 text-center text-emerald-500 font-bold">✓ Included</td>
+                    <td className="py-3 px-4 text-center text-emerald-600 dark:text-emerald-500 font-bold">✓ Included</td>
                   </tr>
                   <tr>
                     <td className="py-3 px-5 font-medium text-textPrimary">VIP Concierge & Account Manager</td>
                     <td className="py-3 px-4 text-center text-textMuted/40">&mdash;</td>
                     <td className="py-3 px-4 text-center text-textMuted/40">&mdash;</td>
-                    <td className="py-3 px-4 text-center text-amber-400 font-bold">✓ Included</td>
+                    <td className="py-3 px-4 text-center text-amber-500 dark:text-amber-400 font-bold">✓ Included</td>
                   </tr>
                 </tbody>
               </table>
@@ -443,12 +443,12 @@ export default function PlansPage() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.94, y: 16 }}
                 transition={{ duration: 0.22, ease: 'easeOut' }}
-                className="glass-panel w-full max-w-lg p-6 sm:p-7 rounded-3xl relative border border-primary/30 shadow-2xl"
+                className="glass-panel w-full max-w-lg p-6 sm:p-7 rounded-3xl relative border border-slate-200 dark:border-primary/30 shadow-2xl"
                 onClick={e => e.stopPropagation()}
               >
                 <button
                   onClick={() => setSelectedPlanForUpgrade(null)}
-                  className="absolute top-5 right-5 p-1.5 rounded-xl text-textMuted hover:text-textPrimary hover:bg-white/10 transition"
+                  className="absolute top-5 right-5 p-1.5 rounded-xl text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-white/10 transition"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -468,7 +468,7 @@ export default function PlansPage() {
                 </div>
 
                 {/* Payment Option Tabs / UPI Card */}
-                <div className="p-4 rounded-2xl bg-surface/70 border border-border/80 mb-5 space-y-3">
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-surface/70 border border-slate-200 dark:border-border/80 mb-5 space-y-3">
                   <div className="flex items-center justify-between text-xs font-semibold text-textPrimary">
                     <span>Scan UPI QR Code</span>
                     <span className="text-primary font-mono text-[11px]">tatvarthcapital@okaxis</span>
@@ -527,7 +527,7 @@ export default function PlansPage() {
                       value={utrNumber}
                       onChange={e => setUtrNumber(e.target.value)}
                       placeholder="e.g. 482910482912 or UPI Ref #"
-                      className="w-full px-4 py-2.5 rounded-xl bg-surface border border-border text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-primary transition"
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-primary transition"
                     />
                   </div>
 

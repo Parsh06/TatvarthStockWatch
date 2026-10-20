@@ -172,7 +172,7 @@ export default function AGMUpdatesPage() {
             type="date" 
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
-            className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all shadow-inner cursor-pointer"
+            className="w-full bg-slate-100/90 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all shadow-sm cursor-pointer text-textPrimary"
           />
         </div>
         <div className="space-y-1.5">
@@ -181,7 +181,7 @@ export default function AGMUpdatesPage() {
             type="date" 
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
-            className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all shadow-inner cursor-pointer"
+            className="w-full bg-slate-100/90 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all shadow-sm cursor-pointer text-textPrimary"
           />
         </div>
         <div className="space-y-1.5">
@@ -193,7 +193,7 @@ export default function AGMUpdatesPage() {
               placeholder="Company, code..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-black/20 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all shadow-inner placeholder:text-textMuted/50"
+              className="w-full bg-slate-100/90 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all shadow-sm placeholder:text-textMuted/60 text-textPrimary"
             />
           </div>
         </div>
@@ -204,7 +204,7 @@ export default function AGMUpdatesPage() {
               "w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all shadow-sm border",
               showWatchlistOnly 
                 ? "bg-primary/20 border-primary text-primary" 
-                : "bg-white/5 border-white/10 text-textMuted hover:text-textPrimary hover:bg-white/10"
+                : "bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-textMuted hover:text-textPrimary hover:bg-slate-200 dark:hover:bg-white/10"
             )}
           >
             <Briefcase className="w-4 h-4" />
@@ -233,12 +233,12 @@ export default function AGMUpdatesPage() {
         )}
         {loading && agms.length === 0 ? (
           <div className="flex items-center justify-center py-20 flex-1">
-            <Loader text="Loading AGM updates..." />
+            <Loader text="Loading board meetings..." />
           </div>
         ) : (
           <div className="overflow-x-auto flex-1 scrollbar-hide">
             <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-black/20 border-b border-white/5 text-[11px] uppercase tracking-wider text-textMuted sticky top-0 z-10 backdrop-blur-md">
+              <thead className="bg-slate-100/90 dark:bg-black/20 border-b border-border text-[11px] uppercase tracking-wider text-slate-700 dark:text-textMuted sticky top-0 z-10 backdrop-blur-md">
                 <tr>
                   <th className="px-4 py-3 font-medium">BSE Code</th>
                   <th className="px-4 py-3 font-medium">Company Name</th>
@@ -247,7 +247,7 @@ export default function AGMUpdatesPage() {
                   <th className="px-4 py-3 font-medium">Announced On</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-border/60">
                 {filteredAgms.length === 0 ? (
                   <tr>
                     <td colSpan="5" className="px-4 py-16 text-center text-textMuted">

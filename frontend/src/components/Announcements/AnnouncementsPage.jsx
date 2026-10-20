@@ -137,7 +137,7 @@ export default function AnnouncementsPage() {
         <div className="flex items-center gap-2">
           {unreadCount > 0 && (
             <button onClick={handleMarkAllRead}
-              className="flex items-center gap-1.5 px-3 py-2 border border-white/5 rounded-xl text-xs text-textMuted hover:text-textPrimary hover:border-primary/40 transition bg-black/20 hover:bg-black/40 shadow-sm">
+              className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 dark:border-white/5 rounded-xl text-xs text-textMuted hover:text-textPrimary hover:border-primary/40 transition bg-slate-100 hover:bg-slate-200 dark:bg-black/20 dark:hover:bg-black/40 shadow-sm">
               <CheckCheck className="w-3.5 h-3.5" /> Mark all read
             </button>
           )}
@@ -160,7 +160,7 @@ export default function AnnouncementsPage() {
           <button
             onClick={handleExport}
             disabled={!filtered.length}
-            className="flex items-center gap-2 px-4 py-2 border border-white/10 text-textMuted hover:text-emerald-400 hover:border-emerald-500/50 disabled:opacity-40 rounded-xl text-sm font-medium transition bg-black/20 hover:bg-black/40 shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 border border-slate-200 dark:border-white/10 text-textMuted hover:text-emerald-700 dark:hover:text-emerald-400 hover:border-emerald-300 dark:hover:border-emerald-500/50 disabled:opacity-40 rounded-xl text-sm font-medium transition bg-slate-100 hover:bg-slate-200 dark:bg-black/20 dark:hover:bg-black/40 shadow-sm"
             title="Download as Excel (.xlsx)"
           >
             <FileSpreadsheet className="w-4 h-4" />
@@ -232,7 +232,7 @@ export default function AnnouncementsPage() {
             <div className="text-center pt-4">
               <button
                 onClick={() => setPage((p) => p + 1)}
-                className="px-6 py-2.5 border border-white/5 text-textMuted hover:text-textPrimary hover:border-primary/50 bg-black/20 hover:bg-black/40 rounded-xl text-sm font-medium transition shadow-sm"
+                className="px-6 py-2.5 border border-slate-200 dark:border-white/5 text-textMuted hover:text-textPrimary hover:border-primary/50 bg-slate-100 hover:bg-slate-200 dark:bg-black/20 dark:hover:bg-black/40 rounded-xl text-sm font-medium transition shadow-sm"
               >
                 Load more ({filtered.length - paginated.length} remaining)
               </button>

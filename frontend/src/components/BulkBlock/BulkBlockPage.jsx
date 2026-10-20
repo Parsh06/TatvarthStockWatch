@@ -212,7 +212,7 @@ export default function BulkBlockPage() {
               className={clsx('text-[11px] px-4 py-2 rounded-xl font-semibold transition hover:-translate-y-0.5 shadow-sm border',
                 fromDate === r.from() && toDate === r.to()
                   ? 'bg-primary/20 border-primary text-primary'
-                  : 'bg-black/20 border-white/5 text-textMuted hover:border-primary/40 hover:text-textPrimary')}>
+                  : 'bg-slate-100 dark:bg-black/20 border-slate-200 dark:border-white/5 text-textMuted hover:border-primary/40 hover:text-textPrimary')}>
               {r.label}
             </button>
           ))}
@@ -222,17 +222,17 @@ export default function BulkBlockPage() {
           <div>
             <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">From Date</label>
             <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
-              className="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner cursor-pointer transition-all" />
+              className="w-full bg-slate-100/90 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner cursor-pointer transition-all" />
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">To Date</label>
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
-              className="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner cursor-pointer transition-all" />
+              className="w-full bg-slate-100/90 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner cursor-pointer transition-all" />
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">Deal Type</label>
             <select value={dealType} onChange={(e) => setDealType(e.target.value)}
-              className="w-full bg-black/20 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner cursor-pointer transition-all">
+              className="w-full bg-slate-100/90 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl px-4 py-2.5 text-sm text-textPrimary focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/50 shadow-inner cursor-pointer transition-all">
               {exchange === 'BSE' ? (
                 <>
                   <option value="both">Bulk + Block</option>
@@ -265,12 +265,12 @@ export default function BulkBlockPage() {
             {loading ? 'Fetching…' : isRefreshing ? 'Syncing…' : 'Fetch Deals'}
           </button>
           
-          <div className="flex items-center bg-black/20 border border-white/5 rounded-xl p-1 shadow-inner">
+          <div className="flex items-center bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl p-1 shadow-inner">
             <button
               onClick={() => setExchange('BSE')}
               className={clsx(
                 "flex items-center gap-2 px-6 py-2 text-sm font-semibold rounded-lg transition-all",
-                exchange === 'BSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+                exchange === 'BSE' ? "bg-white text-primary shadow-sm dark:bg-primary/20 dark:text-primary" : "text-textMuted hover:text-textPrimary"
               )}
             >
               BSE
@@ -279,7 +279,7 @@ export default function BulkBlockPage() {
               onClick={() => setExchange('NSE')}
               className={clsx(
                 "flex items-center gap-6 py-2 text-sm font-semibold rounded-lg transition-all px-6",
-                exchange === 'NSE' ? "bg-primary/20 text-primary shadow-sm" : "text-textMuted hover:text-textPrimary"
+                exchange === 'NSE' ? "bg-white text-primary shadow-sm dark:bg-primary/20 dark:text-primary" : "text-textMuted hover:text-textPrimary"
               )}
             >
               NSE
@@ -356,10 +356,10 @@ export default function BulkBlockPage() {
                 <div className="overflow-x-auto scrollbar-hide">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-white/5 bg-black/20 backdrop-blur-md">
+                      <tr className="border-b border-border bg-slate-100/90 dark:bg-black/20 backdrop-blur-md">
                         {COLS.map((col) => (
                           <th key={col.key}
-                            className={clsx('px-4 py-3 text-xs font-semibold text-textMuted whitespace-nowrap',
+                            className={clsx('px-4 py-3 text-xs font-semibold text-slate-700 dark:text-textMuted whitespace-nowrap',
                               col.align === 'right' ? 'text-right' : 'text-left',
                               col.sortable && 'cursor-pointer select-none group hover:text-textPrimary')}
                             onClick={() => col.sortable && toggleSort(col.key)}>

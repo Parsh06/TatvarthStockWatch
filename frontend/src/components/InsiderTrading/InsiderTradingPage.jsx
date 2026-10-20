@@ -268,7 +268,7 @@ export default function InsiderTradingPage() {
               className={clsx('text-xs px-3 py-1.5 rounded-lg border font-medium transition',
                 fromDate === r.from() && toDate === r.to()
                   ? 'bg-primary/15 border-primary/40 text-primary'
-                  : 'border-border text-textMuted hover:border-primary/30 hover:text-textPrimary')}>
+                  : 'bg-slate-100/80 dark:bg-transparent border-slate-200 dark:border-border text-slate-600 dark:text-textMuted hover:border-primary/40 hover:text-textPrimary hover:bg-slate-200/80')}>
               {r.label}
             </button>
           ))}
@@ -278,12 +278,12 @@ export default function InsiderTradingPage() {
           <div>
             <label className="block text-[10px] sm:text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">From Date</label>
             <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60" />
+              className="w-full bg-slate-100/90 dark:bg-background border border-slate-200 dark:border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60" />
           </div>
           <div>
             <label className="block text-[10px] sm:text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">To Date</label>
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60" />
+              className="w-full bg-slate-100/90 dark:bg-background border border-slate-200 dark:border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60" />
           </div>
           <div className="col-span-2 sm:col-span-1">
             <label className="block text-[10px] sm:text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">Filter by Script (Optional)</label>
@@ -303,7 +303,7 @@ export default function InsiderTradingPage() {
           </button>
 
           <button onClick={handleDownloadCsv} disabled={downloading || loading || isRefreshing}
-            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 rounded-lg text-sm font-semibold transition disabled:opacity-60 shadow-sm"
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 border border-emerald-200 dark:border-emerald-500/40 text-emerald-800 dark:text-emerald-400 rounded-lg text-sm font-semibold transition disabled:opacity-60 shadow-sm"
             title="Download Official BSE Insider Trading CSV">
             <Download className={clsx('w-4 h-4', downloading && 'animate-bounce')} />
             {downloading ? 'Downloading...' : 'Download CSV'}
@@ -349,7 +349,7 @@ export default function InsiderTradingPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted pointer-events-none" />
             <input value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder="Filter by company name, person/entity, or code…"
-              className="w-full pl-9 pr-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-textPrimary placeholder-textMuted focus:outline-none focus:border-primary/60" />
+              className="w-full pl-9 pr-4 py-2.5 bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border rounded-xl text-sm text-textPrimary placeholder-textMuted focus:outline-none focus:border-primary/60" />
             {search && (
               <button onClick={() => setSearch('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-textMuted hover:text-textPrimary transition">
@@ -373,10 +373,10 @@ export default function InsiderTradingPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border bg-background/50">
+                    <tr className="border-b border-border bg-slate-100/90 dark:bg-background/50">
                       {COLS.map((col) => (
                         <th key={col.key}
-                          className={clsx('px-4 py-3 text-xs font-semibold text-textMuted whitespace-nowrap',
+                          className={clsx('px-4 py-3 text-xs font-semibold text-slate-700 dark:text-textMuted whitespace-nowrap',
                             col.align === 'right' ? 'text-right' : 'text-left',
                             col.sortable && 'cursor-pointer select-none group hover:text-textPrimary')}
                           onClick={() => col.sortable && toggleSort(col.key)}>
@@ -386,7 +386,7 @@ export default function InsiderTradingPage() {
                           </span>
                         </th>
                       ))}
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-textMuted">XBRL</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 dark:text-textMuted">XBRL</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -396,7 +396,7 @@ export default function InsiderTradingPage() {
                       return (
                         <tr key={i} className={clsx(
                           'border-b border-border/40 transition-colors',
-                          i % 2 === 0 ? 'hover:bg-white/3' : 'bg-background/20 hover:bg-white/4'
+                          i % 2 === 0 ? 'hover:bg-slate-50 dark:hover:bg-white/3' : 'bg-slate-50/50 dark:bg-background/20 hover:bg-slate-50 dark:hover:bg-white/4'
                         )}>
                           <td className="px-4 py-3 text-textMuted whitespace-nowrap tabular-nums text-xs">{d.dateIntimation}</td>
                           <td className="px-4 py-3 font-mono text-xs text-textMuted">{d.bseCode}</td>
@@ -411,9 +411,9 @@ export default function InsiderTradingPage() {
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span className={clsx('text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider',
-                              isAcq ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' :
-                              isDisp ? 'bg-red-500/15 text-red-400 border border-red-500/30' :
-                              'bg-surface text-textMuted border border-border')}>
+                              isAcq ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30' :
+                              isDisp ? 'bg-rose-50 text-rose-800 border border-rose-200 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/30' :
+                              'bg-slate-100 text-slate-700 border border-slate-200 dark:bg-surface dark:text-textMuted dark:border-border')}>
                               {d.transactionType}
                             </span>
                           </td>
@@ -444,7 +444,7 @@ export default function InsiderTradingPage() {
                   </tbody>
                 </table>
               </div>
-              <div className="px-4 py-2.5 border-t border-border bg-background/30 flex items-center justify-between text-xs text-textMuted">
+              <div className="px-4 py-2.5 border-t border-border bg-slate-50 dark:bg-background/30 flex items-center justify-between text-xs text-textMuted">
                 <span>Showing {filtered.length.toLocaleString()} of {trades.length.toLocaleString()} trades</span>
                 <span>Total transacted value: <strong className="text-textPrimary">₹{totalValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</strong></span>
               </div>

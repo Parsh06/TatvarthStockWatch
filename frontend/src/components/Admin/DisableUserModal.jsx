@@ -56,7 +56,7 @@ export default function DisableUserModal({ user, onClose, onSuccess }) {
                 This will immediately sign out <span className="text-textPrimary font-semibold">{user.displayName || user.email}</span> from all devices and block any new sign-ins.
               </p>
             </div>
-            <button onClick={onClose} className="p-1.5 rounded-lg text-textMuted hover:text-textPrimary hover:bg-white/5 transition">
+            <button onClick={onClose} className="p-1.5 rounded-lg text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-white/5 transition">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -74,7 +74,7 @@ export default function DisableUserModal({ user, onClose, onSuccess }) {
                   key={preset}
                   type="button"
                   onClick={() => setReason(preset)}
-                  className="text-[11px] px-2.5 py-1 rounded-lg bg-surface border border-border/80 text-textMuted hover:text-textPrimary hover:border-danger/30 transition"
+                  className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border/80 text-slate-700 dark:text-textMuted hover:text-textPrimary hover:border-danger/30 transition"
                 >
                   {preset}
                 </button>
@@ -85,18 +85,18 @@ export default function DisableUserModal({ user, onClose, onSuccess }) {
               onChange={e => setReason(e.target.value)}
               placeholder="Specify the reason why access is being revoked (this will be displayed to the user)…"
               rows={3}
-              className="w-full px-4 py-3 rounded-xl bg-surface border border-border text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-danger/40 resize-none transition"
+              className="w-full px-4 py-3 rounded-xl bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border text-sm text-textPrimary placeholder:text-textMuted/70 focus:outline-none focus:border-danger/40 resize-none transition"
             />
           </div>
 
-          <p className="text-xs text-danger/80 bg-danger/10 border border-danger/20 rounded-xl px-3 py-2.5 mb-5 leading-relaxed">
+          <p className="text-xs text-danger dark:text-danger/90 bg-rose-50 dark:bg-danger/10 border border-rose-200 dark:border-danger/20 rounded-xl px-3 py-2.5 mb-5 leading-relaxed">
             ⚠️ <strong>Instant Revocation:</strong> All active browser sessions and background listeners for this user will be terminated immediately. Push notification subscriptions will also be removed.
           </p>
 
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-border text-textMuted hover:text-textPrimary hover:border-border/80 transition"
+              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 dark:border-border text-slate-700 dark:text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-surfaceHover transition"
             >
               Cancel
             </button>

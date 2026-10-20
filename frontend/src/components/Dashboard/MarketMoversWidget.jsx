@@ -20,7 +20,7 @@ function MoverRow({ item, type }) {
       </div>
       <div className={clsx(
         'flex items-center gap-1 text-sm font-bold tabular-nums ml-3 flex-shrink-0',
-        isGainer ? 'text-emerald-400' : 'text-danger'
+        isGainer ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-danger'
       )}>
         {isGainer ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
         {pct != null ? `${isGainer ? '+' : ''}${pct.toFixed(2)}%` : '—'}
@@ -74,7 +74,7 @@ export default function MarketMoversWidget({ data, loading, error }) {
         <div>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               <h2 className="text-sm font-semibold text-textPrimary">Top Gainers</h2>
             </div>
             <Link to="/gainers-losers" className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition">
@@ -88,7 +88,7 @@ export default function MarketMoversWidget({ data, loading, error }) {
         <div className="border-l border-border pl-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <TrendingDown className="w-4 h-4 text-danger" />
+              <TrendingDown className="w-4 h-4 text-rose-600 dark:text-danger" />
               <h2 className="text-sm font-semibold text-textPrimary">Top Losers</h2>
             </div>
             <Link to="/gainers-losers" className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition">
@@ -102,12 +102,12 @@ export default function MarketMoversWidget({ data, loading, error }) {
       {/* Mobile: tabs */}
       <div className="md:hidden">
         <div className="flex items-center gap-2 mb-4">
-          <div className="flex bg-background border border-border rounded-xl p-1 flex-1">
+          <div className="flex bg-slate-100 dark:bg-background border border-slate-200 dark:border-border rounded-xl p-1 flex-1">
             <button
               onClick={() => setActiveTab('gainers')}
               className={clsx(
                 'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-semibold transition-all',
-                activeTab === 'gainers' ? 'bg-emerald-500/20 text-emerald-400' : 'text-textMuted'
+                activeTab === 'gainers' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400 font-semibold shadow-sm' : 'text-textMuted'
               )}
             >
               <TrendingUp className="w-3.5 h-3.5" /> Gainers
@@ -116,7 +116,7 @@ export default function MarketMoversWidget({ data, loading, error }) {
               onClick={() => setActiveTab('losers')}
               className={clsx(
                 'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-semibold transition-all',
-                activeTab === 'losers' ? 'bg-danger/20 text-danger' : 'text-textMuted'
+                activeTab === 'losers' ? 'bg-rose-100 text-rose-800 dark:bg-danger/20 dark:text-danger font-semibold shadow-sm' : 'text-textMuted'
               )}
             >
               <TrendingDown className="w-3.5 h-3.5" /> Losers

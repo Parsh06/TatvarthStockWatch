@@ -192,7 +192,7 @@ export default function UserTable({
                 'flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition relative',
                 isActive
                   ? 'bg-primary text-white shadow-sm'
-                  : 'bg-surface hover:bg-surfaceHover text-textMuted hover:text-textPrimary border border-border/70'
+                  : 'bg-slate-100/90 dark:bg-surface hover:bg-slate-200 dark:hover:bg-surfaceHover text-slate-700 dark:text-textMuted hover:text-textPrimary border border-slate-200 dark:border-border/70'
               )}
             >
               <span>{tab.label}</span>
@@ -201,8 +201,8 @@ export default function UserTable({
                 isActive
                   ? 'bg-white/20 text-white'
                   : tab.alert
-                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                    : 'bg-background text-textMuted'
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30'
+                    : 'bg-slate-200 dark:bg-background text-slate-700 dark:text-textMuted'
               )}>
                 {tab.count}
               </span>
@@ -223,13 +223,13 @@ export default function UserTable({
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search by name, email, or UID…"
-            className="w-full pl-11 pr-4 py-2.5 rounded-xl bg-surface border border-border text-sm text-textPrimary placeholder:text-textMuted/60 focus:outline-none focus:border-primary/40 transition"
+            className="w-full pl-11 pr-4 py-2.5 rounded-xl bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border text-sm text-textPrimary placeholder:text-textMuted/60 focus:outline-none focus:border-primary/40 transition"
           />
         </div>
 
         <button
           onClick={handleExportCsv}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-surface border border-border hover:bg-surfaceHover text-xs font-semibold text-textPrimary transition shadow-sm whitespace-nowrap"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100/90 dark:bg-surface border border-slate-200 dark:border-border hover:bg-slate-200 dark:hover:bg-surfaceHover text-xs font-semibold text-slate-700 dark:text-textPrimary transition shadow-sm whitespace-nowrap"
           title="Export user directory as CSV"
         >
           <Download className="w-3.5 h-3.5 text-primary" />
@@ -242,7 +242,7 @@ export default function UserTable({
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-border/50 text-[11px] font-semibold text-textMuted uppercase tracking-wider">
+              <tr className="border-b border-border bg-slate-100/90 dark:bg-surface/60 text-[11px] font-semibold text-slate-700 dark:text-textMuted uppercase tracking-wider">
                 <th className="text-left px-4 py-3">User</th>
                 <th
                   className="text-left px-4 py-3 cursor-pointer hover:text-textPrimary transition"
@@ -336,8 +336,8 @@ export default function UserTable({
                           <span className={clsx(
                             'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border',
                             user.role === 'admin'
-                              ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                              : 'bg-surface text-textMuted border-border'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30'
+                              : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-surface dark:text-textMuted dark:border-border'
                           )}>
                             {user.role === 'admin' ? <ShieldCheck className="w-2.5 h-2.5" /> : <ShieldX className="w-2.5 h-2.5" />}
                             {user.role || 'user'}
@@ -356,10 +356,10 @@ export default function UserTable({
                           <span className={clsx(
                             'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider',
                             user.plan === 'premium'
-                              ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30'
                               : user.plan === 'pro'
-                              ? 'bg-primary/15 text-primary border-primary/30'
-                              : 'bg-surface text-textMuted border-border'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-primary/15 dark:text-primary dark:border-primary/30'
+                              : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-surface dark:text-textMuted dark:border-border'
                           )}>
                             <Crown className="w-2.5 h-2.5" />
                             {user.plan || 'basic'}
@@ -383,17 +383,17 @@ export default function UserTable({
                       {/* Access / Approval Status */}
                       <td className="px-4 py-3">
                         {isPending ? (
-                          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400 animate-ping" />
                             Pending Review
                           </span>
                         ) : isRejected ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-danger/15 text-danger border border-danger/30" title={user.rejectedReason || 'Declined'}>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-800 border border-rose-200 dark:bg-danger/15 dark:text-danger dark:border-danger/30" title={user.rejectedReason || 'Declined'}>
                             <XCircle className="w-3 h-3" />
                             Rejected
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-success/15 text-success border border-success/30">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-success/15 dark:text-success dark:border-success/30">
                             <CheckCircle2 className="w-3 h-3" />
                             Approved
                           </span>
@@ -405,8 +405,8 @@ export default function UserTable({
                         <span className={clsx(
                           'inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border',
                           user.disabled
-                            ? 'bg-danger/15 text-danger border-danger/30'
-                            : 'bg-success/15 text-success border-success/30'
+                            ? 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-danger/15 dark:text-danger dark:border-danger/30'
+                            : 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-success/15 dark:text-success dark:border-success/30'
                         )}>
                           {user.disabled ? '● Disabled' : '● Active'}
                         </span>

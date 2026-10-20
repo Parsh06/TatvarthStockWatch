@@ -184,12 +184,12 @@ export default function ShareBasketModal({ isOpen, onClose, watchlist = [] }) {
         <div className="overflow-y-auto flex-1 py-4 space-y-4 pr-1">
           {generatedBasket ? (
             <div className="space-y-5 animate-fade-in">
-              <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 space-y-2">
-                <div className="flex items-center gap-2 font-semibold text-emerald-400">
+              <div className="p-4 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/25 dark:text-emerald-300 space-y-2">
+                <div className="flex items-center gap-2 font-semibold text-emerald-700 dark:text-emerald-400">
                   <Check className="w-5 h-5" />
                   <span>Basket Published & Ready to Share!</span>
                 </div>
-                <p className="text-xs text-emerald-200/80">
+                <p className="text-xs text-emerald-800/80 dark:text-emerald-200/80">
                   Anyone with this link can inspect live filings, financial results, and import these stocks into their own watchlist in 1 tap.
                 </p>
               </div>
@@ -202,7 +202,7 @@ export default function ShareBasketModal({ isOpen, onClose, watchlist = [] }) {
                     type="text"
                     readOnly
                     value={shareUrl}
-                    className="flex-1 px-3 py-2 text-sm bg-background border border-border rounded-xl text-textPrimary font-mono select-all focus:outline-none"
+                    className="flex-1 px-3 py-2 text-sm bg-slate-100/90 dark:bg-background border border-slate-200 dark:border-border rounded-xl text-textPrimary font-mono select-all focus:outline-none"
                   />
                   <button
                     onClick={copyToClipboard}
@@ -220,21 +220,21 @@ export default function ShareBasketModal({ isOpen, onClose, watchlist = [] }) {
                 <div className="grid grid-cols-3 gap-2.5">
                   <button
                     onClick={shareWhatsApp}
-                    className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 border border-[#25D366]/30 text-[#25D366] text-xs font-semibold transition"
+                    className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-[#128C7E] dark:bg-[#25D366]/15 dark:hover:bg-[#25D366]/25 dark:border-[#25D366]/30 dark:text-[#25D366] text-xs font-semibold transition shadow-sm"
                   >
                     <MessageCircle className="w-4 h-4" />
                     <span>WhatsApp</span>
                   </button>
                   <button
                     onClick={shareTwitter}
-                    className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-400 text-xs font-semibold transition"
+                    className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-700 dark:bg-sky-500/15 dark:hover:bg-sky-500/25 dark:border-sky-500/30 dark:text-sky-400 text-xs font-semibold transition shadow-sm"
                   >
                     <Twitter className="w-4 h-4" />
                     <span>X / Twitter</span>
                   </button>
                   <button
                     onClick={shareTelegram}
-                    className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#0088cc]/15 hover:bg-[#0088cc]/25 border border-[#0088cc]/30 text-[#0088cc] text-xs font-semibold transition"
+                    className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 dark:bg-[#0088cc]/15 dark:hover:bg-[#0088cc]/25 dark:border-[#0088cc]/30 dark:text-[#0088cc] text-xs font-semibold transition shadow-sm"
                   >
                     <Send className="w-4 h-4" />
                     <span>Telegram</span>
@@ -272,7 +272,7 @@ export default function ShareBasketModal({ isOpen, onClose, watchlist = [] }) {
                   placeholder="e.g. Defence & Drone Leaders, EV Value Picks"
                   value={title}
                   onChange={e => setTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-primary"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-100/90 dark:bg-background border border-slate-200 dark:border-border text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-primary"
                 />
               </div>
 
@@ -283,7 +283,7 @@ export default function ShareBasketModal({ isOpen, onClose, watchlist = [] }) {
                   <select
                     value={category}
                     onChange={e => setCategory(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-textPrimary focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-100/90 dark:bg-background border border-slate-200 dark:border-border text-sm text-textPrimary focus:outline-none focus:border-primary"
                   >
                     {PRESET_CATEGORIES.map(c => (
                       <option key={c} value={c}>{c}</option>
@@ -297,7 +297,7 @@ export default function ShareBasketModal({ isOpen, onClose, watchlist = [] }) {
                     placeholder="e.g. defence-smallcaps"
                     value={customSlug}
                     onChange={e => setCustomSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
-                    className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-primary font-mono text-xs"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-100/90 dark:bg-background border border-slate-200 dark:border-border text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-primary font-mono text-xs"
                   />
                 </div>
               </div>
@@ -310,7 +310,7 @@ export default function ShareBasketModal({ isOpen, onClose, watchlist = [] }) {
                   placeholder="Short thesis for investors (order books, Capex cycle, high dividend yield...)"
                   value={description}
                   onChange={e => setDescription(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-primary resize-none"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-100/90 dark:bg-background border border-slate-200 dark:border-border text-sm text-textPrimary placeholder:text-textMuted/50 focus:outline-none focus:border-primary resize-none"
                 />
               </div>
 
@@ -327,28 +327,28 @@ export default function ShareBasketModal({ isOpen, onClose, watchlist = [] }) {
                   </div>
                 </div>
 
-                <div className="max-h-44 overflow-y-auto border border-border rounded-xl divide-y divide-border/60 bg-background/50 p-1">
+                <div className="max-h-44 overflow-y-auto border border-slate-200 dark:border-border rounded-xl divide-y divide-slate-100 dark:divide-border/60 bg-slate-50/70 dark:bg-background/50 p-1">
                   {watchlist.map(s => {
                     const id = s.id || s.ltdCode || s.symbol
                     const isChecked = selectedScripts.has(id)
                     return (
                       <label
                         key={id}
-                        className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-surface transition cursor-pointer select-none text-xs"
+                        className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-surface transition cursor-pointer select-none text-xs"
                       >
                         <div className="flex items-center gap-2.5">
                           <input
                             type="checkbox"
                             checked={isChecked}
                             onChange={() => toggleScript(id)}
-                            className="rounded border-border text-primary focus:ring-primary w-3.5 h-3.5"
+                            className="rounded border-slate-300 dark:border-border text-primary focus:ring-primary w-3.5 h-3.5"
                           />
                           <div>
                             <span className="font-semibold text-textPrimary">{s.scriptName || s.symbol || s.ltdCode}</span>
                             <span className="ml-2 font-mono text-textMuted">{s.symbol || s.ltdCode}</span>
                           </div>
                         </div>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-surface border border-border text-textMuted">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-surface border border-slate-200 dark:border-border text-textMuted">
                           {s.exchange || 'BSE'}
                         </span>
                       </label>
@@ -363,7 +363,7 @@ export default function ShareBasketModal({ isOpen, onClose, watchlist = [] }) {
                   type="button"
                   onClick={handleFastShareWatchlist}
                   disabled={fastSharing || submitting || watchlist.length === 0}
-                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-semibold transition"
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30 text-xs font-semibold transition shadow-sm"
                 >
                   {fastSharing ? (
                     <>

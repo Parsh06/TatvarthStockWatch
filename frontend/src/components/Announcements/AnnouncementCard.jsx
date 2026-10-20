@@ -61,7 +61,7 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
         {/* Top row */}
         <div className="flex items-center flex-wrap gap-2 mb-2">
           {isUnread && (
-            <span className="px-1.5 py-0.5 bg-primary/20 text-primary text-xs font-bold rounded">NEW</span>
+            <span className="px-1.5 py-0.5 bg-primary/10 text-primary border border-primary/20 text-xs font-bold rounded">NEW</span>
           )}
           <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full', getExchangeColor(exchange))}>
             {exchange}
@@ -72,7 +72,7 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
             </span>
           )}
           {a.critical && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/25 font-semibold">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/25 font-semibold">
               CRITICAL
             </span>
           )}
@@ -91,7 +91,7 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
             {name}
           </button>
           {code && (
-            <code className="text-xs font-mono text-textMuted bg-background px-1.5 py-0.5 rounded">
+            <code className="text-xs font-mono text-textMuted bg-slate-100 dark:bg-background border border-slate-200 dark:border-border/60 px-1.5 py-0.5 rounded">
               {code}
             </code>
           )}
@@ -128,10 +128,10 @@ export default function AnnouncementCard({ announcement: a, read = false, onRead
             <span className="text-xs text-textMuted">{formatRelativeDate(dateStr)}</span>
             {(a.storedTime || a.storedAtIST || a.savedAtIST) && (
               <span 
-                className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20"
+                className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20 shadow-sm"
                 title={`Captured & stored in database at: ${a.storedAtIST || a.savedAtIST}`}
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse" />
                 Stored: {a.storedTime || (a.storedAtIST ? a.storedAtIST.split(' ')[3] : '')}
               </span>
             )}

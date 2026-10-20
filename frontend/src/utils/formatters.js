@@ -68,25 +68,25 @@ export function formatRelativeDate(dateStr) {
 }
 
 export function getCategoryColor(category) {
-  if (!category) return 'bg-surface text-textMuted border border-border'
+  if (!category) return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-surface dark:text-textMuted dark:border-border border'
   const cat = category.toLowerCase()
-  if (cat.includes('result') || cat.includes('financial')) return 'bg-emerald-900/40 text-emerald-400 border border-emerald-700'
-  if (cat.includes('dividend')) return 'bg-sky-900/40 text-sky-400 border border-sky-700'
-  if (cat.includes('agm') || cat.includes('meeting')) return 'bg-violet-900/40 text-violet-400 border border-violet-700'
-  if (cat.includes('merger') || cat.includes('acquisition')) return 'bg-amber-900/40 text-amber-400 border border-amber-700'
-  if (cat.includes('bonus') || cat.includes('split')) return 'bg-pink-900/40 text-pink-400 border border-pink-700'
-  if (cat.includes('rights')) return 'bg-orange-900/40 text-orange-400 border border-orange-700'
-  if (cat.includes('insider') || cat.includes('trading')) return 'bg-red-900/40 text-red-400 border border-red-700'
-  return 'bg-surface text-textMuted border border-border'
+  if (cat.includes('result') || cat.includes('financial')) return 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-400 dark:border-emerald-700 border'
+  if (cat.includes('dividend')) return 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-900/40 dark:text-sky-400 dark:border-sky-700 border'
+  if (cat.includes('agm') || cat.includes('meeting')) return 'bg-violet-50 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-400 dark:border-violet-700 border'
+  if (cat.includes('merger') || cat.includes('acquisition')) return 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-700 border'
+  if (cat.includes('bonus') || cat.includes('split')) return 'bg-pink-50 text-pink-800 border-pink-200 dark:bg-pink-900/40 dark:text-pink-400 dark:border-pink-700 border'
+  if (cat.includes('rights')) return 'bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-900/40 dark:text-orange-400 dark:border-orange-700 border'
+  if (cat.includes('insider') || cat.includes('trading')) return 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-red-900/40 dark:text-red-400 dark:border-red-700 border'
+  return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-surface dark:text-textMuted dark:border-border border'
 }
 
 export function getExchangeColor(exchange) {
-  if (!exchange) return 'bg-surface text-textMuted'
+  if (!exchange) return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-surface dark:text-textMuted border'
   const ex = exchange.toUpperCase()
-  if (ex === 'BSE') return 'bg-blue-900/40 text-blue-400 border border-blue-700'
-  if (ex === 'NSE') return 'bg-orange-900/40 text-orange-400 border border-orange-700'
-  if (ex === 'BOTH') return 'bg-purple-900/40 text-purple-400 border border-purple-700'
-  return 'bg-surface text-textMuted border border-border'
+  if (ex === 'BSE') return 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-900/40 dark:text-blue-400 dark:border-blue-700 border'
+  if (ex === 'NSE') return 'bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-900/40 dark:text-orange-400 dark:border-orange-700 border'
+  if (ex === 'BOTH') return 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-900/40 dark:text-purple-400 dark:border-purple-700 border'
+  return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-surface dark:text-textMuted dark:border-border border'
 }
 
 export function truncate(str, maxLen = 100) {
