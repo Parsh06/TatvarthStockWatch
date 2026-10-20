@@ -1,13 +1,26 @@
 import { useState, useEffect, useCallback } from 'react';
 
 /**
+ * Global beforeinstallprompt listener to ensure prompt is never missed
+ * even if a component mounts after the event has fired.
+ */
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    window.__pwaDeferredPrompt = e;
+  });
+}
+
+/**
  * usePwaInstall hook
  *
  * Provides reactive PWA install state, prompt handler, and platform detection.
  * Works universally on iOS Safari, Android Chrome, and Desktop Chrome/Edge/Firefox.
  */
 export function usePwaInstall() {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [deferredPrompt, setDeferredPrompt] = useState(() => {
+    return (typeof window !== 'undefined' && window.__pwaDeferredPrompt) || null;
+  });
   const [isInstalled, setIsInstalled] = useState(false);
   const [isIos, setIsIos] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -31,15 +44,21 @@ export function usePwaInstall() {
 
     setIsIos(isIosDevice);
 
+    if (window.__pwaDeferredPrompt) {
+      setDeferredPrompt(window.__pwaDeferredPrompt);
+    }
+
     // 3. Listen for browser's beforeinstallprompt (Chrome, Edge, Android)
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
+      window.__pwaDeferredPrompt = e;
       setDeferredPrompt(e);
     };
 
     // 4. Listen for appinstalled
     const handleAppInstalled = () => {
       setIsInstalled(true);
+      window.__pwaDeferredPrompt = null;
       setDeferredPrompt(null);
       setShowModal(false);
     };
@@ -54,13 +73,15 @@ export function usePwaInstall() {
   }, []);
 
   const promptInstall = useCallback(async () => {
-    if (deferredPrompt) {
+    const prompt = deferredPrompt || (typeof window !== 'undefined' && window.__pwaDeferredPrompt);
+    if (prompt) {
       try {
-        deferredPrompt.prompt();
-        const choiceResult = await deferredPrompt.userChoice;
+        prompt.prompt();
+        const choiceResult = await prompt.userChoice;
         if (choiceResult.outcome === 'accepted') {
           setIsInstalled(true);
         }
+        window.__pwaDeferredPrompt = null;
         setDeferredPrompt(null);
         return choiceResult;
       } catch (err) {
@@ -79,7 +100,7 @@ export function usePwaInstall() {
   return {
     isInstalled,
     isIos,
-    hasNativePrompt: Boolean(deferredPrompt),
+    hasNativePrompt: Boolean(deferredPrompt || (typeof window !== 'undefined' && window.__pwaDeferredPrompt)),
     showModal,
     openModal,
     closeModal,

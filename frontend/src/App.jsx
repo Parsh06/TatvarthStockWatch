@@ -82,6 +82,43 @@ function ProtectedRoute({ children }) {
   return children
 }
 
+function RootRoute() {
+  const { currentUser, loading, role, approvalStatus, rejectedReason, isDisabled, disabledReason } = useAuth()
+  const location = useLocation()
+
+  if (loading) {
+    return <Preloader />
+  }
+
+  // Account disabled by admin (highest precedence)
+  if (isDisabled) {
+    return <AccountDisabledPage reason={disabledReason} />
+  }
+
+  if (currentUser) {
+    // If user is admin or approved, directly divert to dashboard!
+    if (role === 'admin' || approvalStatus === 'approved') {
+      const params = new URLSearchParams(location.search)
+      const plan = params.get('plan')
+      const redirectUrl = params.get('redirect') || (plan && plan !== 'basic' ? `/plans?select=${plan}` : '/dashboard')
+      return <Navigate to={redirectUrl} replace />
+    }
+
+    // Account waiting for admin approval
+    if (approvalStatus === 'pending') {
+      return <PendingApprovalPage />
+    }
+
+    // Account access rejected by admin
+    if (approvalStatus === 'rejected') {
+      return <AccessRejectedPage reason={rejectedReason} />
+    }
+  }
+
+  // Unauthenticated guests and visitors see WelcomePage
+  return <WelcomePage />
+}
+
 function PublicRoute({ children }) {
   const { currentUser, loading } = useAuth()
   const location = useLocation()
@@ -110,7 +147,7 @@ function AppRoutes() {
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/register" element={<Navigate to="/login" replace />} />
       <Route path="/account-disabled" element={<AccountDisabledPage />} />
-      <Route path="/" element={<WelcomePage />} />
+      <Route path="/" element={<RootRoute />} />
       <Route path="/welcome" element={<WelcomePage />} />
       <Route path="/landing" element={<WelcomePage />} />
       <Route
@@ -213,6 +250,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route path="/ipo-verification" element={<Navigate to="/ipo-check" replace />} />
       <Route
         path="/news"
         element={

@@ -52,7 +52,7 @@
       "name": "IPO Allotments",
       "short_name": "IPO Check",
       "description": "Multi-PAN automated allotment verification across all registrars",
-      "url": "/ipo-verification?source=pwa_shortcut",
+      "url": "/ipo-check?source=pwa_shortcut",
       "icons": [{ "src": "/logo2.png", "sizes": "192x192" }]
     },
     {

@@ -39,6 +39,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { apiClient } from '../../services/apiClient'
 import toast from 'react-hot-toast'
+import PwaInstallButton from '../Common/PwaInstallButton'
 
 export default function WelcomePage() {
   const { currentUser, isPro, isPremium, plan: userPlan, refreshAdminProfile } = useAuth()
@@ -294,7 +295,13 @@ export default function WelcomePage() {
           </nav>
 
           {/* Right Action Deck */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            {/* PWA Install Button (Desktop) */}
+            <PwaInstallButton variant="welcome" className="hidden sm:inline-flex" />
+
+            {/* PWA Install Button (Mobile navbar) */}
+            <PwaInstallButton variant="welcome-mobile" className="sm:hidden" />
+
             {/* Theme Toggle (Sun / Moon) */}
             <button
               onClick={toggleTheme}
@@ -404,6 +411,11 @@ export default function WelcomePage() {
                   <span>FAQ</span>
                   <HelpCircle className="w-4 h-4 text-textMuted" />
                 </a>
+
+                {/* Mobile PWA Install App Card */}
+                <div className="pt-1">
+                  <PwaInstallButton variant="welcome-drawer" />
+                </div>
 
                 {/* Mobile Auth CTAs */}
                 <div className="pt-2 flex flex-col gap-3">
