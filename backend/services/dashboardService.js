@@ -9,6 +9,7 @@ const { bseGet, getBseCookies } = require('../lib/apiClients');
 const { getAnnouncements } = require('../lib/announcementStore');
 const { getWatchlist } = require('../lib/watchlistStore');
 const { startSpurtPoller, getLatestSpurt } = require('../lib/spurtStore');
+const { getLatestFiiDiiData } = require('./fiiDiiService');
 const axios = require('axios');
 
 // Ensure spurt poller is initialized
@@ -588,6 +589,7 @@ async function getGlobalMarketData() {
         safe('agms',             fetchAgms),
         safe('volumeSpurts',     fetchVolumeSpurts),
         safe('deals',            fetchDeals),
+        safe('fiiDii',           getLatestFiiDiiData),
       ]);
 
       const globalData = {
@@ -599,6 +601,7 @@ async function getGlobalMarketData() {
         agmResult,
         spurtsResult,
         dealsResult,
+        fiiDiiResult,
       };
 
       toCache(GLOBAL_CACHE_KEY, globalData, 45_000);
@@ -751,6 +754,7 @@ async function getDashboardOverview(uid) {
     agms:         agmResult.status === 'success'        ? { items: agmResult.data }    : null,
     volumeSpurts: spurtsResult.status === 'success'     ? { items: spurtsResult.data } : null,
     deals:        dealsResult.status === 'success'      ? { items: dealsResult.data }  : null,
+    fiiDii:       fiiDiiResult?.status === 'success'    ? fiiDiiResult.data            : null,
     watchlist:    watchlistSummaryResult.status === 'success'  ? watchlistSummaryResult.data  : null,
   };
 }

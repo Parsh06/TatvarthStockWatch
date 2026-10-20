@@ -22,6 +22,7 @@ let _lastRegistrarCheckTime = 0;
 const REGISTRAR_CADENCE_MS = 5 * 60 * 1000; // 5 minutes during the 7 PM - 2 AM allotment window
 let _lastFirestoreMetaUpdateTime = 0;
 const FIRESTORE_META_IDLE_THROTTLE_MS = 15 * 60 * 1000; // 15-minute heartbeat when idle (saves ~1300 redundant writes/day)
+let _lastFiiDiiSyncedDate = '';
 
 function getAnnouncementsMemoryCache() {
   return _cache.announcements;
@@ -346,6 +347,24 @@ async function runGlobalCronTick(options = {}) {
     await processPlanExpirationsAndReminders();
   } catch (planErr) {
     console.error('[Global Cron] Plan lifecycle error:', planErr.message);
+  }
+
+  // 7c. Daily FII / DII Institutional Flow Sync (Mon-Fri between 17:30 and 23:45 IST)
+  const istTimeNow = getISTDateTime();
+  const dayOfWeek = new Date().getDay(); // 0 is Sun, 6 is Sat
+  const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+  const isEvening = (istTimeNow.istHour > 17 || (istTimeNow.istHour === 17 && istTimeNow.istMinute >= 30)) && istTimeNow.istHour < 24;
+
+  if (isWeekday && isEvening && _lastFiiDiiSyncedDate !== istTimeNow.dateIST) {
+    try {
+      const { syncDailyFiiDii } = require('./fiiDiiService');
+      const fiiResult = await syncDailyFiiDii();
+      if (fiiResult && fiiResult.synced) {
+        _lastFiiDiiSyncedDate = istTimeNow.dateIST;
+      }
+    } catch (fiiErr) {
+      console.warn('[Global Cron] FII/DII sync warning:', fiiErr.message);
+    }
   }
 
   // 8. Write meta status to Firestore for real-time frontend status updates

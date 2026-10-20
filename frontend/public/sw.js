@@ -11,7 +11,13 @@
  * - Cache version management
  */
 
-const CACHE_NAME = 'stockwatch-sw-v2';
+const CACHE_NAME = 'stockwatch-sw-v3';
+const APP_SHELL_ASSETS = [
+  '/',
+  '/index.html',
+  '/logo2.png',
+  '/manifest.json',
+];
 const APP_ORIGIN = self.location.origin;
 const APP_URL = self.location.origin;
 
@@ -633,6 +639,12 @@ self.addEventListener('install', function(event) {
 
   event.waitUntil(
     (async function() {
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.addAll(APP_SHELL_ASSETS);
+      } catch (err) {
+        console.warn('[SW] App shell precache notice:', err.message);
+      }
       self.skipWaiting();
     })()
   );
@@ -675,4 +687,78 @@ self.addEventListener('activate', function(event) {
       }
     })()
   );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fetch — Offline Shell & Stale-While-Revalidate for Static Assets
+// ─────────────────────────────────────────────────────────────────────────────
+
+self.addEventListener('fetch', function(event) {
+  const request = event.request;
+  const url = new URL(request.url);
+
+  // 1. Strict Bypass: NEVER intercept API calls, Firebase/Google auth, or non-GET requests
+  if (
+    request.method !== 'GET' ||
+    url.pathname.startsWith('/api/') ||
+    url.hostname.includes('firebaseio.com') ||
+    url.hostname.includes('googleapis.com') ||
+    url.hostname.includes('identitytoolkit') ||
+    url.hostname.includes('securetoken')
+  ) {
+    return;
+  }
+
+  // 2. Navigation Requests: Network-First with Cache Fallback
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      (async function() {
+        try {
+          const networkResponse = await fetch(request);
+          if (networkResponse && networkResponse.status === 200) {
+            const cache = await caches.open(CACHE_NAME);
+            cache.put(request, networkResponse.clone());
+          }
+          return networkResponse;
+        } catch (err) {
+          const cachedResponse = await caches.match(request);
+          if (cachedResponse) return cachedResponse;
+          const fallback = await caches.match('/index.html');
+          if (fallback) return fallback;
+          throw err;
+        }
+      })()
+    );
+    return;
+  }
+
+  // 3. Static Assets (Scripts, Styles, Fonts, Icons): Stale-While-Revalidate
+  if (
+    url.origin === self.location.origin &&
+    (url.pathname.startsWith('/assets/') ||
+     url.pathname.endsWith('.js') ||
+     url.pathname.endsWith('.css') ||
+     url.pathname.endsWith('.png') ||
+     url.pathname.endsWith('.svg') ||
+     url.pathname.endsWith('.woff2'))
+  ) {
+    event.respondWith(
+      (async function() {
+        const cache = await caches.open(CACHE_NAME);
+        const cachedResponse = await cache.match(request);
+
+        const fetchPromise = fetch(request).then(function(networkResponse) {
+          if (networkResponse && networkResponse.status === 200) {
+            cache.put(request, networkResponse.clone());
+          }
+          return networkResponse;
+        }).catch(function() {
+          // Silent swallow on fetch fail if we have cached response
+        });
+
+        return cachedResponse || fetchPromise;
+      })()
+    );
+    return;
+  }
 });

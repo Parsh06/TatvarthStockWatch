@@ -7,6 +7,7 @@ import { useAdminAuth } from '../../hooks/useAdminAuth'
 import { useGlobalAnnouncements } from '../../contexts/AnnouncementsContext'
 import { apiClient } from '../../services/apiClient'
 import toast from 'react-hot-toast'
+import PwaInstallButton from '../Common/PwaInstallButton'
 
 const NAV_TOP = [
   { to: '/dashboard',          icon: LayoutDashboard, label: 'Dashboard' },
@@ -193,6 +194,11 @@ export default function Sidebar({ collapsed, onToggle }) {
 
       {/* User section */}
       <div className="border-t border-border p-4">
+        {!collapsed && (
+          <div className="mb-3">
+            <PwaInstallButton variant="sidebar" />
+          </div>
+        )}
         {!collapsed && (
           <div className="flex items-center gap-3 px-2 py-2 mb-3 bg-slate-100/90 dark:bg-white/5 rounded-xl border border-slate-200/90 dark:border-white/5">
             <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-primary to-blue-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-lg">

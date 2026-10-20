@@ -5,6 +5,7 @@ import Loader from '../Common/Loader'
 
 import DashboardHeader               from './DashboardHeader'
 import PrimaryIndicesWidget          from './PrimaryIndicesWidget'
+import FiiDiiWidget                  from './FiiDiiWidget'
 import AnnouncementOverviewWidget    from './AnnouncementOverviewWidget'
 import AnnouncementCategoryWidget    from './AnnouncementCategoryWidget'
 import MarketMoversWidget             from './MarketMoversWidget'
@@ -76,6 +77,15 @@ export default function DashboardPage() {
             data={d.indices}
             loading={loading && !d.indices}
             error={sourceStatus('indices') === 'error'}
+          />
+        </Row>
+
+        {/* ── Row 2.5: Institutional Flow (FII / DII Cash) ────────── */}
+        <Row>
+          <FiiDiiWidget
+            data={d.fiiDii}
+            loading={loading && !d.fiiDii}
+            error={sourceStatus('fiiDii') === 'error'}
           />
         </Row>
 

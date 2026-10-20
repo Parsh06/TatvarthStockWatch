@@ -1,15 +1,17 @@
 {
   "name": "Tatvarth Stock Watch",
   "short_name": "StockWatch",
-  "description": "Real-time BSE & NSE announcement tracker with watchlist, alerts, and push notifications.",
-  "start_url": "/",
+  "description": "Real-time BSE & NSE corporate announcements, AI PDF filing analysis, family IPO allotments, and institutional market intelligence.",
+  "start_url": "/?source=pwa",
   "scope": "/",
-  "id": "/",
+  "id": "/?source=pwa",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "orientation": "any",
   "background_color": "#0F172A",
   "theme_color": "#0F172A",
-  "categories": ["finance", "business"],
+  "categories": ["finance", "business", "productivity"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/logo2.png",
@@ -22,6 +24,43 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "My Watchlist",
+      "short_name": "Watchlist",
+      "description": "View saved scripts, corporate disclosures, and active alerts",
+      "url": "/watchlist?source=pwa_shortcut",
+      "icons": [{ "src": "/logo2.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Live Announcements",
+      "short_name": "Announcements",
+      "description": "Stream sub-second BSE & NSE statutory announcements",
+      "url": "/announcements?source=pwa_shortcut",
+      "icons": [{ "src": "/logo2.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "All Filings & AI",
+      "short_name": "All Filings",
+      "description": "Search entire market announcements with instant AI summarization",
+      "url": "/all-announcements?source=pwa_shortcut",
+      "icons": [{ "src": "/logo2.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "IPO Allotments",
+      "short_name": "IPO Check",
+      "description": "Multi-PAN automated allotment verification across all registrars",
+      "url": "/ipo-verification?source=pwa_shortcut",
+      "icons": [{ "src": "/logo2.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Financial Results",
+      "short_name": "Financials",
+      "description": "Forthcoming board meeting dates and declared corporate earnings",
+      "url": "/result-calendar?source=pwa_shortcut",
+      "icons": [{ "src": "/logo2.png", "sizes": "192x192" }]
     }
   ]
 }

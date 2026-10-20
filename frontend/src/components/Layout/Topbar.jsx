@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { getNotifications, markAllNotificationsRead } from '../../services/announcementService'
 import { formatRelativeDate } from '../../utils/formatters'
 import toast from 'react-hot-toast'
+import PwaInstallButton from '../Common/PwaInstallButton'
 
 const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
@@ -62,6 +63,9 @@ export default function Topbar({ sidebarWidth, onSearch, theme, toggleTheme }) {
       <h1 className="text-2xl font-bold tracking-tight text-textPrimary flex-1">{pageTitle}</h1>
 
       <div className="flex items-center gap-2">
+        {/* PWA Install Button */}
+        <PwaInstallButton />
+
         {/* Global Search */}
         <button
           onClick={onSearch}

@@ -171,6 +171,11 @@ function resetNSESession() {
   _nseSessionAt   = 0;
 }
 
+async function getNSECookies() {
+  await initNSESession();
+  return _nseCookies;
+}
+
 function getNSESessionInfo() {
   return {
     initialised: _nseInitialised,
@@ -180,4 +185,10 @@ function getNSESessionInfo() {
   };
 }
 
-module.exports = { fetchAllNSEAnnouncements, resetNSESession, getNSESessionInfo };
+module.exports = {
+  fetchAllNSEAnnouncements,
+  resetNSESession,
+  getNSECookies,
+  getNSESessionInfo,
+};
+

@@ -48,6 +48,8 @@ import { ALERT_CATEGORIES } from '../../utils/bseCategories'
 import NotificationScopeSettings from './NotificationScopeSettings'
 import ShareBasketModal from '../Watchlist/ShareBasketModal'
 import { Spinner } from '../Common/Loader'
+import { usePwaInstall } from '../../hooks/usePwaInstall'
+import PwaIosInstallModal from '../Common/PwaIosInstallModal'
 
 /* ------------------------------------------------------------------ */
 /* Reusable UI Primitives                                             */
@@ -232,6 +234,15 @@ export default function SettingsPage() {
     sendTest,
     permission,
   } = useWebPush()
+
+  const {
+    isInstallable: pwaInstallable,
+    isInstalled: pwaInstalled,
+    isIos: pwaIsIos,
+    showIosModal: pwaShowIosModal,
+    promptInstall: pwaPromptInstall,
+    closeIosModal: pwaCloseIosModal,
+  } = usePwaInstall()
 
   const [displayName, setDisplayName] = useState(currentUser?.displayName || '')
   const [savingProfile, setSavingProfile] = useState(false)
@@ -658,6 +669,7 @@ export default function SettingsPage() {
           <SectionAnchor href="telegram" icon={Send} label="Telegram" />
           <SectionAnchor href="watchlist" icon={Download} label="Watchlist" />
           <SectionAnchor href="appearance" icon={Moon} label="Appearance" />
+          <SectionAnchor href="pwa" icon={Smartphone} label="Install App" />
           <SectionAnchor href="account" icon={AlertTriangle} label="Account" />
         </div>
       </div>
@@ -1539,7 +1551,65 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        {/* 9. Account Danger Zone */}
+        {/* 9. PWA App Installation & Standalone Status */}
+        <Section
+          id="pwa"
+          title="App Installation & Standalone App"
+          icon={Smartphone}
+          description="Install Tatvarth StockWatch directly on your phone or desktop for an app experience."
+          badge={
+            <StatusBadge tone={pwaInstalled ? "success" : "primary"}>
+              {pwaInstalled ? "Installed (Standalone)" : "Browser Mode"}
+            </StatusBadge>
+          }
+        >
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-background/50 border border-border">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-bold text-textPrimary">
+                    {pwaInstalled ? 'Application Installed' : 'Install to Home Screen'}
+                  </h4>
+                  {pwaInstalled && <CheckCircle className="w-4 h-4 text-emerald-500" />}
+                </div>
+                <p className="text-xs text-textMuted max-w-xl leading-relaxed">
+                  {pwaInstalled
+                    ? 'You are running StockWatch as a standalone application with offline app shell support and native background alerts.'
+                    : 'Add StockWatch to your iPhone, Android, Mac, or PC. Launches instantly in full-screen with native app performance and zero app store fees.'}
+                </p>
+              </div>
+
+              {!pwaInstalled && (
+                <button
+                  type="button"
+                  onClick={pwaPromptInstall}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-semibold shadow-md shadow-blue-500/20 transition-all shrink-0 active:scale-95 flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>{pwaIsIos ? 'How to Install on iOS' : 'Install App Now'}</span>
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              <div className="p-3.5 rounded-xl bg-surface border border-border">
+                <span className="text-[11px] font-bold text-textPrimary block mb-0.5">⚡ Instant Launch</span>
+                <span className="text-[11px] text-textMuted">Sub-second start times with local cached shell</span>
+              </div>
+              <div className="p-3.5 rounded-xl bg-surface border border-border">
+                <span className="text-[11px] font-bold text-textPrimary block mb-0.5">🔔 Native Web Push</span>
+                <span className="text-[11px] text-textMuted">Direct lockscreen push alerts for corporate disclosures</span>
+              </div>
+              <div className="p-3.5 rounded-xl bg-surface border border-border">
+                <span className="text-[11px] font-bold text-textPrimary block mb-0.5">📱 Zero Storage Overhead</span>
+                <span className="text-[11px] text-textMuted">Consumes &lt; 5MB device storage unlike bulky native apps</span>
+              </div>
+            </div>
+          </div>
+          <PwaIosInstallModal isOpen={pwaShowIosModal} onClose={pwaCloseIosModal} />
+        </Section>
+
+        {/* 10. Account Danger Zone */}
         <Section
           id="account"
           title="Account Danger Zone"

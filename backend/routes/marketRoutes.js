@@ -6,8 +6,23 @@ const router = express.Router();
 const { getOrFetchSpurt } = require('../lib/spurtStore');
 const { fetchIpoGmpData } = require('../services/ipoService');
 const { getLatestOfs, fetchOfsList, fetchOfsDetail } = require('../lib/ofsScraper');
+const { getLatestFiiDiiData } = require('../services/fiiDiiService');
 
 module.exports = function marketRoutes(verifyToken) {
+  // GET /api/market/fii-dii
+  // Returns Foreign & Domestic Institutional Investors cash market net activity & rolling trend
+  router.get('/fii-dii', verifyToken, async (req, res) => {
+    try {
+      const force = req.query.force === 'true';
+      const data = await getLatestFiiDiiData(force);
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
+      res.json(data);
+    } catch (err) {
+      console.error('Failed to fetch FII/DII data:', err.message);
+      res.status(500).json({ error: 'Failed to fetch FII/DII data', details: err.message });
+    }
+  });
+
   // GET /api/market/volume-spurt
   // Returns real-time BSE Volume Spurt data with 45-second cache and force refresh support.
   router.get('/volume-spurt', verifyToken, async (req, res) => {
