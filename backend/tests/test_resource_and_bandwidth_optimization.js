@@ -111,13 +111,13 @@ async function runTests() {
     report('Express Compression Engine', false, err.message);
   }
 
-  // ── [TEST 2] NSE Session Keep-Alive & Lifecycle (20m TTL) ───────────────────
-  console.log('\n[TEST 2] NSE Session Keep-Alive & 20m Lifecycle');
+  // ── [TEST 2] NSE Session Keep-Alive & Lifecycle (45m TTL) ───────────────────
+  console.log('\n[TEST 2] NSE Session Keep-Alive & 45m Lifecycle');
   try {
     const { getNSESessionInfo, resetNSESession } = require('../lib/nseScraper');
 
     const infoInitial = getNSESessionInfo();
-    const ttlMatches = infoInitial.ttlMs === 20 * 60 * 1000;
+    const ttlMatches = infoInitial.ttlMs === 45 * 60 * 1000;
 
     resetNSESession();
     const infoReset = getNSESessionInfo();
@@ -125,12 +125,12 @@ async function runTests() {
 
     const test2Ok = ttlMatches && resetOk;
     report(
-      'NSE Session 20m Keep-Alive',
+      'NSE Session 45m Keep-Alive',
       test2Ok,
       `TTL=${infoInitial.ttlMs / 60000}m, Reset clean=${resetOk}`
     );
   } catch (err) {
-    report('NSE Session 20m Keep-Alive', false, err.message);
+    report('NSE Session 45m Keep-Alive', false, err.message);
   }
 
   // ── [TEST 3] BSE Smart Incremental Page 1 Diffing ───────────────────────────
@@ -156,22 +156,38 @@ async function runTests() {
     report('BSE Incremental Diff Cache', false, err.message);
   }
 
-  // ── [TEST 4] Registrar Decoupled Cadence & Throttling ───────────────────────
-  console.log('\n[TEST 4] Registrar Decoupled Cadence (10m / 5m Throttle)');
+  // ── [TEST 4] Registrar Decoupled Cadence & 7 PM - 2 AM Allotment Window ─────
+  console.log('\n[TEST 4] Registrar 5m Cadence & 7 PM - 2 AM Weekday Window');
   try {
     const { getRegistrarCadenceStatus, resetRegistrarCadence } = require('../services/cronService');
+    const { isIpoAllotmentCheckWindow } = require('../lib/time/istTime');
 
     resetRegistrarCadence();
     const statusInitial = getRegistrarCadenceStatus();
     // After reset, lastCheckedAt is null so dueNow must be true
     const dueAfterReset = statusInitial.dueNow === true;
-    const intervalValid = statusInitial.cadenceMinutes === 10 || statusInitial.cadenceMinutes === 5;
+    const intervalValid = statusInitial.cadenceMinutes === 5;
 
-    const test4Ok = dueAfterReset && intervalValid;
+    // Test window logic:
+    // Wednesday 20:30 IST (15:00 UTC) -> must be in window
+    const wednesdayNight = new Date(Date.UTC(2026, 9, 21, 15, 0, 0));
+    const inWindowWed = isIpoAllotmentCheckWindow(wednesdayNight);
+
+    // Wednesday 14:00 IST (08:30 UTC) -> daytime, must be false
+    const wednesdayDay = new Date(Date.UTC(2026, 9, 21, 8, 30, 0));
+    const inWindowDay = isIpoAllotmentCheckWindow(wednesdayDay);
+
+    // Sunday 20:00 IST (14:30 UTC) -> weekend, must be false
+    const sundayNight = new Date(Date.UTC(2026, 9, 25, 14, 30, 0));
+    const inWindowSun = isIpoAllotmentCheckWindow(sundayNight);
+
+    const windowLogicOk = inWindowWed === true && inWindowDay === false && inWindowSun === false;
+
+    const test4Ok = dueAfterReset && intervalValid && windowLogicOk;
     report(
       'Registrar Cadence Engine',
       test4Ok,
-      `Cadence interval=${statusInitial.cadenceMinutes}m, Due on fresh boot=${dueAfterReset}`
+      `Cadence interval=${statusInitial.cadenceMinutes}m, Window logic: Wed 20:30=${inWindowWed}, Wed 14:00=${inWindowDay}, Sun 20:00=${inWindowSun}`
     );
   } catch (err) {
     report('Registrar Cadence Engine', false, err.message);

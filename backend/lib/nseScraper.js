@@ -16,7 +16,7 @@ const BASE_HEADERS = {
 let _nseCookies      = '';
 let _nseInitialised  = false;
 let _nseSessionAt    = 0;
-const SESSION_TTL_MS = 20 * 60 * 1000;   // 20 minutes keep-alive — eliminates ~18GB/mo redundant homepage downloads
+const SESSION_TTL_MS = 45 * 60 * 1000;   // 45 minutes keep-alive — cuts redundant NSE homepage downloads by >55% (saving ~25MB/day)
 
 // ── Session init ──────────────────────────────────────────────────────────────
 // NSE Akamai requires: homepage visit → filings page visit → API call

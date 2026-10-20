@@ -94,6 +94,33 @@ function getISTDayOfWeek(date = new Date()) {
 }
 
 /**
+ * Evaluates whether current IST time is within the IPO allotment discovery window.
+ * Indian IPO allotment results are announced strictly in the evening and night:
+ * between 7:00 PM (19:00 IST) and 2:00 AM (02:00 IST) on weekdays.
+ *
+ * Rules:
+ * - Active Mon-Fri evenings: 19:00 - 23:59 IST (Every 5 minutes)
+ * - Active Tue-Sat early mornings: 00:00 - 02:00 IST (Continuation of Mon-Fri night drops)
+ * - Completely dormant outside 19:00 - 02:00 IST (no checks needed during working daytime)
+ * - Completely dormant on Saturday daytime/evening & Sunday all day (no allotments announced on weekends)
+ *
+ * @param {Date} [date=new Date()]
+ * @returns {boolean}
+ */
+function isIpoAllotmentCheckWindow(date = new Date()) {
+  const { istHour, istMinute } = getISTDateTime(date);
+  const dayOfWeek = getISTDayOfWeek(date); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+
+  // Evening segment: 19:00 (7 PM) to 23:59 IST (Monday to Friday)
+  const isEveningWindow = (istHour >= 19 && istHour <= 23) && (dayOfWeek >= 1 && dayOfWeek <= 5);
+
+  // Early morning continuation segment: 00:00 to 02:00 (2 AM) IST (Tuesday to Saturday morning)
+  const isPostMidnightWindow = (istHour >= 0 && (istHour < 2 || (istHour === 2 && istMinute === 0))) && (dayOfWeek >= 2 && dayOfWeek <= 6);
+
+  return isEveningWindow || isPostMidnightWindow;
+}
+
+/**
  * Evaluates Indian Market Cadence based on IST day and hour:
  * - Unrestricted Mode: if DISABLE_CADENCE_GUARD=true, always 0 min (runs every tick)
  * - Active Weekday Filings (Mon-Fri 08:00 - 22:00 IST): 0 min (runs on every tick, zero delay)
@@ -192,4 +219,5 @@ module.exports = {
   getMarketCadence,
   parseToISTDateString,
   isWithinIpoDispatchWindow,
+  isIpoAllotmentCheckWindow,
 };

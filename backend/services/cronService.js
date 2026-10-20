@@ -13,14 +13,15 @@ const { saveIpoSymbols, reconcileMissingIpos } = require('../lib/ipoStore');
 const { processIpoClosingQueueTick } = require('../lib/ipoClosingNotificationService');
 const { checkAndNotifyNewMufgIpos } = require('../lib/mufgNotificationService');
 const { checkAndNotifyNewBigshareIpos } = require('../lib/bigshareNotificationService');
-const { getMarketCadence, getISTDateTime } = require('../lib/time/istTime');
+const { getMarketCadence, getISTDateTime, isIpoAllotmentCheckWindow } = require('../lib/time/istTime');
 
 // In-memory cache for announcements (for fast preview/stats)
 const _cache = { announcements: [] };
 let _lastHeavyScrapeTime = 0;
 let _lastRegistrarCheckTime = 0;
-const REGISTRAR_CADENCE_NORMAL_MS = 10 * 60 * 1000;  // 10 minutes regular interval
-const REGISTRAR_CADENCE_EVENING_MS = 5 * 60 * 1000;   // 5 minutes (20:00 - 23:30 IST evening allotment drop window)
+const REGISTRAR_CADENCE_MS = 5 * 60 * 1000; // 5 minutes during the 7 PM - 2 AM allotment window
+let _lastFirestoreMetaUpdateTime = 0;
+const FIRESTORE_META_IDLE_THROTTLE_MS = 15 * 60 * 1000; // 15-minute heartbeat when idle (saves ~1300 redundant writes/day)
 
 function getAnnouncementsMemoryCache() {
   return _cache.announcements;
@@ -271,19 +272,20 @@ async function runGlobalCronTick(options = {}) {
     ? await processNewAnnouncements(newAnnouncements)
     : { newAnnouncements: 0 };
 
-  // 4 & 6. IPO Allotment Symbol Discovery & Alert Pipeline (Registrars Cadence Throttle)
+  // 4 & 6. IPO Allotment Symbol Discovery & Alert Pipeline (7:00 PM - 2:00 AM IST Weekdays Only)
   let ipoStats = { newIpos: 0 };
-  const { istHour, istMinute } = getISTDateTime(new Date());
-  // Evening allotment release window (20:00 - 23:30 IST): 5-min cadence. Otherwise: 10-min cadence.
-  const isEveningAllotmentWindow = (istHour >= 20 && istHour < 23) || (istHour === 23 && istMinute <= 30);
-  const requiredRegistrarCadence = isEveningAllotmentWindow ? REGISTRAR_CADENCE_EVENING_MS : REGISTRAR_CADENCE_NORMAL_MS;
+  const inIpoWindow = isIpoAllotmentCheckWindow(new Date());
   const elapsedRegistrar = Date.now() - _lastRegistrarCheckTime;
-  const shouldCheckRegistrars = Boolean(options.force || options.forceRegistrars || elapsedRegistrar >= requiredRegistrarCadence);
+  const shouldCheckRegistrars = Boolean(
+    options.force ||
+    options.forceRegistrars ||
+    (inIpoWindow && elapsedRegistrar >= REGISTRAR_CADENCE_MS)
+  );
 
   if (shouldCheckRegistrars) {
     _lastRegistrarCheckTime = Date.now();
-    const cadenceDesc = isEveningAllotmentWindow ? 'Evening Allotment Window (5m)' : 'Standard Cadence (10m)';
-    console.log(`[Global Cron] Running Registrar Discovery [${cadenceDesc}]...`);
+    const windowDesc = inIpoWindow ? 'Allotment Window (19:00 - 02:00 IST | 5m)' : 'Manual/Forced Check';
+    console.log(`[Global Cron] Running Registrar Discovery [${windowDesc}]...`);
 
     // 4. IPO Allotment Symbol Discovery & Alert Pipeline (KFintech)
     try {
@@ -317,9 +319,12 @@ async function runGlobalCronTick(options = {}) {
     } catch (cleanErr) {
       console.error('[Global Cron] IPO cleanup error:', cleanErr.message);
     }
+  } else if (!inIpoWindow) {
+    // Dormant outside 19:00 - 02:00 IST weekdays & completely dormant on Sat/Sun
+    console.log('[Global Cron] IPO registrar checks dormant (allotments drop strictly Mon-Fri 19:00 - 02:00 IST). Daytime & weekend calls skipped.');
   } else {
-    const nextCheckMins = Math.max(1, Math.ceil((requiredRegistrarCadence - elapsedRegistrar) / 60000));
-    console.log(`[Global Cron] Registrars cached (${Math.floor(elapsedRegistrar / 60000)}m elapsed < ${Math.round(requiredRegistrarCadence / 60000)}m). Next check in ~${nextCheckMins}m.`);
+    const nextCheckMins = Math.max(1, Math.ceil((REGISTRAR_CADENCE_MS - elapsedRegistrar) / 60000));
+    console.log(`[Global Cron] IPO registrars cached (${Math.floor(elapsedRegistrar / 60000)}m elapsed < 5m). Next check in ~${nextCheckMins}m.`);
   }
 
   // 5. IPO Closing Day Dispatch (11:00 AM – 12:59 PM IST, one IPO per tick)
@@ -344,23 +349,47 @@ async function runGlobalCronTick(options = {}) {
   }
 
   // 8. Write meta status to Firestore for real-time frontend status updates
-  try {
-    const admin = require('firebase-admin');
-    const db = admin.firestore();
-    await db.collection('system_meta').doc('cron_status').set({
-      lastRun: heavyScrapeIso,
-      lastHeavyScrapeAt: heavyScrapeIso,
-      marketCadence: cadence.window,
-      fetchedBSE: bseAll.length,
-      fetchedNSE: nseAll.length,
-      newAnnouncements: newAnnouncements.length,
-      notificationUsers: engineStats.usersProcessed || 0,
-      notificationQueued: engineStats.queued || 0,
-      notificationSent: (engineStats.pushSent || 0) + (engineStats.telegramSent || 0),
-      durationMs: engineStats.durationMs || 0,
-    }, { merge: true });
-  } catch (metaErr) {
-    console.error('[Global Cron] Meta update failed:', metaErr.message);
+  // High-Efficiency Event-Driven Sync:
+  // Write immediately if new announcements/IPOs/wipes occurred OR force requested.
+  // When idle (0 new items), throttle writes to once every 15 minutes to save ~1,300 redundant Cloud roundtrips per day.
+  const hasNewData = Boolean(
+    newAnnouncements.length > 0 ||
+    (ipoStats && ipoStats.newIpos > 0) ||
+    (ipoClosingTickStats && ipoClosingTickStats.dispatched) ||
+    (wipeResult && wipeResult.wiped) ||
+    options.force
+  );
+  const timeSinceLastMeta = Date.now() - _lastFirestoreMetaUpdateTime;
+  const shouldUpdateFirestore = hasNewData || timeSinceLastMeta >= FIRESTORE_META_IDLE_THROTTLE_MS;
+
+  if (shouldUpdateFirestore) {
+    try {
+      const admin = require('firebase-admin');
+      const db = admin.firestore();
+      await db.collection('system_meta').doc('cron_status').set({
+        lastRun: heavyScrapeIso,
+        lastHeavyScrapeAt: heavyScrapeIso,
+        marketCadence: cadence.window,
+        fetchedBSE: bseAll.length,
+        fetchedNSE: nseAll.length,
+        newAnnouncements: newAnnouncements.length,
+        notificationUsers: engineStats.usersProcessed || 0,
+        notificationQueued: engineStats.queued || 0,
+        notificationSent: (engineStats.pushSent || 0) + (engineStats.telegramSent || 0),
+        durationMs: engineStats.durationMs || 0,
+      }, { merge: true });
+      _lastFirestoreMetaUpdateTime = Date.now();
+      if (hasNewData) {
+        console.log(`[Global Cron] Firestore meta updated immediately (${newAnnouncements.length} new filings, ${ipoStats?.newIpos || 0} IPOs).`);
+      } else {
+        console.log('[Global Cron] Firestore meta heartbeat updated (15m interval).');
+      }
+    } catch (metaErr) {
+      console.error('[Global Cron] Meta update failed:', metaErr.message);
+    }
+  } else {
+    const minsSince = Math.floor(timeSinceLastMeta / 60000);
+    console.log(`[Global Cron] Idle tick (0 new items). Firestore write skipped (${minsSince}m/15m).`);
   }
 
   return {
@@ -421,17 +450,17 @@ async function runUserManualTrigger() {
 /**
  * Manual trigger for IPO closing queue tick (bypasses time window check if forced).
  */
-function getRegistrarCadenceStatus() {
-  const { istHour, istMinute } = getISTDateTime(new Date());
-  const isEvening = (istHour >= 20 && istHour < 23) || (istHour === 23 && istMinute <= 30);
-  const requiredCadence = isEvening ? REGISTRAR_CADENCE_EVENING_MS : REGISTRAR_CADENCE_NORMAL_MS;
+function getRegistrarCadenceStatus(date = new Date()) {
+  const inWindow = isIpoAllotmentCheckWindow(date);
+  const requiredCadence = REGISTRAR_CADENCE_MS;
   const elapsed = Date.now() - _lastRegistrarCheckTime;
   return {
     lastCheckedAt: _lastRegistrarCheckTime ? new Date(_lastRegistrarCheckTime).toISOString() : null,
     elapsedMinutes: Math.floor(elapsed / 60000),
     cadenceMinutes: Math.round(requiredCadence / 60000),
-    isEveningWindow: isEvening,
+    inIpoWindow: inWindow,
     dueNow: elapsed >= requiredCadence,
+    activeNow: inWindow && (elapsed >= requiredCadence),
   };
 }
 
