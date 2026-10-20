@@ -7,9 +7,10 @@ const NSE_FILINGS = 'https://www.nseindia.com/companies-listing/corporate-filing
 const NSE_API     = 'https://www.nseindia.com/api/corporate-announcements?index=equities';
 
 const BASE_HEADERS = {
-  'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+  'User-Agent':      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+  'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.9',
-  'Accept-Encoding': 'gzip, deflate',  // no 'br' — axios doesn't handle brotli natively
+  'Accept-Encoding': 'gzip, deflate',
   'Connection':      'keep-alive',
 };
 
@@ -23,10 +24,10 @@ const SESSION_TTL_MS = 45 * 60 * 1000;   // 45 minutes keep-alive — cuts redun
 // Without this chain the API returns empty body or 403
 
 async function initNSESession() {
-  if (_nseInitialised && (Date.now() - _nseSessionAt) < SESSION_TTL_MS) return;
+  if (_nseInitialised && _nseCookies && (Date.now() - _nseSessionAt) < SESSION_TTL_MS) return;
   try {
     const r1 = await axios.get(NSE_HOME, {
-      headers:        { ...BASE_HEADERS, Accept: 'text/html,application/xhtml+xml,*/*;q=0.8' },
+      headers:        BASE_HEADERS,
       timeout:        15000,
       maxRedirects:   5,
       validateStatus: () => true,
@@ -38,7 +39,6 @@ async function initNSESession() {
     const r2 = await axios.get(NSE_FILINGS, {
       headers: {
         ...BASE_HEADERS,
-        Accept:  'text/html,application/xhtml+xml,*/*;q=0.8',
         Referer: NSE_HOME,
         Cookie:  c1.join('; '),
       },
@@ -48,13 +48,22 @@ async function initNSESession() {
     });
     const c2 = (r2.headers['set-cookie'] || []).map((c) => c.split(';')[0]);
 
-    _nseCookies = [...c1, ...c2].join('; ');
-    console.log(`[NSE] Session ready — ${[...c1, ...c2].length} cookies set`);
+    const combined = [...c1, ...c2];
+    if (combined.length > 0) {
+      _nseCookies = combined.join('; ');
+      _nseInitialised = true;
+      _nseSessionAt   = Date.now();
+      console.log(`[NSE] Session ready — ${combined.length} cookies set`);
+    } else {
+      _nseCookies = '';
+      _nseInitialised = false;
+      console.warn('[NSE] Session init returned 0 cookies — will retry on next cycle');
+    }
   } catch (e) {
-    console.warn(`[NSE] Session init failed (${e.message}) — proceeding without cookies`);
+    _nseCookies = '';
+    _nseInitialised = false;
+    console.warn(`[NSE] Session init failed (${e.message}) — will retry`);
   }
-  _nseInitialised = true;
-  _nseSessionAt   = Date.now();
 }
 
 // ── Normalise ─────────────────────────────────────────────────────────────────
@@ -98,20 +107,22 @@ function normalizeNSEItem(item, meta = {}) {
  * @returns {Promise<object[]>}
  */
 async function callNSEAPI() {
+  if (!_nseCookies) {
+    throw new Error('No NSE session cookies available');
+  }
+
   const response = await axios.get(NSE_API, {
     headers: {
-      ...BASE_HEADERS,
-      Accept:               '*/*',
-      Referer:              NSE_FILINGS,
-      'Sec-Fetch-Dest':     'empty',
-      'Sec-Fetch-Mode':     'cors',
-      'Sec-Fetch-Site':     'same-origin',
-      'sec-ch-ua':          '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
-      'sec-ch-ua-mobile':   '?0',
-      'sec-ch-ua-platform': '"Windows"',
-      Cookie:               _nseCookies,
+      'User-Agent':      BASE_HEADERS['User-Agent'],
+      'Accept':          'application/json, text/plain, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer':         NSE_FILINGS,
+      'Sec-Fetch-Dest':  'empty',
+      'Sec-Fetch-Mode':  'cors',
+      'Sec-Fetch-Site':  'same-origin',
+      Cookie:            _nseCookies,
     },
-    timeout:        30000,
+    timeout:        20000,
     validateStatus: () => true,
   });
 
