@@ -35,6 +35,7 @@ const COLS = [
 export default function InsiderTradingPage() {
   const [fromDate,    setFromDate]    = useState('')
   const [toDate,      setToDate]      = useState('')
+  const [codeFilter,  setCodeFilter]  = useState('')
   const [loading,      setLoading]      = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [downloading,  setDownloading]  = useState(false)
@@ -214,6 +215,9 @@ export default function InsiderTradingPage() {
 
   const filtered = useMemo(() => {
     let list = trades
+    if (codeFilter) {
+      list = list.filter((d) => d.bseCode === codeFilter)
+    }
     if (search) {
       const q = search.toLowerCase()
       list = list.filter((d) =>
@@ -230,7 +234,7 @@ export default function InsiderTradingPage() {
       if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
       return sortDir === 'asc' ? av - bv : bv - av
     })
-  }, [trades, search, sortKey, sortDir])
+  }, [trades, search, codeFilter, sortKey, sortDir])
 
   function toggleSort(key) {
     if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc')
@@ -244,7 +248,11 @@ export default function InsiderTradingPage() {
       : <ChevDown className="w-3 h-3 text-primary" />
   }
 
-  const totalValue = filtered.reduce((acc, t) => acc + (t.securityValue || 0), 0)
+  const totalValue = useMemo(() => filtered.reduce((acc, t) => acc + (t.securityValue || 0), 0), [filtered])
+  const acqTrades = useMemo(() => filtered.filter((t) => t.transactionType?.toLowerCase().includes('acq')), [filtered])
+  const dispTrades = useMemo(() => filtered.filter((t) => t.transactionType?.toLowerCase().includes('dispos')), [filtered])
+  const acqValue = useMemo(() => acqTrades.reduce((acc, t) => acc + (t.securityValue || 0), 0), [acqTrades])
+  const dispValue = useMemo(() => dispTrades.reduce((acc, t) => acc + (t.securityValue || 0), 0), [dispTrades])
 
   return (
     <div className="space-y-5">
@@ -286,7 +294,18 @@ export default function InsiderTradingPage() {
               className="w-full bg-slate-100/90 dark:bg-background border border-slate-200 dark:border-border rounded-lg px-3 py-2 text-sm text-textPrimary focus:outline-none focus:border-primary/60" />
           </div>
           <div className="col-span-2 sm:col-span-1">
-            <label className="block text-[10px] sm:text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-1.5">Filter by Script (Optional)</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-[10px] sm:text-[11px] font-semibold text-textMuted uppercase tracking-wider">Filter by Script (Optional)</label>
+              {codeFilter && (
+                <button
+                  type="button"
+                  onClick={() => setCodeFilter('')}
+                  className="text-[10px] font-semibold text-primary hover:underline"
+                >
+                  Clear ({codeFilter})
+                </button>
+              )}
+            </div>
             <ScriptSearchInput
               placeholder="Search company…"
               onSelect={(item) => setCodeFilter(item ? item.bseCode : '')}
@@ -345,6 +364,36 @@ export default function InsiderTradingPage() {
       {/* Results */}
       {result && (
         <div className="space-y-4">
+          {/* Summary Stat Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="p-4 rounded-2xl bg-surface border border-border/80 shadow-sm">
+              <p className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">Total Filings</p>
+              <p className="text-xl font-bold font-mono text-textPrimary mt-1">{filtered.length.toLocaleString()}</p>
+              <p className="text-[11px] text-textMuted mt-0.5">Disclosures loaded</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-surface border border-border/80 shadow-sm">
+              <p className="text-[11px] font-semibold text-textMuted uppercase tracking-wider">Transacted Value</p>
+              <p className="text-xl font-bold font-mono text-textPrimary mt-1">
+                ₹{totalValue >= 1e7 ? `${(totalValue / 1e7).toFixed(2)} Cr` : totalValue.toLocaleString('en-IN')}
+              </p>
+              <p className="text-[11px] text-textMuted mt-0.5">Aggregate volume</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-surface border border-emerald-500/30 dark:border-emerald-500/20 shadow-sm">
+              <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Acquisitions</p>
+              <p className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">{acqTrades.length.toLocaleString()}</p>
+              <p className="text-[11px] text-textMuted mt-0.5">
+                ₹{acqValue >= 1e7 ? `${(acqValue / 1e7).toFixed(2)} Cr` : acqValue.toLocaleString('en-IN')}
+              </p>
+            </div>
+            <div className="p-4 rounded-2xl bg-surface border border-rose-500/30 dark:border-rose-500/20 shadow-sm">
+              <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Disposals</p>
+              <p className="text-xl font-bold font-mono text-rose-600 dark:text-rose-400 mt-1">{dispTrades.length.toLocaleString()}</p>
+              <p className="text-[11px] text-textMuted mt-0.5">
+                ₹{dispValue >= 1e7 ? `${(dispValue / 1e7).toFixed(2)} Cr` : dispValue.toLocaleString('en-IN')}
+              </p>
+            </div>
+          </div>
+
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted pointer-events-none" />
             <input value={search} onChange={(e) => setSearch(e.target.value)}
@@ -394,7 +443,7 @@ export default function InsiderTradingPage() {
                       const isAcq = d.transactionType?.toLowerCase().includes('acq')
                       const isDisp = d.transactionType?.toLowerCase().includes('dispos')
                       return (
-                        <tr key={i} className={clsx(
+                        <tr key={`${d.bseCode || 'code'}-${d.dateIntimation || ''}-${d.securityNo || ''}-${i}`} className={clsx(
                           'border-b border-border/40 transition-colors',
                           i % 2 === 0 ? 'hover:bg-slate-50 dark:hover:bg-white/3' : 'bg-slate-50/50 dark:bg-background/20 hover:bg-slate-50 dark:hover:bg-white/4'
                         )}>
