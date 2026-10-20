@@ -16,6 +16,9 @@ export default {
         success: '#10B981', // Neon Emerald
         warning: '#F59E0B',
         danger: '#F43F5E', // Vibrant Rose
+        accentTeal: '#38E1C6',
+        accentBlue: '#0EA5E9',
+        accentAmber: '#F5B942',
       },
       boxShadow: {
         'premium': '0 10px 40px -10px rgba(99,102,241,0.1)',
