@@ -105,24 +105,66 @@ async function saveCheckHistory({ uid, symbol, ipoName, registrar, type = 'MANUA
       };
     });
 
+    // 1. Fetch existing doc to merge chunked results seamlessly
+    const existingDoc = await col.findOne({ _id: docId });
+
+    let mergedResults = cleanResults;
+    if (existingDoc && Array.isArray(existingDoc.results) && existingDoc.results.length > 0) {
+      const applicantMap = new Map();
+      // Keep existing applicants
+      for (const er of existingDoc.results) {
+        const key = String(er.applicantId || er.id || er.maskedPan || '').trim();
+        if (key) applicantMap.set(key, er);
+      }
+      // Upsert incoming applicants
+      for (const cr of cleanResults) {
+        const key = String(cr.applicantId || cr.id || cr.maskedPan || '').trim();
+        if (key) applicantMap.set(key, cr);
+      }
+      mergedResults = Array.from(applicantMap.values());
+    }
+
+    // 2. Determine best human-readable company display name
+    let finalIpoName = ipoName;
+    if (!finalIpoName || finalIpoName === cleanSym) {
+      if (existingDoc?.ipoName && existingDoc.ipoName !== cleanSym) {
+        finalIpoName = existingDoc.ipoName;
+      }
+    }
+    // If still just symbol or numeric and db is available, try to lookup in iposymbols
+    if ((!finalIpoName || finalIpoName === cleanSym) && db) {
+      try {
+        const symDoc = await db.collection('iposymbols').findOne({
+          $or: [
+            { clientId: cleanSym },
+            { symbol: cleanSym },
+            { _id: `${reg}_${cleanSym}` }
+          ]
+        });
+        if (symDoc && symDoc.name) {
+          finalIpoName = symDoc.name;
+        }
+      } catch {}
+    }
+
     const calculatedSummary = {
-      total: summary?.total ?? cleanResults.length,
-      allotted: summary?.allotted ?? cleanResults.filter(r => r.status === 'allotted').length,
-      notAllotted: summary?.notAllotted ?? cleanResults.filter(r => r.status === 'not_allotted').length,
-      notFound: summary?.notFound ?? cleanResults.filter(r => r.status === 'not_found').length,
-      errors: summary?.errors ?? cleanResults.filter(r => r.status === 'error').length,
+      total: mergedResults.length,
+      allotted: mergedResults.filter(r => r.status === 'allotted').length,
+      notAllotted: mergedResults.filter(r => r.status === 'not_allotted').length,
+      notFound: mergedResults.filter(r => r.status === 'not_found').length,
+      errors: mergedResults.filter(r => r.status === 'error').length,
     };
 
     const doc = {
       _id: docId,
       uid,
       symbol: cleanSym,
-      ipoName: ipoName || cleanSym,
+      ipoName: finalIpoName || cleanSym,
       registrar: reg,
       type: type.toUpperCase() === 'AUTO' ? 'AUTO' : 'MANUAL',
       summary: calculatedSummary,
-      results: cleanResults,
-      checkedAt: now,
+      results: mergedResults,
+      checkedAt: existingDoc?.checkedAt || now,
       updatedAt: now,
     };
 

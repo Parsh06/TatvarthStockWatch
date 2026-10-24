@@ -72,6 +72,8 @@ export default function IpoVerificationPage() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [selectedHistoryCheck, setSelectedHistoryCheck] = useState(null)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
+  const [modalSearch, setModalSearch] = useState('')
+  const [modalFilter, setModalFilter] = useState('all') // 'all' | 'allotted' | 'not_allotted' | 'not_applied'
 
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true)
@@ -169,6 +171,34 @@ export default function IpoVerificationPage() {
     setShowHistoryModal(false)
     toast.success(`Loaded ${item.ipoName || item.symbol} into workspace`)
   }
+
+  function handleOpenHistoryDetail(item) {
+    setSelectedHistoryCheck(item)
+    setModalSearch('')
+    setModalFilter('all')
+    setShowHistoryModal(true)
+  }
+
+  const modalFilteredResults = useMemo(() => {
+    if (!selectedHistoryCheck?.results) return []
+    return selectedHistoryCheck.results.filter(r => {
+      const isAllotted = Number(r.sharesAllotted || 0) > 0 || r.status === 'allotted'
+      const isNotAllotted = r.status === 'not_allotted'
+      const isNotFound = r.status === 'not_found'
+
+      if (modalFilter === 'allotted' && !isAllotted) return false
+      if (modalFilter === 'not_allotted' && !isNotAllotted) return false
+      if (modalFilter === 'not_applied' && !isNotFound) return false
+
+      if (modalSearch.trim()) {
+        const q = modalSearch.trim().toLowerCase()
+        const matchName = (r.name || '').toLowerCase().includes(q)
+        const matchPan = (r.maskedPan || '').toLowerCase().includes(q)
+        if (!matchName && !matchPan) return false
+      }
+      return true
+    })
+  }, [selectedHistoryCheck, modalFilter, modalSearch])
 
   // ── Live Registrar Health State ─────────────────────────────────────────────
   const [registrarHealth, setRegistrarHealth] = useState(null)
@@ -380,6 +410,7 @@ export default function IpoVerificationPage() {
     // Setup abort controller
     const controller = new AbortController()
     abortControllerRef.current = controller
+    const allChunkResults = []
 
     try {
       // 1. Slice applicants into batches of 5
@@ -416,6 +447,7 @@ export default function IpoVerificationPage() {
                 method: 'POST',
                 body: JSON.stringify({
                   symbol: selectedSymbol.clientId || selectedSymbol.symbol,
+                  ipoName: selectedSymbol.name || selectedSymbol.symbol,
                   applicantIds: currentChunk.map(a => a.id),
                   registrar: selectedSymbol.registrar || selectedSymbol.source || 'KFINTECH',
                 }),
@@ -426,6 +458,7 @@ export default function IpoVerificationPage() {
               controller.signal.removeEventListener('abort', onParentAbort)
 
               const chunkResults = Array.isArray(data.results) ? data.results : []
+              allChunkResults.push(...chunkResults)
               completedCount += currentChunk.length
 
               // Incrementally stream results into state
@@ -483,6 +516,7 @@ export default function IpoVerificationPage() {
               records: [],
             }))
 
+            allChunkResults.push(...fallbackErrors)
             completedCount += currentChunk.length
             setBulkResult(prev => {
               const prevResults = prev?.results || []
@@ -513,6 +547,21 @@ export default function IpoVerificationPage() {
         toast('Verification cancelled', { icon: '⏸️' })
       } else {
         toast.success(`Verification complete across ${totalApplicants} applicants!`)
+        // Explicitly sync the complete unified run across all applicants
+        if (allChunkResults.length > 0) {
+          try {
+            await apiClient('/api/ipo/history', {
+              method: 'POST',
+              body: JSON.stringify({
+                symbol: selectedSymbol.clientId || selectedSymbol.symbol,
+                ipoName: selectedSymbol.name || selectedSymbol.symbol,
+                registrar: selectedSymbol.registrar || selectedSymbol.source || 'KFINTECH',
+                type: 'MANUAL',
+                results: allChunkResults,
+              }),
+            })
+          } catch {}
+        }
         fetchHistory()
       }
     } catch (err) {
@@ -947,10 +996,7 @@ export default function IpoVerificationPage() {
                     <div className="flex items-center gap-2 pt-2 border-t border-border">
                       <button
                         type="button"
-                        onClick={() => {
-                          setSelectedHistoryCheck(item)
-                          setShowHistoryModal(true)
-                        }}
+                        onClick={() => handleOpenHistoryDetail(item)}
                         className="flex-1 py-2 px-3 rounded-xl bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/20 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
                       >
                         <Eye className="w-3.5 h-3.5" />
@@ -1913,12 +1959,84 @@ export default function IpoVerificationPage() {
                 </div>
               </div>
 
+              {/* Modal Search & Filter Toolbar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted" />
+                  <input
+                    type="text"
+                    value={modalSearch}
+                    onChange={e => setModalSearch(e.target.value)}
+                    placeholder="Search applicant name or PAN..."
+                    className="w-full pl-10 pr-8 py-2 bg-background border border-border rounded-xl text-xs text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-primary/50"
+                  />
+                  {modalSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setModalSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-textMuted hover:text-textPrimary"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto text-xs font-bold scrollbar-hide">
+                  <button
+                    type="button"
+                    onClick={() => setModalFilter('all')}
+                    className={`px-3 py-1.5 rounded-xl transition-all ${
+                      modalFilter === 'all'
+                        ? 'bg-primary text-white'
+                        : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                    }`}
+                  >
+                    All ({selectedHistoryCheck.results?.length ?? 0})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalFilter('allotted')}
+                    className={`px-3 py-1.5 rounded-xl transition-all ${
+                      modalFilter === 'allotted'
+                        ? 'bg-success text-white'
+                        : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                    }`}
+                  >
+                    Allotted ({selectedHistoryCheck.summary?.allotted ?? 0})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalFilter('not_allotted')}
+                    className={`px-3 py-1.5 rounded-xl transition-all ${
+                      modalFilter === 'not_allotted'
+                        ? 'bg-primary text-white'
+                        : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                    }`}
+                  >
+                    Not Allotted ({selectedHistoryCheck.summary?.notAllotted ?? 0})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalFilter('not_applied')}
+                    className={`px-3 py-1.5 rounded-xl transition-all ${
+                      modalFilter === 'not_applied'
+                        ? 'bg-danger text-white'
+                        : 'bg-background text-textMuted hover:text-textPrimary border border-border'
+                    }`}
+                  >
+                    Not Applied ({selectedHistoryCheck.summary?.notFound ?? 0})
+                  </button>
+                </div>
+              </div>
+
               {/* Scrollable Applicant Results Table */}
-              <div className="flex-1 overflow-y-auto max-h-[50vh] rounded-2xl border border-border bg-background divide-y divide-border">
-                {(!selectedHistoryCheck.results || selectedHistoryCheck.results.length === 0) ? (
-                  <div className="p-8 text-center text-sm text-textMuted">No applicant bid records found.</div>
+              <div className="flex-1 overflow-y-auto max-h-[55vh] sm:max-h-[60vh] rounded-2xl border border-border bg-background divide-y divide-border scrollbar-thin scrollbar-thumb-border hover:scrollbar-thumb-textMuted">
+                {modalFilteredResults.length === 0 ? (
+                  <div className="p-8 text-center text-sm text-textMuted">
+                    {modalSearch ? 'No applicants match your search query.' : 'No applicant bid records found.'}
+                  </div>
                 ) : (
-                  selectedHistoryCheck.results.map((r, i) => {
+                  modalFilteredResults.map((r, i) => {
                     const isAllotted = Number(r.sharesAllotted || 0) > 0 || r.status === 'allotted'
                     const isNotAllotted = r.status === 'not_allotted'
                     const isNotFound = r.status === 'not_found'
@@ -1927,6 +2045,9 @@ export default function IpoVerificationPage() {
                       <div key={r.id || r.applicantId || i} className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-surface transition-all">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-lg bg-surface border border-border text-[10px] font-mono font-bold text-textMuted flex items-center justify-center shrink-0">
+                              #{i + 1}
+                            </span>
                             <span className="text-sm font-bold text-textPrimary">{r.name || 'Family Member'}</span>
                             <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-surface border border-border text-textMuted">
                               {r.maskedPan || 'XXXX'}

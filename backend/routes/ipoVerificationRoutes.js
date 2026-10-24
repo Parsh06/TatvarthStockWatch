@@ -611,7 +611,7 @@ module.exports = function (verifyToken) {
   // ── POST /api/ipo/verify-bulk ───────────────────────────────────────────────
   router.post('/verify-bulk', verifyToken, async (req, res) => {
     try {
-      const { symbol: rawSymbol, applicantIds, registrar: rawRegistrar = 'KFINTECH' } = req.body;
+      const { symbol: rawSymbol, applicantIds, registrar: rawRegistrar = 'KFINTECH', ipoName: rawIpoName } = req.body;
 
       if (!rawSymbol || typeof rawSymbol !== 'string') {
         return res.status(400).json({ success: false, error: 'Please select an IPO symbol' });
@@ -773,17 +773,10 @@ module.exports = function (verifyToken) {
         await saveCheckHistory({
           uid: req.uid,
           symbol,
-          ipoName: req.body.ipoName || symbol,
+          ipoName: rawIpoName || req.body.ipoName || symbol,
           registrar: providerName,
           type: 'MANUAL',
           results: histResults,
-          summary: {
-            total: histResults.length,
-            allotted: histResults.filter(h => h.status === 'allotted').length,
-            notAllotted: histResults.filter(h => h.status === 'not_allotted').length,
-            notFound: histResults.filter(h => h.status === 'not_found').length,
-            errors: histResults.filter(h => h.status === 'error').length,
-          }
         });
       } catch (histErr) {
         console.warn('[IPO Bulk Verify] History save warning:', histErr.message);

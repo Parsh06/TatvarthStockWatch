@@ -160,6 +160,93 @@ async function runTests() {
     assert.strictEqual(testIpo.results[0].sharesAllotted, 100);
   });
 
+  await test('Chunk Merging: 13 family applicants split across 3 chunks accumulate additively', async () => {
+    const chunk1 = Array.from({ length: 5 }, (_, i) => ({
+      applicantId: `app_${i + 1}`,
+      name: `Member ${i + 1}`,
+      maskedPan: `XXXXXX${i + 1}00A`,
+      sharesAllotted: 0,
+      appliedShares: 1449,
+      status: 'not_allotted'
+    }));
+
+    const chunk2 = Array.from({ length: 5 }, (_, i) => ({
+      applicantId: `app_${i + 6}`,
+      name: `Member ${i + 6}`,
+      maskedPan: `XXXXXX${i + 6}00B`,
+      sharesAllotted: 0,
+      appliedShares: 1449,
+      status: 'not_allotted'
+    }));
+
+    const chunk3 = [
+      {
+        applicantId: 'app_11',
+        name: 'Mayur HUF',
+        maskedPan: 'XXXXXX639F',
+        sharesAllotted: 0,
+        appliedShares: 0,
+        status: 'not_found'
+      },
+      {
+        applicantId: 'app_12',
+        name: 'Pukhraj HUF',
+        maskedPan: 'XXXXXX537K',
+        sharesAllotted: 0,
+        appliedShares: 294,
+        status: 'not_allotted'
+      },
+      {
+        applicantId: 'app_13',
+        name: 'Saloni',
+        maskedPan: 'XXXXXX454F',
+        sharesAllotted: 0,
+        appliedShares: 21,
+        status: 'not_allotted'
+      }
+    ];
+
+    // Dispatch Chunk 1
+    await saveCheckHistory({
+      uid: testUid1,
+      symbol: '15211216041',
+      ipoName: 'TONBO IMAGING INDIA LIMITED',
+      registrar: 'KFINTECH',
+      type: 'MANUAL',
+      results: chunk1
+    });
+
+    // Dispatch Chunk 2
+    await saveCheckHistory({
+      uid: testUid1,
+      symbol: '15211216041',
+      ipoName: 'TONBO IMAGING INDIA LIMITED',
+      registrar: 'KFINTECH',
+      type: 'MANUAL',
+      results: chunk2
+    });
+
+    // Dispatch Chunk 3
+    await saveCheckHistory({
+      uid: testUid1,
+      symbol: '15211216041',
+      ipoName: 'TONBO IMAGING INDIA LIMITED',
+      registrar: 'KFINTECH',
+      type: 'MANUAL',
+      results: chunk3
+    });
+
+    const userHist = await getUserCheckHistory(testUid1);
+    const tonboDoc = userHist.find(h => h.symbol === '15211216041');
+    assert.ok(tonboDoc, 'TONBO IMAGING doc must exist');
+    assert.strictEqual(tonboDoc.ipoName, 'TONBO IMAGING INDIA LIMITED');
+    assert.strictEqual(tonboDoc.results.length, 13, 'All 13 chunked applicants must be merged without loss');
+    assert.strictEqual(tonboDoc.summary.total, 13);
+    assert.strictEqual(tonboDoc.summary.allotted, 0);
+    assert.strictEqual(tonboDoc.summary.notAllotted, 12);
+    assert.strictEqual(tonboDoc.summary.notFound, 1);
+  });
+
   await test('Isolation: Other user check records are isolated', async () => {
     await saveCheckHistory({
       uid: testUid2,
@@ -173,14 +260,14 @@ async function runTests() {
     const user1Hist = await getUserCheckHistory(testUid1);
     const user2Hist = await getUserCheckHistory(testUid2);
 
-    assert.strictEqual(user1Hist.length, 2);
+    assert.strictEqual(user1Hist.length, 3);
     assert.strictEqual(user2Hist.length, 1);
     assert.strictEqual(user2Hist[0].symbol, 'OTHERIPO');
   });
 
   await test('Clear: clearUserCheckHistory removes only specified user records', async () => {
     const cleared = await clearUserCheckHistory(testUid1);
-    assert.strictEqual(cleared, 2);
+    assert.strictEqual(cleared, 3);
 
     const user1After = await getUserCheckHistory(testUid1);
     assert.strictEqual(user1After.length, 0);
