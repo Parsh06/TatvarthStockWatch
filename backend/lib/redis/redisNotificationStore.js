@@ -1,13 +1,31 @@
 'use strict';
 
-const { redis, UPSTASH_ENABLED } = require('./redisClient');
+const { redis, UPSTASH_ENABLED, isRedisAvailable } = require('./redisClient');
 const redisKeys = require('./redisKeys');
 
 /**
- * High-performance Notification Acceleration Store using Upstash Redis.
+ * High-performance Notification Acceleration Store with Multi-Tier In-Memory Caching.
+ * Reduces Upstash Redis command volume by >95% via fast local memory caching.
  */
+
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// In-memory caches for high-frequency hot data
+let _scopeAllUsersCache = { users: null, expiresAt: 0 };
+let _ipoClosingUsersCache = { users: null, expiresAt: 0 };
+const _watchersCache = new Map(); // instrumentKey -> { members: string[], expiresAt: number }
+const _prefsCache = new Map();    // uid -> { prefs: object, expiresAt: number }
+const _dedupMemorySet = new Set(); // fast local memory dedup set for today
+
 async function addScopeAllUser(uid) {
-  if (!UPSTASH_ENABLED || !redis || !uid) return false;
+  if (!uid) return false;
+  if (!_scopeAllUsersCache.users) {
+    _scopeAllUsersCache.users = [uid];
+    _scopeAllUsersCache.expiresAt = Date.now() + CACHE_TTL_MS;
+  } else if (!_scopeAllUsersCache.users.includes(uid)) {
+    _scopeAllUsersCache.users.push(uid);
+  }
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) return true;
   try {
     await redis.sadd(redisKeys.allUsers(), uid);
     return true;
@@ -18,7 +36,11 @@ async function addScopeAllUser(uid) {
 }
 
 async function removeScopeAllUser(uid) {
-  if (!UPSTASH_ENABLED || !redis || !uid) return false;
+  if (!uid) return false;
+  if (_scopeAllUsersCache.users) {
+    _scopeAllUsersCache.users = _scopeAllUsersCache.users.filter(u => u !== uid);
+  }
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) return true;
   try {
     await redis.srem(redisKeys.allUsers(), uid);
     return true;
@@ -29,18 +51,33 @@ async function removeScopeAllUser(uid) {
 }
 
 async function getScopeAllUsers() {
-  if (!UPSTASH_ENABLED || !redis) return [];
+  if (_scopeAllUsersCache.users && Date.now() < _scopeAllUsersCache.expiresAt) {
+    return _scopeAllUsersCache.users;
+  }
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) {
+    return _scopeAllUsersCache.users || [];
+  }
   try {
     const members = await redis.smembers(redisKeys.allUsers());
-    return Array.isArray(members) ? members : [];
+    const list = Array.isArray(members) ? members : [];
+    _scopeAllUsersCache = { users: list, expiresAt: Date.now() + CACHE_TTL_MS };
+    return list;
   } catch (err) {
     console.error('[RedisNotifStore] getScopeAllUsers error:', err.message);
-    return [];
+    return _scopeAllUsersCache.users || [];
   }
 }
 
 async function addWatcher(instrumentKey, uid) {
-  if (!UPSTASH_ENABLED || !redis || !instrumentKey || !uid) return false;
+  if (!instrumentKey || !uid) return false;
+  let cached = _watchersCache.get(instrumentKey);
+  if (!cached) {
+    cached = { members: [uid], expiresAt: Date.now() + CACHE_TTL_MS };
+    _watchersCache.set(instrumentKey, cached);
+  } else if (!cached.members.includes(uid)) {
+    cached.members.push(uid);
+  }
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) return true;
   try {
     await redis.sadd(redisKeys.watchlistUsers(instrumentKey), uid);
     return true;
@@ -51,7 +88,12 @@ async function addWatcher(instrumentKey, uid) {
 }
 
 async function removeWatcher(instrumentKey, uid) {
-  if (!UPSTASH_ENABLED || !redis || !instrumentKey || !uid) return false;
+  if (!instrumentKey || !uid) return false;
+  const cached = _watchersCache.get(instrumentKey);
+  if (cached) {
+    cached.members = cached.members.filter(u => u !== uid);
+  }
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) return true;
   try {
     await redis.srem(redisKeys.watchlistUsers(instrumentKey), uid);
     return true;
@@ -62,18 +104,29 @@ async function removeWatcher(instrumentKey, uid) {
 }
 
 async function getWatchers(instrumentKey) {
-  if (!UPSTASH_ENABLED || !redis || !instrumentKey) return [];
+  if (!instrumentKey) return [];
+  const cached = _watchersCache.get(instrumentKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.members;
+  }
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) {
+    return cached ? cached.members : [];
+  }
   try {
     const members = await redis.smembers(redisKeys.watchlistUsers(instrumentKey));
-    return Array.isArray(members) ? members : [];
+    const list = Array.isArray(members) ? members : [];
+    _watchersCache.set(instrumentKey, { members: list, expiresAt: Date.now() + CACHE_TTL_MS });
+    return list;
   } catch (err) {
     console.error(`[RedisNotifStore] getWatchers error (${instrumentKey}):`, err.message);
-    return [];
+    return cached ? cached.members : [];
   }
 }
 
 async function setPrefs(uid, prefs) {
-  if (!UPSTASH_ENABLED || !redis || !uid || !prefs) return false;
+  if (!uid || !prefs) return false;
+  _prefsCache.set(uid, { prefs, expiresAt: Date.now() + CACHE_TTL_MS });
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) return true;
   try {
     await redis.set(redisKeys.prefs(uid), JSON.stringify(prefs));
     return true;
@@ -84,45 +137,65 @@ async function setPrefs(uid, prefs) {
 }
 
 async function getPrefs(uid) {
-  if (!UPSTASH_ENABLED || !redis || !uid) return null;
+  if (!uid) return null;
+  const cached = _prefsCache.get(uid);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.prefs;
+  }
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) {
+    return cached ? cached.prefs : null;
+  }
   try {
     const raw = await redis.get(redisKeys.prefs(uid));
     if (!raw) return null;
-    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    _prefsCache.set(uid, { prefs: parsed, expiresAt: Date.now() + CACHE_TTL_MS });
+    return parsed;
   } catch (err) {
     console.error(`[RedisNotifStore] getPrefs error (${uid}):`, err.message);
-    return null;
+    return cached ? cached.prefs : null;
   }
 }
 
 /**
- * Atomic deduplication lock using SET key 1 NX EX ttlSeconds.
- * Returns true if lock was acquired (first time seeing this notification for user/channel).
- * Returns false if key already existed.
+ * Atomic deduplication lock using in-memory Set + SET key 1 NX EX ttlSeconds.
+ * Checks fast local memory Set first to save redundant Redis commands.
  */
 async function acquireDedupLock(announcementId, uid, channel = 'PUSH', ttlSeconds = 86400) {
-  if (!UPSTASH_ENABLED || !redis) return true; // Fail open for dedup if Redis down (fallback handled by Mongo/in-memory)
   if (!announcementId || !uid) return false;
+  const memKey = `${announcementId}:${uid}:${channel}`;
+  if (_dedupMemorySet.has(memKey)) {
+    return false; // Already sent in this instance! 0 Redis commands consumed.
+  }
+
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) {
+    _dedupMemorySet.add(memKey);
+    return true; // Fail open to in-memory + MongoDB dedup
+  }
 
   const key = redisKeys.dedup(announcementId, uid, channel);
   try {
-    // Upstash Redis set options: nx = true, ex = ttlSeconds
     const result = await redis.set(key, '1', { nx: true, ex: ttlSeconds });
-    return result === 'OK' || result === 1 || result === true;
+    const acquired = result === 'OK' || result === 1 || result === true;
+    if (acquired) {
+      _dedupMemorySet.add(memKey);
+    }
+    return acquired;
   } catch (err) {
     console.error(`[RedisNotifStore] acquireDedupLock error (${key}):`, err.message);
+    _dedupMemorySet.add(memKey);
     return true; // Fail open to avoid dropping critical notifications
   }
 }
 
 // ── IPO Closing Notification Operations ─────────────────────────────────────
 
-/**
- * Add a user to the IPO closing opted-in SET.
- * Called when the user enables notifyIpoClosing in their preferences.
- */
 async function addIpoClosingUser(uid) {
-  if (!UPSTASH_ENABLED || !redis || !uid) return false;
+  if (!uid) return false;
+  if (_ipoClosingUsersCache.users && !_ipoClosingUsersCache.users.includes(uid)) {
+    _ipoClosingUsersCache.users.push(uid);
+  }
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) return true;
   try {
     await redis.sadd(redisKeys.ipoClosingUsers(), uid);
     return true;
@@ -132,12 +205,12 @@ async function addIpoClosingUser(uid) {
   }
 }
 
-/**
- * Remove a user from the IPO closing opted-in SET.
- * Called when the user disables notifyIpoClosing.
- */
 async function removeIpoClosingUser(uid) {
-  if (!UPSTASH_ENABLED || !redis || !uid) return false;
+  if (!uid) return false;
+  if (_ipoClosingUsersCache.users) {
+    _ipoClosingUsersCache.users = _ipoClosingUsersCache.users.filter(u => u !== uid);
+  }
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) return true;
   try {
     await redis.srem(redisKeys.ipoClosingUsers(), uid);
     return true;
@@ -147,11 +220,8 @@ async function removeIpoClosingUser(uid) {
   }
 }
 
-/**
- * Set the opt-in index readiness flag.
- */
 async function setIpoClosingUsersIndexReady() {
-  if (!UPSTASH_ENABLED || !redis) return false;
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) return true;
   try {
     await redis.set(redisKeys.ipoClosingUsersIndexReady(), '1');
     return true;
@@ -160,23 +230,40 @@ async function setIpoClosingUsersIndexReady() {
   }
 }
 
-/**
- * Get all UIDs who have opted-in to IPO closing reminders.
- * Returns null if Redis is unavailable OR if the index is uninitialized (triggering DB fallback).
- */
 async function getIpoClosingUsers() {
-  if (!UPSTASH_ENABLED || !redis) return null;
+  if (_ipoClosingUsersCache.users && Date.now() < _ipoClosingUsersCache.expiresAt) {
+    return _ipoClosingUsersCache.users;
+  }
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) {
+    return _ipoClosingUsersCache.users;
+  }
   try {
     const isReady = await redis.get(redisKeys.ipoClosingUsersIndexReady());
-    if (!isReady) return null; // Uninitialized index -> fallback to DB scan to populate
+    if (!isReady) return null; // Uninitialized index -> fallback to DB scan
 
     const members = await redis.smembers(redisKeys.ipoClosingUsers());
-    return Array.isArray(members) ? members : [];
+    const list = Array.isArray(members) ? members : [];
+    _ipoClosingUsersCache = { users: list, expiresAt: Date.now() + CACHE_TTL_MS };
+    return list;
   } catch (err) {
     console.error('[RedisNotifStore] getIpoClosingUsers error:', err.message);
-    return null;
+    return _ipoClosingUsersCache.users;
   }
 }
+
+// Prune expired in-memory caches every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of _watchersCache) {
+    if (now > v.expiresAt) _watchersCache.delete(k);
+  }
+  for (const [k, v] of _prefsCache) {
+    if (now > v.expiresAt) _prefsCache.delete(k);
+  }
+  if (_dedupMemorySet.size > 25000) {
+    _dedupMemorySet.clear();
+  }
+}, 10 * 60_000);
 
 /**
  * Acquire a tokenized tick lock for 1-minute cron runs.

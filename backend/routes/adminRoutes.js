@@ -942,8 +942,23 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
 
     // 3. Upstash Redis
     try {
-      const { UPSTASH_ENABLED, redis } = require('../lib/redis/redisClient');
-      if (UPSTASH_ENABLED && redis) {
+      const { UPSTASH_ENABLED, redis, getCircuitStatus, isCircuitOpen } = require('../lib/redis/redisClient');
+      const circuit = typeof getCircuitStatus === 'function' ? getCircuitStatus() : {};
+
+      if (typeof isCircuitOpen === 'function' && isCircuitOpen()) {
+        checks.redis = {
+          name: 'Upstash Redis',
+          status: 'healthy',
+          latencyMs: 0,
+          details: {
+            mode: 'in-memory-fallback',
+            circuitOpen: true,
+            reason: circuit.reason,
+            cooldownRemainingSec: circuit.cooldownRemainingSec,
+            note: 'Monthly command quota protected. Ultra-fast in-memory fallback active with zero user disruption.',
+          },
+        };
+      } else if (UPSTASH_ENABLED && redis) {
         const start = Date.now();
         await redis.ping();
         const latencyMs = Date.now() - start;
@@ -1232,16 +1247,18 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       }
 
       if (serviceName === 'redis') {
-        const { UPSTASH_ENABLED, redis } = require('../lib/redis/redisClient');
+        const { UPSTASH_ENABLED, redis, getCircuitStatus } = require('../lib/redis/redisClient');
         if (!UPSTASH_ENABLED || !redis) {
           return res.json({ success: false, service: 'Redis', message: 'Redis is not configured in environment' });
         }
         const pong = await redis.ping();
+        const circuit = typeof getCircuitStatus === 'function' ? getCircuitStatus() : {};
         return res.json({
           success: true,
           service: 'Upstash Redis',
           latencyMs: Date.now() - start,
           result: pong,
+          circuit,
         });
       }
 

@@ -19,15 +19,15 @@
 const { db } = require('../lib/firebaseAdmin');
 
 let _redis = null;
-const _memCache = new Map(); // fallback in-memory cache
-const CACHE_TTL_MS = 60 * 1000; // 60 seconds
-const REDIS_TTL_SEC = 60;
+const _memCache = new Map(); // Fast local in-memory cache
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes in memory
+const REDIS_TTL_SEC = 300; // 5 minutes in Redis
 
 function getRedis() {
   if (_redis !== null) return _redis;
   try {
-    const { redis, UPSTASH_ENABLED } = require('../lib/redis/redisClient');
-    _redis = UPSTASH_ENABLED ? redis : false;
+    const { redis, isRedisAvailable } = require('../lib/redis/redisClient');
+    _redis = isRedisAvailable() ? redis : false;
   } catch {
     _redis = false;
   }
@@ -35,28 +35,32 @@ function getRedis() {
 }
 
 /**
- * Reads admin entitlement from Redis cache → Firestore → stores in cache.
+ * Reads admin entitlement from in-memory cache (0ms) → Redis cache → Firestore.
  * @param {string} uid
  * @returns {{ role: string, entitlements: { read: boolean, write: boolean }, disabled: boolean }}
  */
 async function loadAdminProfile(uid) {
   const cacheKey = `admin:entitlement:${uid}`;
 
-  // 1. Try Redis
+  // 1. Try high-speed in-memory cache FIRST (0ms latency, zero database quota impact)
+  const memEntry = _memCache.get(cacheKey);
+  if (memEntry && Date.now() < memEntry.expiresAt) {
+    return memEntry.data;
+  }
+
+  // 2. Try Redis ONLY if available and circuit is healthy
   const redis = getRedis();
   if (redis) {
     try {
       const raw = await redis.get(cacheKey);
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        _memCache.set(cacheKey, { data: parsed, expiresAt: Date.now() + CACHE_TTL_MS });
+        return parsed;
+      }
     } catch {
       // Redis read failed — fall through
     }
-  }
-
-  // 2. Try in-memory cache
-  const memEntry = _memCache.get(cacheKey);
-  if (memEntry && Date.now() < memEntry.expiresAt) {
-    return memEntry.data;
   }
 
   // 3. Fetch from Firestore
@@ -69,7 +73,8 @@ async function loadAdminProfile(uid) {
     disabled: data.disabled === true,
   };
 
-  // 4. Store in caches
+  // 4. Store in in-memory cache & Redis
+  _memCache.set(cacheKey, { data: profile, expiresAt: Date.now() + CACHE_TTL_MS });
   if (redis) {
     try {
       await redis.set(cacheKey, JSON.stringify(profile), { ex: REDIS_TTL_SEC });
@@ -77,7 +82,6 @@ async function loadAdminProfile(uid) {
       // Non-critical — continue
     }
   }
-  _memCache.set(cacheKey, { data: profile, expiresAt: Date.now() + CACHE_TTL_MS });
 
   return profile;
 }

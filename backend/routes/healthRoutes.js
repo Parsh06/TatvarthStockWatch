@@ -14,8 +14,11 @@ const { isConfigured, sendTelegramTest } = require('../lib/telegramNotifier');
 router.get('/', async (req, res) => {
   let scriptCount = 0;
   try {
-    const all = await watchlistStore.getAllTrackedScripts();
-    scriptCount = all.length;
+    const all = await Promise.race([
+      watchlistStore.getAllTrackedScripts(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500)),
+    ]);
+    scriptCount = all ? all.length : 0;
   } catch (e) {}
 
   const isVercel = Boolean(process.env.VERCEL || process.env.NOW_REGION);
@@ -43,13 +46,15 @@ router.get('/', async (req, res) => {
  */
 router.get('/notification', async (req, res) => {
   try {
-    const { UPSTASH_ENABLED } = require('../lib/redis/redisClient');
+    const { UPSTASH_ENABLED, getCircuitStatus } = require('../lib/redis/redisClient');
     const redisNotifStore = require('../lib/redis/redisNotificationStore');
     const allScopeUsers = await redisNotifStore.getScopeAllUsers();
+    const circuit = typeof getCircuitStatus === 'function' ? getCircuitStatus() : {};
 
     res.json({
       redis: {
-        status: UPSTASH_ENABLED ? 'healthy' : 'disabled',
+        status: circuit.circuitOpen ? 'in-memory-fallback' : (UPSTASH_ENABLED ? 'healthy' : 'disabled'),
+        circuit,
       },
       routing: {
         allScopeUsersCount: allScopeUsers.length,

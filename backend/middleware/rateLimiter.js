@@ -2,10 +2,12 @@
 
 /**
  * rateLimiter.js
- * In-memory rate limiting per IP and per authenticated User UID.
+ * High-performance, quota-conscious rate limiting.
+ * Uses high-speed in-memory store for general routes (zero Redis commands),
+ * and distributes only high-risk mutation endpoints when Redis circuit is healthy.
  */
 
-const { redis, UPSTASH_ENABLED } = require('../lib/redis/redisClient');
+const { redis, isRedisAvailable } = require('../lib/redis/redisClient');
 
 const _rlStore = new Map();
 const WINDOW_MS = 60_000; // 1 minute
@@ -16,39 +18,62 @@ function getClientIdentifier(req) {
   return `${ip}:${uid}`;
 }
 
-function createLimiter({ maxRequests = 120, windowMs = WINDOW_MS, errorMessage = 'Too many requests — please slow down.' }) {
+/**
+ * Health checks, internal cron triggers, and system diagnostics consume 0 rate limit resources.
+ */
+function shouldBypassRateLimit(req) {
+  const url = req.originalUrl || req.url || '';
+  if (
+    url === '/' ||
+    url.startsWith('/api/health') ||
+    url.startsWith('/api/system') ||
+    url.startsWith('/api/cron') ||
+    url.startsWith('/api/telegram-status')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function createLimiter({
+  maxRequests = 120,
+  windowMs = WINDOW_MS,
+  errorMessage = 'Too many requests — please slow down.',
+  useDistributed = false,
+}) {
   return async (req, res, next) => {
+    // 1. Bypass internal and diagnostic routes
+    if (shouldBypassRateLimit(req)) {
+      return next();
+    }
+
     const key = `ratelimit:${getClientIdentifier(req)}:${req.baseUrl || ''}${req.path || ''}`;
     const now = Date.now();
 
-    // 1. Try Redis (distributed state for serverless scale)
-    if (UPSTASH_ENABLED && redis) {
+    // 2. Try Redis only for explicit distributed limiters (e.g., auth, checkout) when circuit is available
+    if (useDistributed && isRedisAvailable() && redis) {
       try {
         const pipeline = redis.pipeline();
         pipeline.incr(key);
-        // We set expiration only if it's the first request (count === 1) but pipeline makes it tricky.
-        // Safer way in Upstash without lua scripts: just blindly set EX on every req but only if we want to reset window.
-        // Actually, best simple way: INCR and then if count===1, PEXPIRE. Since pipeline returns results:
-        pipeline.pexpire(key, windowMs, 'NX'); 
-        
+        pipeline.pexpire(key, windowMs, 'NX');
+
         const results = await pipeline.exec();
-        const count = results[0]; // Result of INCR
+        const count = results && Array.isArray(results) ? results[0] : 1;
 
         if (count > maxRequests) {
           return res.status(429).json({
             success: false,
             error: errorMessage,
-            code: 'RATE_LIMIT_EXCEEDED'
+            code: 'RATE_LIMIT_EXCEEDED',
           });
         }
         return next();
       } catch (err) {
-        console.warn('[RateLimiter] Redis failed, falling back to in-memory:', err.message);
-        // Fall through to in-memory
+        // Fall through to in-memory without breaking user request
       }
     }
 
-    // 2. Fallback to In-Memory (single instance)
+    // 3. Fast In-Memory Rate Limiting (0ms latency, zero database quota impact)
     let entry = _rlStore.get(key);
 
     if (!entry || now > entry.resetAt) {
@@ -63,7 +88,7 @@ function createLimiter({ maxRequests = 120, windowMs = WINDOW_MS, errorMessage =
       return res.status(429).json({
         success: false,
         error: errorMessage,
-        code: 'RATE_LIMIT_EXCEEDED'
+        code: 'RATE_LIMIT_EXCEEDED',
       });
     }
 
@@ -71,7 +96,7 @@ function createLimiter({ maxRequests = 120, windowMs = WINDOW_MS, errorMessage =
   };
 }
 
-// Clean up stale rate limit entries periodically
+// Clean up stale in-memory rate limit entries every 5 minutes
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of _rlStore) {
@@ -79,13 +104,29 @@ setInterval(() => {
   }
 }, 5 * 60_000);
 
-const globalRateLimiter = createLimiter({ maxRequests: 120, windowMs: WINDOW_MS });
-const strictRateLimiter = createLimiter({ maxRequests: 15, windowMs: WINDOW_MS, errorMessage: 'Strict rate limit exceeded for this operation.' });
-const userMutationRateLimiter = createLimiter({ maxRequests: 60, windowMs: WINDOW_MS, errorMessage: 'Mutation limit exceeded.' });
+// Global app rate limiter: Uses high-speed in-memory store (0 Redis commands consumed)
+const globalRateLimiter = createLimiter({ maxRequests: 120, windowMs: WINDOW_MS, useDistributed: false });
+
+// Strict rate limiter for sensitive auth & onboarding endpoints: Distributed with circuit fallback
+const strictRateLimiter = createLimiter({
+  maxRequests: 15,
+  windowMs: WINDOW_MS,
+  errorMessage: 'Strict rate limit exceeded for this operation.',
+  useDistributed: true,
+});
+
+// User mutation limiter for watchlist/preferences updates: Uses in-memory store (0 Redis commands consumed)
+const userMutationRateLimiter = createLimiter({
+  maxRequests: 60,
+  windowMs: WINDOW_MS,
+  errorMessage: 'Mutation limit exceeded.',
+  useDistributed: false,
+});
 
 module.exports = {
   globalRateLimiter,
   strictRateLimiter,
   userMutationRateLimiter,
   createLimiter,
+  shouldBypassRateLimit,
 };
