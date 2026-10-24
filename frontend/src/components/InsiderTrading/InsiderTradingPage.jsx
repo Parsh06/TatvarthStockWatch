@@ -422,7 +422,7 @@ export default function InsiderTradingPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border bg-slate-100/90 dark:bg-background/50">
+                    <tr className="border-b border-border bg-slate-50 dark:bg-surface">
                       {COLS.map((col) => (
                         <th key={col.key}
                           className={clsx('px-4 py-3 text-xs font-semibold text-slate-700 dark:text-textMuted whitespace-nowrap',
@@ -443,10 +443,10 @@ export default function InsiderTradingPage() {
                       const isAcq = d.transactionType?.toLowerCase().includes('acq')
                       const isDisp = d.transactionType?.toLowerCase().includes('dispos')
                       return (
-                        <tr key={`${d.bseCode || 'code'}-${d.dateIntimation || ''}-${d.securityNo || ''}-${i}`} className={clsx(
-                          'border-b border-border/40 transition-colors',
-                          i % 2 === 0 ? 'hover:bg-slate-50 dark:hover:bg-white/3' : 'bg-slate-50/50 dark:bg-background/20 hover:bg-slate-50 dark:hover:bg-white/4'
-                        )}>
+                        <tr
+                          key={`${d.bseCode || 'code'}-${d.dateIntimation || ''}-${d.securityNo || ''}-${i}`}
+                          className="border-b border-border/40"
+                        >
                           <td className="px-4 py-3 text-textMuted whitespace-nowrap tabular-nums text-xs">{d.dateIntimation}</td>
                           <td className="px-4 py-3 font-mono text-xs text-textMuted">{d.bseCode}</td>
                           <td className="px-4 py-3 font-medium text-textPrimary max-w-[160px]">
@@ -493,7 +493,7 @@ export default function InsiderTradingPage() {
                   </tbody>
                 </table>
               </div>
-              <div className="px-4 py-2.5 border-t border-border bg-slate-50 dark:bg-background/30 flex items-center justify-between text-xs text-textMuted">
+              <div className="px-4 py-2.5 border-t border-border bg-slate-50 dark:bg-surface flex items-center justify-between text-xs text-textMuted">
                 <span>Showing {filtered.length.toLocaleString()} of {trades.length.toLocaleString()} trades</span>
                 <span>Total transacted value: <strong className="text-textPrimary">₹{totalValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</strong></span>
               </div>
