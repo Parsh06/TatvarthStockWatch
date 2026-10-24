@@ -91,7 +91,7 @@ export default function LoginPage() {
           <div className="flex items-center gap-3 mb-7 animate-fade-in-up">
             <div className="relative w-14 h-14 rounded-2xl flex items-center justify-center bg-white dark:bg-[#0F172A] shadow-premium">
               <div className="tsw-logo-glow absolute inset-0 rounded-2xl bg-primary/40 blur-xl -z-10" />
-              <img src="/logo2.png" alt="Logo" className="w-10 h-10 object-contain" />
+              <img src="/logo2.png" alt="Logo" className="w-10 h-10 object-contain brand-logo" />
             </div>
             <div>
               <h1 className="text-2xl font-bold font-display text-textPrimary tracking-tight leading-none">Tatvarth</h1>
@@ -142,7 +142,7 @@ export default function LoginPage() {
           <div className="flex items-center justify-center gap-3 mb-2 animate-fade-in-up">
             <div className="relative w-12 h-12 rounded-xl flex items-center justify-center bg-white dark:bg-[#0F172A] shadow-premium">
               <div className="tsw-logo-glow absolute inset-0 rounded-xl bg-primary/40 blur-lg -z-10 md:hidden" />
-              <img src="/logo2.png" alt="Logo" className="w-9 h-9 object-contain" />
+              <img src="/logo2.png" alt="Logo" className="w-9 h-9 object-contain brand-logo" />
             </div>
             <span className="text-2xl font-bold font-display text-textPrimary">
               Tatvarth<span className="text-primary">StockWatch</span>

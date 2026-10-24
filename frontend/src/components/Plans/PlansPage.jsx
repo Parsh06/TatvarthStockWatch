@@ -243,7 +243,7 @@ export default function PlansPage() {
         currency: orderRes.currency || 'INR',
         name: 'Tatvarth StockWatch',
         description: `${selectedPlanForUpgrade.name} Membership (${billingCycle})`,
-        image: '/logo2.png',
+        image: '/logo2-black.png',
         order_id: orderRes.orderId,
         prefill: {
           email: currentUser?.email || '',

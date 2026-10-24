@@ -55,10 +55,17 @@ export default function PublicBasketPage() {
 
   // Sync theme
   useEffect(() => {
-    if (theme === 'dark') {
+    const isDark = theme === 'dark'
+    if (isDark) {
       document.documentElement.classList.add('dark')
+      document.getElementById('app-manifest')?.setAttribute('href', '/manifest-dark.json')
+      document.getElementById('app-favicon')?.setAttribute('href', '/logo2.png')
+      document.getElementById('apple-touch-icon')?.setAttribute('href', '/apple-touch-icon-dark.png')
     } else {
       document.documentElement.classList.remove('dark')
+      document.getElementById('app-manifest')?.setAttribute('href', '/manifest.json')
+      document.getElementById('app-favicon')?.setAttribute('href', '/logo2-black.png')
+      document.getElementById('apple-touch-icon')?.setAttribute('href', '/apple-touch-icon.png')
     }
     localStorage.setItem('theme', theme)
   }, [theme])
@@ -197,7 +204,7 @@ export default function PublicBasketPage() {
           <div className="max-w-6xl mx-auto px-4 w-full flex items-center justify-between">
             <Link to="/" className="flex items-center gap-3.5 group">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white dark:bg-[#18181b] shadow-md border border-slate-200 dark:border-border/80">
-                <img src="/logo2.png" alt="Tatvarth Logo" className="w-6 h-6 object-contain" />
+                <img src="/logo2.png" alt="Tatvarth Logo" className="w-6 h-6 object-contain brand-logo" />
               </div>
               <div className="font-extrabold text-xl font-display tracking-tight text-slate-900 dark:text-textPrimary">
                 Tatvarth<span className="text-primary font-bold">StockWatch</span>
@@ -254,7 +261,7 @@ export default function PublicBasketPage() {
           <Link to="/" className="flex items-center gap-3.5 group">
             <div className="relative w-11 h-11 rounded-2xl flex items-center justify-center bg-white dark:bg-[#18181b] shadow-md border border-slate-200 dark:border-border/80 transition-transform duration-300 group-hover:scale-105">
               <div className="absolute inset-0 rounded-2xl bg-primary/25 blur-md -z-10 opacity-70 group-hover:opacity-100 transition-opacity" />
-              <img src="/logo2.png" alt="Tatvarth Logo" className="w-7 h-7 object-contain" />
+              <img src="/logo2.png" alt="Tatvarth Logo" className="w-7 h-7 object-contain brand-logo" />
             </div>
             <div>
               <div className="text-xl sm:text-2xl font-extrabold font-display tracking-tight leading-none text-slate-900 dark:text-textPrimary">

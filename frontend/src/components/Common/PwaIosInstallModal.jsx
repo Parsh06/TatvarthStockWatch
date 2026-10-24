@@ -29,8 +29,8 @@ export default function PwaIosInstallModal({ isOpen, onClose }) {
 
           {/* Header */}
           <div className="flex items-center gap-3 mb-5">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20 p-2">
-              <img src="/logo2.png" alt="StockWatch" className="w-full h-full object-contain" />
+            <div className="w-12 h-12 rounded-2xl bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-border/80 flex items-center justify-center shadow-md p-2 shrink-0">
+              <img src="/logo2.png" alt="StockWatch" className="w-full h-full object-contain brand-logo" />
             </div>
             <div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">

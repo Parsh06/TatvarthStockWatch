@@ -51,10 +51,17 @@ export default function AppLayout({ children }) {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
 
   useEffect(() => {
-    if (theme === 'dark') {
+    const isDark = theme === 'dark'
+    if (isDark) {
       document.documentElement.classList.add('dark')
+      document.getElementById('app-manifest')?.setAttribute('href', '/manifest-dark.json')
+      document.getElementById('app-favicon')?.setAttribute('href', '/logo2.png')
+      document.getElementById('apple-touch-icon')?.setAttribute('href', '/apple-touch-icon-dark.png')
     } else {
       document.documentElement.classList.remove('dark')
+      document.getElementById('app-manifest')?.setAttribute('href', '/manifest.json')
+      document.getElementById('app-favicon')?.setAttribute('href', '/logo2-black.png')
+      document.getElementById('apple-touch-icon')?.setAttribute('href', '/apple-touch-icon.png')
     }
     localStorage.setItem('theme', theme)
   }, [theme])
@@ -113,8 +120,8 @@ export default function AppLayout({ children }) {
       {!isMd && (
         <div className="fixed top-0 left-0 right-0 h-16 bg-surface/80 backdrop-blur-xl border-b border-border flex items-center justify-between px-4 z-20 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-white/5 border border-border shadow-inner">
-              <img src="/logo2.png" alt="Logo" className="w-5 h-5 object-contain" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-slate-100 dark:bg-white/5 border border-border shadow-inner">
+              <img src="/logo2.png" alt="Logo" className="w-5 h-5 object-contain brand-logo" />
             </div>
             <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-400 tracking-tight">Tatvarth</span>
           </div>

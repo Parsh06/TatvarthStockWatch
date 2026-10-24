@@ -66,7 +66,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       {/* Logo */}
       <div className={clsx('flex items-center h-[72px] border-b border-border px-4', collapsed ? 'justify-center' : 'gap-3')}>
         <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-100 dark:bg-white/5 shadow-sm border border-slate-200/80 dark:border-white/5">
-          <img src="/logo2.png" alt="Logo" className="w-6 h-6 object-contain" />
+          <img src="/logo2.png" alt="Logo" className="w-6 h-6 object-contain brand-logo" />
         </div>
         {!collapsed && <span className="font-bold text-textPrimary text-lg tracking-tight">Tatvarth</span>}
       </div>

@@ -335,16 +335,30 @@ export default function SettingsPage() {
     setCurrentTheme(newTheme)
     localStorage.setItem('theme', newTheme)
     const root = document.documentElement
+    let isDark = false
     if (newTheme === 'dark') {
       root.classList.add('dark')
+      isDark = true
     } else if (newTheme === 'light') {
       root.classList.remove('dark')
+      isDark = false
     } else {
       if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
         root.classList.add('dark')
+        isDark = true
       } else {
         root.classList.remove('dark')
+        isDark = false
       }
+    }
+    if (isDark) {
+      document.getElementById('app-manifest')?.setAttribute('href', '/manifest-dark.json')
+      document.getElementById('app-favicon')?.setAttribute('href', '/logo2.png')
+      document.getElementById('apple-touch-icon')?.setAttribute('href', '/apple-touch-icon-dark.png')
+    } else {
+      document.getElementById('app-manifest')?.setAttribute('href', '/manifest.json')
+      document.getElementById('app-favicon')?.setAttribute('href', '/logo2-black.png')
+      document.getElementById('apple-touch-icon')?.setAttribute('href', '/apple-touch-icon.png')
     }
     toast.success(`Theme switched to ${newTheme.toUpperCase()}`)
   }

@@ -211,3 +211,15 @@
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
+
+/* Brand Logo: Solid high-contrast black by default in Light Mode, natural metallic/gold in Dark Mode */
+.brand-logo,
+img.brand-logo {
+  filter: brightness(0);
+  transition: filter 0.25s ease, opacity 0.25s ease;
+}
+
+.dark .brand-logo,
+.dark img.brand-logo {
+  filter: none;
+}

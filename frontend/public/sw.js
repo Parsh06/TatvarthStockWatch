@@ -11,12 +11,21 @@
  * - Cache version management
  */
 
-const CACHE_NAME = 'stockwatch-sw-v3';
+const CACHE_NAME = 'stockwatch-sw-v4';
 const APP_SHELL_ASSETS = [
   '/',
   '/index.html',
   '/logo2.png',
+  '/logo2-black.png',
+  '/apple-touch-icon.png',
+  '/apple-touch-icon-dark.png',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-maskable-192.png',
+  '/icon-maskable-512.png',
+  '/icon-monochrome.png',
   '/manifest.json',
+  '/manifest-dark.json',
 ];
 const APP_ORIGIN = self.location.origin;
 const APP_URL = self.location.origin;
