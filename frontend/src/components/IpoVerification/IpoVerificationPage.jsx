@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   ShieldCheck, RefreshCw, Search, Plus, Trash2, X, ChevronDown, 
@@ -19,6 +20,12 @@ import UpgradePromptModal from '../Plans/UpgradePromptModal'
 const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]$/
 
 export default function IpoVerificationPage() {
+  const [searchParams] = useSearchParams()
+  const querySymbol = searchParams.get('symbol')
+  const queryRegistrar = searchParams.get('registrar')
+  const queryAuto = searchParams.get('auto') === '1' || searchParams.get('autoCheck') === '1'
+  const autoCheckedRef = useRef(false)
+
   // ── State ───────────────────────────────────────────────────────────────────
   const [symbols, setSymbols] = useState([])
   const [symbolsLoading, setSymbolsLoading] = useState(false)
@@ -86,7 +93,16 @@ export default function IpoVerificationPage() {
       }))
       setSymbols(fetched)
       if (fetched.length > 0) {
-        setSelectedSymbol(fetched[0])
+        let matched = null
+        if (querySymbol) {
+          const cleanQ = querySymbol.trim().toUpperCase()
+          matched = fetched.find(s => 
+            String(s.clientId || '').toUpperCase() === cleanQ ||
+            String(s.symbol || '').toUpperCase() === cleanQ ||
+            String(s.name || '').toUpperCase() === cleanQ
+          )
+        }
+        setSelectedSymbol(matched || fetched[0])
       } else {
         setSelectedSymbol(null)
       }
@@ -98,7 +114,7 @@ export default function IpoVerificationPage() {
     } finally {
       setSymbolsLoading(false)
     }
-  }, [])
+  }, [querySymbol])
 
   useEffect(() => { 
     fetchSymbols() 
@@ -403,6 +419,15 @@ export default function IpoVerificationPage() {
       abortControllerRef.current = null
     }
   }
+
+  // ── Automated Follow-up Trigger (via notification deep-link ?auto=1) ─────────
+  useEffect(() => {
+    if (queryAuto && selectedSymbol && applicants.length > 0 && !autoCheckedRef.current && !bulkVerifying) {
+      autoCheckedRef.current = true
+      toast('Auto-checking allotment status for saved family PANs...', { icon: '🔍' })
+      handleBulkVerify()
+    }
+  }, [queryAuto, selectedSymbol, applicants, bulkVerifying])
 
   // ── Stop / Cancel Verification ──────────────────────────────────────────────
   function handleStopVerification() {

@@ -5,14 +5,24 @@
  *
  * Event-Driven Automated IPO Allotment Family PAN Verification Engine
  *
- * When a new IPO allotment announcement goes live on ANY registrar
- * (Link Intime / MUFG, KFintech, BigShare), this service is triggered ONCE.
- * It queries registrar records for all registered users' saved family PANs,
- * delivering rich, multi-tiered notifications (Allotted vs Not Allotted vs Not Applied).
+ * Two-Stage Architecture:
+ * 1. Stage 1 (Immediate Broadcast):
+ *    When a new IPO allotment symbol is discovered & stored in MongoDB,
+ *    broadcasts an immediate announcement notification to all opted-in users:
+ *    "📢 IPO Allotment Live: [IPO Name]. Check your allotment now."
  *
- * Storage Policy: Zero permanent storage footprint.
- * Execution locks and runs are stored in MongoDB Atlas `ipo_auto_verifications`
- * with a 24-hour TTL index (expireAfterSeconds: 86400) and cleaned at midnight.
+ * 2. Stage 2 (5-Minute Automated Family PAN Verification):
+ *    Indian registrars (KFintech, Link Intime/MUFG, BigShare) take 2-5 minutes
+ *    after updating dropdown listings to index applicant PAN records.
+ *    Enqueues a durable 5-minute delayed check in MongoDB `ipo_scheduled_checks`
+ *    and arms an in-process timer. When executed, it decrypts all saved family PANs,
+ *    queries the registrar, and dispatches personalized tiered notifications:
+ *    - Tier 1: 🎉 Allotment Confirmed! (Shares > 0)
+ *    - Tier 2: 📋 Applied, Not Allotted (Refund/mandate release notice)
+ *    - Tier 3: ℹ️ No Records Found (Digest / silent skip per user preferences)
+ *
+ * Zero permanent storage footprint:
+ * Ephemeral locks and scheduled jobs use MongoDB Atlas native TTL auto-purge (86400s).
  */
 
 const axios = require('axios');
@@ -102,30 +112,326 @@ function getIstDateStr() {
 }
 
 /**
- * Trigger automated allotment check for all users with family PANs upon new IPO release.
+ * Clean and normalize registrar name
+ */
+function normalizeRegistrarName(registrar) {
+  const reg = String(registrar || 'KFINTECH').toUpperCase().trim();
+  if (reg === 'LINKINTIME' || reg === 'LINK_INTIME' || reg === 'MUFG') return 'MUFG';
+  if (reg === 'BIGSHARE' || reg === 'BIG_SHARE') return 'BIGSHARE';
+  return 'KFINTECH';
+}
+
+/**
+ * Stage 1: Broadcast Immediate Announcement to All Users
+ * Notifies all active opted-in users that a new IPO allotment has gone live on a registrar.
  *
  * @param {Object} params
- * @param {string} params.symbol - IPO symbol or identifier (e.g. "TATA_TECH" or "543335")
+ * @param {string} params.symbol - IPO symbol or identifier
+ * @param {string} params.registrar - "KFINTECH" | "MUFG" | "BIGSHARE"
+ * @param {string} [params.ipoName] - Human-readable IPO company name
+ * @returns {Promise<{ sentPush: number, sentTelegram: number, totalUsers: number }>}
+ */
+async function broadcastStage1IpoAllotment({ symbol, registrar, ipoName }) {
+  const reg = normalizeRegistrarName(registrar);
+  const rawSymbol = String(symbol || '').trim();
+  const displayName = ipoName || rawSymbol;
+  const regDisplay = reg === 'MUFG' ? 'Link Intime (MUFG)' : reg === 'BIGSHARE' ? 'BigShare Online' : 'KFintech';
+
+  console.log(`[IPO Dispatcher:Stage1] Broadcasting live allotment notice for "${displayName}" (${regDisplay})...`);
+
+  const stats = { sentPush: 0, sentTelegram: 0, totalUsers: 0 };
+  const admin = require('firebase-admin');
+
+  const pushTitle = `📢 IPO Allotment Live: ${displayName}`;
+  const pushBody = `Allotment status for ${displayName} is now active on ${regDisplay}. Check your allotment on StockWatch now!`;
+  const pushUrl = `/ipo-check?symbol=${encodeURIComponent(rawSymbol)}&registrar=${reg}`;
+
+  let pageToken;
+  try {
+    do {
+      const result = await admin.auth().listUsers(1000, pageToken);
+      for (const user of result.users) {
+        stats.totalUsers++;
+        const uid = user.uid;
+
+        try {
+          const prefs = await prefsStore.getPrefs(uid);
+          if (prefs && (prefs.notifyIpoAllotment === false || prefs.pushEnabled === false)) {
+            continue;
+          }
+
+          // 1. Web Push Notification
+          const pushRes = await sendWebPushToUser(uid, {
+            title: pushTitle,
+            body: pushBody,
+            url: pushUrl,
+            tag: `ipo-live-${reg}-${rawSymbol}`,
+            type: 'ipo-allotment-live',
+            actions: [
+              { action: 'check-allotment', title: 'Check Allotment' },
+              { action: 'dismiss', title: 'Dismiss' },
+            ],
+          }).catch(() => ({ sent: 0 }));
+
+          if (pushRes && pushRes.sent > 0) {
+            stats.sentPush += pushRes.sent;
+          }
+
+          // 2. Telegram Alert (per-user if enabled)
+          const targetChat = prefs?.telegramChatId || (prefs?.telegramEnabled !== false ? process.env.TELEGRAM_CHAT_ID : null);
+          if (targetChat && isTelegramConfigured(targetChat) && prefs?.telegramEnabled !== false) {
+            let tgText = `📢 *IPO ALLOTMENT LIVE!*\n\n`;
+            tgText += `Company: *${displayName}*\n`;
+            tgText += `Registrar: *${regDisplay}*\n`;
+            tgText += `Status: Allotment results are now available for verification.\n\n`;
+            tgText += `👉 [Check Allotment on StockWatch](https://tatvarthstockwatch.web.app/ipo-check?symbol=${encodeURIComponent(rawSymbol)}&registrar=${reg})`;
+
+            await sendTelegram(targetChat, tgText).catch(() => {});
+            stats.sentTelegram++;
+          }
+
+          // 3. Save to User Alerts History
+          await appendAlert(uid, {
+            id: `IPO_LIVE_${reg}_${rawSymbol}_${Date.now()}`,
+            type: 'IPO_ALLOTMENT_LIVE',
+            title: pushTitle,
+            message: pushBody,
+            symbol: rawSymbol,
+            registrar: reg,
+            triggeredAt: new Date().toISOString(),
+          }).catch(() => {});
+
+        } catch (uErr) {
+          console.warn(`[IPO Dispatcher:Stage1] Error notifying uid=${uid}:`, uErr.message);
+        }
+      }
+      pageToken = result.pageToken;
+    } while (pageToken);
+  } catch (scanErr) {
+    console.error('[IPO Dispatcher:Stage1] User scan error:', scanErr.message);
+  }
+
+  console.log(`[IPO Dispatcher:Stage1] Completed broadcast for "${displayName}": Pushes=${stats.sentPush}, Telegrams=${stats.sentTelegram}, UsersEvaluated=${stats.totalUsers}`);
+  return stats;
+}
+
+/**
+ * Stage 2: Schedule 5-Minute Delayed Family PAN Auto-Verification
+ *
+ * @param {Object} params
+ * @param {string} params.symbol
+ * @param {string} params.registrar
+ * @param {string} [params.ipoName]
+ * @param {number} [params.delayMs=300000] - Default 5 minutes
+ */
+async function scheduleStage2FamilyPanCheck({ symbol, registrar, ipoName, delayMs = 5 * 60 * 1000 }) {
+  const reg = normalizeRegistrarName(registrar);
+  const rawSymbol = String(symbol || '').trim();
+  const displayName = ipoName || rawSymbol;
+  const jobId = `${reg}_${rawSymbol}`;
+  const scheduledFor = new Date(Date.now() + delayMs);
+
+  console.log(`[IPO Dispatcher:Stage2] Scheduling 5-minute auto family PAN check for "${displayName}" (${reg}) at ${scheduledFor.toISOString()}...`);
+
+  // 1. Persist in MongoDB Atlas for durability across restarts
+  const mdb = await getDb();
+  if (mdb) {
+    try {
+      const col = mdb.collection('ipo_scheduled_checks');
+      await col.createIndex({ scheduledFor: 1 }, { background: true }).catch(() => {});
+      await col.createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400, background: true }).catch(() => {});
+
+      await col.updateOne(
+        { _id: jobId },
+        {
+          $set: {
+            symbol: rawSymbol,
+            registrar: reg,
+            ipoName: displayName,
+            scheduledFor,
+            status: 'PENDING',
+            updatedAt: new Date(),
+          },
+          $setOnInsert: {
+            createdAt: new Date(),
+          }
+        },
+        { upsert: true }
+      );
+    } catch (schedErr) {
+      console.warn('[IPO Dispatcher:Stage2] MongoDB schedule warning:', schedErr.message);
+    }
+  }
+
+  // 2. Set In-Process Timer (for instant local / worker execution at +5 mins)
+  setTimeout(async () => {
+    try {
+      console.log(`[IPO Dispatcher:Stage2] 5-minute timer fired for "${displayName}" (${reg}). Executing automated verification...`);
+      await triggerAutoAllotmentCheck({
+        symbol: rawSymbol,
+        registrar: reg,
+        ipoName: displayName,
+        force: true, // Bypass lock so 5m follow-up always runs
+        scheduledCheckId: jobId,
+      });
+    } catch (timerErr) {
+      console.error(`[IPO Dispatcher:Stage2] Timer check error for ${jobId}:`, timerErr.message);
+    }
+  }, Math.max(1000, delayMs)).unref();
+
+  return { scheduled: true, jobId, scheduledFor };
+}
+
+/**
+ * Unified Dispatcher: Stage 1 (Immediate Broadcast) + Stage 2 (5-Min Delayed Family Check)
+ *
+ * @param {Object} params
+ * @param {Object|string} params.ipo - IPO object or symbol
+ * @param {string} params.registrar - "KFINTECH" | "MUFG" | "BIGSHARE"
+ * @param {boolean} [params.force=false]
+ * @param {boolean} [params.skipDelay=false] - If true, runs Stage 2 immediately (useful for manual admin tests)
+ */
+async function dispatchNewIpoAllotment({ ipo, registrar, force = false, skipDelay = false }) {
+  const reg = normalizeRegistrarName(registrar);
+  const symbol = typeof ipo === 'string' ? ipo : (ipo.clientId || ipo.symbol);
+  const ipoName = typeof ipo === 'object' ? (ipo.name || ipo.symbol) : symbol;
+
+  console.log(`[IPO Dispatcher] Initiating 2-Stage Allotment Pipeline for "${ipoName}" (${reg})...`);
+
+  // Stage 1: Immediate Broadcast to All Users
+  const stage1Stats = await broadcastStage1IpoAllotment({
+    symbol,
+    registrar: reg,
+    ipoName,
+  });
+
+  // Stage 2: Family PAN Auto-Verification
+  let stage2Result;
+  if (skipDelay) {
+    console.log(`[IPO Dispatcher] skipDelay=true: Executing Stage 2 family PAN check immediately...`);
+    stage2Result = await triggerAutoAllotmentCheck({
+      symbol,
+      registrar: reg,
+      ipoName,
+      force,
+    });
+  } else {
+    stage2Result = await scheduleStage2FamilyPanCheck({
+      symbol,
+      registrar: reg,
+      ipoName,
+      delayMs: 5 * 60 * 1000,
+    });
+  }
+
+  return {
+    success: true,
+    symbol,
+    registrar: reg,
+    ipoName,
+    stage1: stage1Stats,
+    stage2: stage2Result,
+  };
+}
+
+/**
+ * Process Overdue Pending Scheduled Checks
+ * Called on every cron tick to process any scheduled checks whose scheduledFor <= now.
+ */
+async function processPendingScheduledChecks() {
+  const mdb = await getDb();
+  if (!mdb) return { processed: 0 };
+
+  try {
+    const col = mdb.collection('ipo_scheduled_checks');
+    const now = new Date();
+
+    const pendingJobs = await col.find({
+      status: 'PENDING',
+      scheduledFor: { $lte: now },
+    }).limit(5).toArray();
+
+    if (pendingJobs.length === 0) return { processed: 0 };
+
+    console.log(`[IPO Scheduled Engine] Found ${pendingJobs.length} mature 5-minute scheduled check(s) to process.`);
+    let processed = 0;
+
+    for (const job of pendingJobs) {
+      const lockRes = await col.updateOne(
+        { _id: job._id, status: 'PENDING' },
+        { $set: { status: 'PROCESSING', startedAt: new Date() } }
+      );
+
+      if (lockRes.modifiedCount === 0) continue; // Concurrently claimed by another worker
+
+      try {
+        console.log(`[IPO Scheduled Engine] Processing overdue check for "${job.ipoName}" (${job.registrar})...`);
+        const result = await triggerAutoAllotmentCheck({
+          symbol: job.symbol,
+          registrar: job.registrar,
+          ipoName: job.ipoName,
+          force: true,
+          scheduledCheckId: job._id,
+        });
+
+        await col.updateOne(
+          { _id: job._id },
+          {
+            $set: {
+              status: 'COMPLETED',
+              completedAt: new Date(),
+              result,
+            }
+          }
+        );
+        processed++;
+      } catch (execErr) {
+        console.error(`[IPO Scheduled Engine] Execution error for ${job._id}:`, execErr.message);
+        await col.updateOne(
+          { _id: job._id },
+          {
+            $set: {
+              status: 'FAILED',
+              failedAt: new Date(),
+              error: execErr.message,
+            }
+          }
+        );
+      }
+    }
+
+    return { processed };
+  } catch (err) {
+    console.warn('[IPO Scheduled Engine] Error processing scheduled checks:', err.message);
+    return { processed: 0, error: err.message };
+  }
+}
+
+/**
+ * Trigger automated allotment check for all users with family PANs.
+ *
+ * @param {Object} params
+ * @param {string} params.symbol - IPO symbol or identifier
  * @param {string} params.registrar - "MUFG" | "LINKINTIME" | "KFINTECH" | "BIGSHARE"
  * @param {string} [params.ipoName] - Human-readable name of the IPO
  * @param {boolean} [params.force] - Bypass 24h deduplication lock for manual admin testing
+ * @param {string} [params.scheduledCheckId] - Optional scheduled check identifier to mark completed
  */
-async function triggerAutoAllotmentCheck({ symbol, registrar, ipoName, force = false }) {
+async function triggerAutoAllotmentCheck({ symbol, registrar, ipoName, force = false, scheduledCheckId = null }) {
   if (!symbol) throw new Error('IPO symbol is required for auto allotment verification');
-  const reg = String(registrar || 'KFINTECH').toUpperCase();
+  const reg = normalizeRegistrarName(registrar);
   const rawSymbol = String(symbol).trim();
   const displayName = ipoName || rawSymbol;
   const dateIST = getIstDateStr();
   const lockKey = `${reg}_${rawSymbol}_${dateIST}`;
 
-  console.log(`[IPO Auto Check] Starting verification trigger for "${displayName}" (${reg})...`);
+  console.log(`[IPO Auto Check] Starting family PAN verification trigger for "${displayName}" (${reg})...`);
 
   // 1. Check & Acquire 24-Hour Ephemeral Lock in MongoDB Atlas
   const mdb = await getDb();
   if (mdb) {
     try {
       const col = mdb.collection('ipo_auto_verifications');
-      // Ensure 24-hour TTL index
       await col.createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 }).catch(() => {});
 
       if (!force) {
@@ -160,8 +466,6 @@ async function triggerAutoAllotmentCheck({ symbol, registrar, ipoName, force = f
   try {
     const snap = await db.collectionGroup('familyPans').get();
     snap.forEach((doc) => {
-      // doc.ref.parent is CollectionReference('familyPans')
-      // doc.ref.parent.parent is DocumentReference('users/{uid}')
       const userRef = doc.ref.parent.parent;
       if (userRef && userRef.id) {
         const uid = userRef.id;
@@ -185,7 +489,7 @@ async function triggerAutoAllotmentCheck({ symbol, registrar, ipoName, force = f
     return { success: true, usersChecked: 0, allotmentsFound: 0 };
   }
 
-  console.log(`[IPO Auto Check] Verifying across ${usersWithPans.size} user account(s)...`);
+  console.log(`[IPO Auto Check] Verifying across ${usersWithPans.size} user account(s) with saved family PANs...`);
 
   let totalUsersChecked = 0;
   let totalAllotmentsFound = 0;
@@ -334,7 +638,7 @@ async function triggerAutoAllotmentCheck({ symbol, registrar, ipoName, force = f
             tgText += `• *${item.name}*: ${item.shares} shares allotted (Applied: ${item.applied})\n`;
             if (item.dpId !== 'N/A') tgText += `  └ DP/Client: \`${item.dpId}\` | App: \`${item.appNo}\`\n`;
           }
-          tgText += `\n👉 [Open Full Details in StockWatch](https://tatvarthstockwatch.web.app/ipo-check?symbol=${encodeURIComponent(rawSymbol)})`;
+          tgText += `\n👉 [Open Full Details in StockWatch](https://tatvarthstockwatch.web.app/ipo-check?symbol=${encodeURIComponent(rawSymbol)}&registrar=${reg}&auto=1)`;
           await sendTelegram(targetChat, tgText).catch(() => {});
         }
 
@@ -392,18 +696,16 @@ async function triggerAutoAllotmentCheck({ symbol, registrar, ipoName, force = f
       } else {
         // TIER 3: NOT APPLIED (Record Not Found on Registrar)
         totalNotAppliedUsers++;
-        // If user set notifyOnlyIfApplied: true, do not send noise!
         if (prefs.notifyOnlyIfApplied === true) {
-          // Quietly skip — user only wants alerts when they actually applied
+          // User requested alerts only when they actually applied — quiet skip
         } else {
-          // Low-priority single informational update
-          const pushTitle = `📢 IPO Allotment Live: ${displayName}`;
-          const pushBody = `Allotment is live on ${reg}. No application found for your saved family PANs.`;
+          const pushTitle = `ℹ️ Family Allotment Check Completed: ${displayName}`;
+          const pushBody = `Allotment checked on ${reg}. No active applications found for your saved family PANs.`;
           await sendWebPushToUser(uid, {
             title: pushTitle,
             body: pushBody,
             url: `/ipo-check?symbol=${encodeURIComponent(rawSymbol)}&registrar=${reg}`,
-            tag: `ipo-allotment-live-${rawSymbol}`,
+            tag: `ipo-allotment-checked-${rawSymbol}`,
             type: 'ipo-allotment-live',
           }).catch(() => {});
         }
@@ -448,7 +750,144 @@ async function triggerAutoAllotmentCheck({ symbol, registrar, ipoName, force = f
   };
 }
 
+/**
+ * On-Demand Family PAN Verification for a Single User
+ * Allows a logged-in user to check all their family PANs for any IPO on-demand.
+ *
+ * @param {Object} params
+ * @param {string} params.uid - User ID
+ * @param {string} params.symbol - IPO symbol
+ * @param {string} params.registrar - "MUFG" | "KFINTECH" | "BIGSHARE"
+ */
+async function checkUserFamilyPans({ uid, symbol, registrar }) {
+  if (!uid || !symbol) throw new Error('uid and symbol are required');
+  const reg = normalizeRegistrarName(registrar);
+  const rawSymbol = String(symbol).trim();
+
+  // 1. Fetch user's saved family PANs
+  const collRef = db.collection('users').doc(uid).collection('familyPans');
+  const snap = await collRef.get();
+  if (snap.empty) {
+    return { success: true, count: 0, applicants: [], summary: { total: 0, allotted: 0, notAllotted: 0, notFound: 0 } };
+  }
+
+  const validApplicants = [];
+  snap.forEach(doc => {
+    const data = doc.data();
+    try {
+      const plainPan = decryptPan({
+        encrypted: data.panEncrypted,
+        iv: data.panIv,
+        authTag: data.panAuthTag,
+      });
+      if (plainPan) {
+        validApplicants.push({
+          id: doc.id,
+          name: data.name || 'Family Member',
+          pan: plainPan,
+          panLast4: data.panLast4 || plainPan.slice(-4),
+        });
+      }
+    } catch {
+      // ignore decryption failure
+    }
+  });
+
+  if (validApplicants.length === 0) {
+    return { success: true, count: 0, applicants: [], summary: { total: 0, allotted: 0, notAllotted: 0, notFound: 0 } };
+  }
+
+  // 2. Execute verification concurrently
+  const tasks = validApplicants.map((app) => {
+    return async () => {
+      try {
+        let normalized;
+        if (reg === 'MUFG') {
+          const mufgXml = await queryMufg(rawSymbol, app.pan);
+          normalized = await normalizeMufgResponse(mufgXml, app.pan);
+        } else if (reg === 'BIGSHARE') {
+          const bigData = await queryBigshare(rawSymbol, app.pan);
+          normalized = normalizeBigshareResponse(bigData, app.pan);
+        } else {
+          let kfinRes;
+          try {
+            kfinRes = await queryKfintechDirect(rawSymbol, app.pan);
+          } catch (kErr) {
+            kfinRes = { data: [] };
+          }
+          normalized = normalizeKfinResponse(kfinRes);
+        }
+
+        const records = normalized.records || [];
+        let sharesAllotted = 0;
+        let appliedShares = 0;
+        let allotmentStatus = 'Record Not Found';
+        let isAllotted = false;
+
+        if (records.length > 0) {
+          const rec = records[0];
+          sharesAllotted = Number(rec.allottedShares || 0);
+          appliedShares = Number(rec.appliedShares || 0);
+          isAllotted = sharesAllotted > 0 || String(rec.allotmentStatus).toLowerCase() === 'allotted';
+          allotmentStatus = isAllotted ? 'Allotted' : (rec.allotmentStatus || 'Not Allotted');
+        }
+
+        return {
+          id: app.id,
+          name: app.name,
+          panLast4: app.panLast4,
+          status: records.length > 0 ? (isAllotted ? 'allotted' : 'not_allotted') : 'not_found',
+          allotmentStatus,
+          sharesAllotted,
+          appliedShares,
+          records,
+        };
+      } catch (err) {
+        return {
+          id: app.id,
+          name: app.name,
+          panLast4: app.panLast4,
+          status: 'error',
+          error: err.message,
+          records: [],
+        };
+      }
+    };
+  });
+
+  const results = await runTasksWithConcurrency(tasks, MAX_CONCURRENT, INTER_REQUEST_DELAY_MS);
+
+  let allotted = 0, notAllotted = 0, notFound = 0, errors = 0;
+  for (const r of results) {
+    if (r.status === 'allotted') allotted++;
+    else if (r.status === 'not_allotted') notAllotted++;
+    else if (r.status === 'not_found') notFound++;
+    else errors++;
+  }
+
+  return {
+    success: true,
+    symbol: rawSymbol,
+    registrar: reg,
+    count: results.length,
+    applicants: results,
+    summary: {
+      total: results.length,
+      allotted,
+      notAllotted,
+      notFound,
+      errors,
+    }
+  };
+}
+
 module.exports = {
   triggerAutoAllotmentCheck,
   queryKfintechDirect,
+  broadcastStage1IpoAllotment,
+  scheduleStage2FamilyPanCheck,
+  dispatchNewIpoAllotment,
+  processPendingScheduledChecks,
+  checkUserFamilyPans,
+  normalizeRegistrarName,
 };

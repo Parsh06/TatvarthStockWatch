@@ -167,9 +167,32 @@ module.exports = function (verifyToken) {
     const bigshareList = bigshareRes.status === 'fulfilled' && Array.isArray(bigshareRes.value) ? bigshareRes.value : [];
 
     try {
-      if (kfinList.length > 0) await saveIpoSymbols(kfinList, 'KFINTECH');
-      if (mufgList.length > 0) await saveIpoSymbols(mufgList, 'MUFG');
-      if (bigshareList.length > 0) await saveIpoSymbols(bigshareList, 'BIGSHARE');
+      const { dispatchNewIpoAllotment } = require('../lib/ipoAutoVerificationService');
+      const { markNotificationsSent } = require('../lib/ipoStore');
+
+      const newKfin = kfinList.length > 0 ? await saveIpoSymbols(kfinList, 'KFINTECH') : [];
+      if (newKfin.length > 0) {
+        for (const ipo of newKfin) {
+          await dispatchNewIpoAllotment({ ipo, registrar: 'KFINTECH' }).catch(() => {});
+        }
+        await markNotificationsSent(newKfin, 'KFINTECH').catch(() => {});
+      }
+
+      const newMufg = mufgList.length > 0 ? await saveIpoSymbols(mufgList, 'MUFG') : [];
+      if (newMufg.length > 0) {
+        for (const ipo of newMufg) {
+          await dispatchNewIpoAllotment({ ipo, registrar: 'MUFG' }).catch(() => {});
+        }
+        await markNotificationsSent(newMufg, 'MUFG').catch(() => {});
+      }
+
+      const newBigshare = bigshareList.length > 0 ? await saveIpoSymbols(bigshareList, 'BIGSHARE') : [];
+      if (newBigshare.length > 0) {
+        for (const ipo of newBigshare) {
+          await dispatchNewIpoAllotment({ ipo, registrar: 'BIGSHARE' }).catch(() => {});
+        }
+        await markNotificationsSent(newBigshare, 'BIGSHARE').catch(() => {});
+      }
     } catch (dbErr) {
       console.error('[Unified Symbols] MongoDB sync error:', dbErr.message);
     }
@@ -428,6 +451,30 @@ module.exports = function (verifyToken) {
         success: false,
         error: 'Unable to connect to verification service: ' + err.message,
       });
+    }
+  });
+
+  // ── POST /api/ipo/check-my-family ───────────────────────────────────────────
+  router.post('/check-my-family', verifyToken, async (req, res) => {
+    try {
+      const { symbol, registrar } = req.body || {};
+      if (!symbol) {
+        return res.status(400).json({ success: false, error: 'IPO symbol is required' });
+      }
+
+      const { symbol: resolvedSym, registrar: resolvedReg } = await resolveSymbolAndRegistrar(symbol, registrar);
+      const { checkUserFamilyPans } = require('../lib/ipoAutoVerificationService');
+
+      const result = await checkUserFamilyPans({
+        uid: req.uid,
+        symbol: resolvedSym,
+        registrar: resolvedReg,
+      });
+
+      return res.json(result);
+    } catch (err) {
+      console.error('[IPO Check My Family] Error:', err.message);
+      return res.status(500).json({ success: false, error: err.message });
     }
   });
 

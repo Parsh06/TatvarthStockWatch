@@ -422,7 +422,8 @@ async function processInvertedAnnouncements({ newAnnouncements, classified, stat
 /**
  * processNewIpos
  *
- * Process and dispatch notifications for newly discovered IPOs.
+ * Process and dispatch notifications for newly discovered IPOs using
+ * the unified two-stage allotment pipeline (Stage 1 Broadcast + Stage 2 5-Min Family Check).
  *
  * @param {Object[]} newIpos — Genuinely new IPO objects
  * @returns {Promise<Object>} — Summary stats
@@ -432,106 +433,24 @@ async function processNewIpos(newIpos) {
   if (!Array.isArray(newIpos) || newIpos.length === 0) return stats;
 
   try {
-    const admin = require('firebase-admin');
-    const prefsStore = require('./prefsStore');
     const { markNotificationsSent } = require('./ipoStore');
-    const { sendTelegramIpoAlert, isConfigured: isTelegramOk } = require('./telegramNotifier');
-    const { sendWebPushToUser } = require('./webPushNotifier');
-    const { acquireDedupLock } = require('./notificationDedup');
-    const { triggerAutoAllotmentCheck } = require('./ipoAutoVerificationService');
-    const db = await getDb();
+    const { dispatchNewIpoAllotment } = require('./ipoAutoVerificationService');
 
-    // Trigger automated family PAN check & tiered notifications for new KFintech IPOs
     for (const ipo of newIpos) {
       try {
-        await triggerAutoAllotmentCheck({
-          symbol: ipo.clientId || ipo.symbol,
-          registrar: 'KFINTECH',
-          ipoName: ipo.name || ipo.symbol,
+        const res = await dispatchNewIpoAllotment({
+          ipo,
+          registrar: ipo.source || 'KFINTECH',
         });
-      } catch (autoErr) {
-        console.error('[NotifEngine:IPO] KFin auto-verification error:', autoErr.message);
+        if (res && res.stage1) {
+          stats.pushSent += (res.stage1.sentPush || 0);
+          stats.telegramSent += (res.stage1.sentTelegram || 0);
+        }
+      } catch (dispErr) {
+        console.error('[NotifEngine:IPO] Allotment dispatch error:', dispErr.message);
+        stats.failed++;
       }
     }
-
-    let pageToken;
-    do {
-      const result = await admin.auth().listUsers(100, pageToken);
-
-      for (const user of result.users) {
-        const uid = user.uid;
-        let prefs;
-        try {
-          prefs = await prefsStore.getPrefs(uid);
-        } catch {
-          continue;
-        }
-
-        // Skip user if they explicitly disabled IPO allotment alerts
-        if (prefs.notifyIpoAllotment === false) continue;
-
-        // User creation timestamp in ms
-        const userCreatedAtMs = new Date(user.metadata?.creationTime || 0).getTime();
-
-        for (const ipo of newIpos) {
-          const symbol = ipo.symbol;
-          const ipoSeenMs = new Date(ipo.firstSeenAt || ipo.createdAt || Date.now()).getTime();
-
-          // Safeguard for newly onboarded users:
-          // If the user's account was created AFTER this IPO was first discovered,
-          // do NOT bombard the new user with past IPO notifications.
-          if (userCreatedAtMs > 0 && userCreatedAtMs > (ipoSeenMs + 5 * 60 * 1000)) {
-            continue;
-          }
-
-          const fakeAnn = { id: `IPO_NEW_${symbol}` };
-
-          // Per-user atomic dedup lock
-          let acquired = false;
-          try {
-            acquired = await acquireDedupLock(db, uid, fakeAnn);
-          } catch {
-            continue;
-          }
-
-          if (!acquired) continue;
-
-          // Dispatch Web Push
-          try {
-            const pushRes = await sendWebPushToUser(uid, {
-              title: 'New IPO Allotment Check Available',
-              body: `${ipo.name || symbol} is now available for allotment verification.`,
-              url: '/ipo-verification',
-              tag: `ipo-${symbol}`,
-              type: 'ipo',
-              actions: [
-                { action: 'check-ipo', title: 'Check Allotment' },
-                { action: 'dismiss', title: 'Dismiss' }
-              ]
-            });
-            stats.pushSent += (pushRes.sent || 0);
-          } catch (err) {
-            console.error(`[NotifEngine:IPO] Web push failed for uid=${uid}:`, err.message);
-            stats.failed++;
-          }
-
-          // Dispatch Telegram if enabled
-          const targetChat = prefs.telegramChatId || process.env.TELEGRAM_CHAT_ID;
-          if (isTelegramOk(targetChat) && prefs.telegramEnabled !== false) {
-            try {
-              const tgRes = await sendTelegramIpoAlert(ipo, targetChat);
-              if (tgRes.sent) {
-                stats.telegramSent++;
-                await _delay(TELEGRAM_DELAY_MS);
-              }
-            } catch (err) {
-              console.error(`[NotifEngine:IPO] Telegram failed for uid=${uid}:`, err.message);
-            }
-          }
-        }
-      }
-      pageToken = result.pageToken;
-    } while (pageToken);
 
     // Update notificationSent = true in MongoDB iposymbols collection
     await markNotificationsSent(newIpos).catch((e) => console.error('[NotifEngine:IPO] Failed to mark notificationSent:', e.message));

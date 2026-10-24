@@ -273,19 +273,21 @@ async function runGlobalCronTick(options = {}) {
     ? await processNewAnnouncements(newAnnouncements)
     : { newAnnouncements: 0 };
 
-  // 4 & 6. IPO Allotment Symbol Discovery & Alert Pipeline (7:00 PM - 2:00 AM IST Weekdays Only)
+  // 4 & 6. IPO Allotment Symbol Discovery & Alert Pipeline
   let ipoStats = { newIpos: 0 };
+  const DAYTIME_REGISTRAR_CADENCE_MS = 20 * 60 * 1000;
   const inIpoWindow = isIpoAllotmentCheckWindow(new Date());
   const elapsedRegistrar = Date.now() - _lastRegistrarCheckTime;
+  const effectiveCadence = inIpoWindow ? REGISTRAR_CADENCE_MS : DAYTIME_REGISTRAR_CADENCE_MS;
   const shouldCheckRegistrars = Boolean(
     options.force ||
     options.forceRegistrars ||
-    (inIpoWindow && elapsedRegistrar >= REGISTRAR_CADENCE_MS)
+    (elapsedRegistrar >= effectiveCadence)
   );
 
   if (shouldCheckRegistrars) {
     _lastRegistrarCheckTime = Date.now();
-    const windowDesc = inIpoWindow ? 'Allotment Window (19:00 - 02:00 IST | 5m)' : 'Manual/Forced Check';
+    const windowDesc = inIpoWindow ? 'Prime Allotment Window (19:00 - 02:00 IST | 5m)' : 'Daytime/Weekend Cadence (20m)';
     console.log(`[Global Cron] Running Registrar Discovery [${windowDesc}]...`);
 
     // 4. IPO Allotment Symbol Discovery & Alert Pipeline (KFintech)
@@ -320,12 +322,20 @@ async function runGlobalCronTick(options = {}) {
     } catch (cleanErr) {
       console.error('[Global Cron] IPO cleanup error:', cleanErr.message);
     }
-  } else if (!inIpoWindow) {
-    // Dormant outside 19:00 - 02:00 IST weekdays & completely dormant on Sat/Sun
-    console.log('[Global Cron] IPO registrar checks dormant (allotments drop strictly Mon-Fri 19:00 - 02:00 IST). Daytime & weekend calls skipped.');
   } else {
-    const nextCheckMins = Math.max(1, Math.ceil((REGISTRAR_CADENCE_MS - elapsedRegistrar) / 60000));
-    console.log(`[Global Cron] IPO registrars cached (${Math.floor(elapsedRegistrar / 60000)}m elapsed < 5m). Next check in ~${nextCheckMins}m.`);
+    const nextCheckMins = Math.max(1, Math.ceil((effectiveCadence - elapsedRegistrar) / 60000));
+    console.log(`[Global Cron] IPO registrars cached (${Math.floor(elapsedRegistrar / 60000)}m elapsed < ${Math.round(effectiveCadence / 60000)}m). Next check in ~${nextCheckMins}m.`);
+  }
+
+  // 4b. Execute Any Mature 5-Minute Delayed Family PAN Auto-Verification Jobs
+  try {
+    const { processPendingScheduledChecks } = require('../lib/ipoAutoVerificationService');
+    const scheduledRes = await processPendingScheduledChecks();
+    if (scheduledRes && scheduledRes.processed > 0) {
+      console.log(`[Global Cron] Processed ${scheduledRes.processed} mature 5-minute scheduled family PAN check(s).`);
+    }
+  } catch (schedErr) {
+    console.warn('[Global Cron] Scheduled checks processor warning:', schedErr.message);
   }
 
   // 5. IPO Closing Day Dispatch (11:00 AM – 12:59 PM IST, one IPO per tick)

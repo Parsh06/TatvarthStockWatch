@@ -1664,13 +1664,24 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
         return res.status(400).json({ success: false, error: 'symbol is required' });
       }
 
-      const { triggerAutoAllotmentCheck } = require('../lib/ipoAutoVerificationService');
-      const result = await triggerAutoAllotmentCheck({
-        symbol,
-        registrar: registrar || 'KFINTECH',
-        ipoName: ipoName || symbol,
-        force: Boolean(force),
-      });
+      const { triggerAutoAllotmentCheck, dispatchNewIpoAllotment } = require('../lib/ipoAutoVerificationService');
+      const { runFullPipeline, skipDelay } = req.body || {};
+      let result;
+      if (runFullPipeline) {
+        result = await dispatchNewIpoAllotment({
+          ipo: { symbol, clientId: symbol, name: ipoName || symbol },
+          registrar: registrar || 'KFINTECH',
+          force: Boolean(force),
+          skipDelay: skipDelay !== undefined ? Boolean(skipDelay) : true,
+        });
+      } else {
+        result = await triggerAutoAllotmentCheck({
+          symbol,
+          registrar: registrar || 'KFINTECH',
+          ipoName: ipoName || symbol,
+          force: Boolean(force),
+        });
+      }
 
       await writeAuditLog({
         actorUid: req.uid,
