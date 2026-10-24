@@ -95,7 +95,7 @@ export default function PendingApprovalPage() {
       <div className="relative z-10 w-full max-w-xl">
         {/* Brand Header */}
         <div className="flex items-center justify-center gap-3 mb-6">
-          <div className="relative w-11 h-11 rounded-2xl flex items-center justify-center bg-white dark:bg-[#0F172A] shadow-premium">
+          <div className="relative w-11 h-11 rounded-2xl flex items-center justify-center bg-black dark:bg-[#0F172A] border border-slate-800 dark:border-white/10 shadow-premium">
             <div className="absolute inset-0 rounded-2xl bg-primary/40 blur-lg -z-10" />
             <img src="/logo2.png" alt="Logo" className="w-8 h-8 object-contain brand-logo" />
           </div>

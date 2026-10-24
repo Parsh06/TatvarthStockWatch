@@ -56,17 +56,10 @@ export default function WelcomePage() {
   const [activeFaq, setActiveFaq] = useState(null)
 
   useEffect(() => {
-    const isDark = theme === 'dark'
-    if (isDark) {
+    if (theme === 'dark') {
       document.documentElement.classList.add('dark')
-      document.getElementById('app-manifest')?.setAttribute('href', '/manifest-dark.json')
-      document.getElementById('app-favicon')?.setAttribute('href', '/logo2.png')
-      document.getElementById('apple-touch-icon')?.setAttribute('href', '/apple-touch-icon-dark.png')
     } else {
       document.documentElement.classList.remove('dark')
-      document.getElementById('app-manifest')?.setAttribute('href', '/manifest.json')
-      document.getElementById('app-favicon')?.setAttribute('href', '/logo2-black.png')
-      document.getElementById('apple-touch-icon')?.setAttribute('href', '/apple-touch-icon.png')
     }
     localStorage.setItem('theme', theme)
   }, [theme])
@@ -279,7 +272,7 @@ export default function WelcomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           {/* Logo & Brand */}
           <Link to="/" className="flex items-center gap-3.5 group">
-            <div className="relative w-11 h-11 rounded-2xl flex items-center justify-center bg-white dark:bg-[#18181b] shadow-md border border-border/80 transition-transform duration-300 group-hover:scale-105">
+            <div className="relative w-11 h-11 rounded-2xl flex items-center justify-center bg-black dark:bg-[#18181b] shadow-md border border-slate-800 dark:border-border/80 transition-transform duration-300 group-hover:scale-105">
               <div className="absolute inset-0 rounded-2xl bg-primary/25 blur-md -z-10 opacity-70 group-hover:opacity-100 transition-opacity" />
               <img src="/logo2.png" alt="Tatvarth Logo" className="w-7 h-7 object-contain brand-logo" />
             </div>
@@ -856,7 +849,7 @@ export default function WelcomePage() {
       <footer className="py-14 bg-surface/60 dark:bg-background/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-surface border border-border flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-black dark:bg-[#0B0F19] border border-slate-800 dark:border-border flex items-center justify-center">
               <img src="/logo2.png" alt="Logo" className="w-5 h-5 object-contain brand-logo" />
             </div>
             <span className="font-display font-extrabold text-textPrimary text-base">

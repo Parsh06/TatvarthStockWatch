@@ -212,14 +212,14 @@
   100% { transform: translateX(100%); }
 }
 
-/* Brand Logo: Solid high-contrast black by default in Light Mode, natural metallic/gold in Dark Mode */
-.brand-logo,
-img.brand-logo {
-  filter: brightness(0);
-  transition: filter 0.25s ease, opacity 0.25s ease;
+/* Brand Logo: Signature Yellow/Gold Emblem inside sleek black square pod */
+.brand-logo-pod {
+  background-color: #000000;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.dark .brand-logo,
-.dark img.brand-logo {
-  filter: none;
+.brand-logo,
+img.brand-logo {
+  filter: none !important;
 }

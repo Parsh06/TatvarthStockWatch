@@ -2,15 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link id="app-favicon-light" rel="icon" type="image/png" href="/logo2-black.png" media="(prefers-color-scheme: light)" />
-    <link id="app-favicon-dark" rel="icon" type="image/png" href="/logo2.png" media="(prefers-color-scheme: dark)" />
-    <link id="app-favicon" rel="icon" type="image/png" href="/logo2-black.png" />
+    <link id="app-favicon" rel="icon" type="image/png" href="/logo2.png" />
     <link id="apple-touch-icon" rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
-    <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0F172A" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#000000" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="StockWatch" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="application-name" content="StockWatch" />
@@ -25,19 +22,10 @@
           var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
           var isDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
           var doc = document.documentElement;
-          var manifest = document.getElementById('app-manifest');
-          var fav = document.getElementById('app-favicon');
-          var appleIcon = document.getElementById('apple-touch-icon');
           if (isDark) {
             doc.classList.add('dark');
-            if (manifest) manifest.setAttribute('href', '/manifest-dark.json');
-            if (fav) fav.setAttribute('href', '/logo2.png');
-            if (appleIcon) appleIcon.setAttribute('href', '/apple-touch-icon-dark.png');
           } else {
             doc.classList.remove('dark');
-            if (manifest) manifest.setAttribute('href', '/manifest.json');
-            if (fav) fav.setAttribute('href', '/logo2-black.png');
-            if (appleIcon) appleIcon.setAttribute('href', '/apple-touch-icon.png');
           }
         } catch (e) {}
       })();

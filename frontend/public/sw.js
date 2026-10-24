@@ -11,12 +11,11 @@
  * - Cache version management
  */
 
-const CACHE_NAME = 'stockwatch-sw-v4';
+const CACHE_NAME = 'stockwatch-sw-v5';
 const APP_SHELL_ASSETS = [
   '/',
   '/index.html',
   '/logo2.png',
-  '/logo2-black.png',
   '/apple-touch-icon.png',
   '/apple-touch-icon-dark.png',
   '/icon-192.png',
