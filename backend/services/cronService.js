@@ -3,6 +3,7 @@
 const { getDb } = require('../lib/mongoClient');
 const { cleanupHistoricalIpos } = require('../lib/ipoStore');
 const { wipeTodayClosingIpos, syncTodayClosingIpos } = require('../lib/ipoClosingStore');
+const { wipeAllCheckHistory } = require('../lib/ipoCheckHistoryStore');
 const { getIposClosingToday } = require('./ipoService');
 const { fetchAllBSEAnnouncements, clearKnownBseAnnouncementIds } = require('../lib/bseScraper');
 const { fetchAllNSEAnnouncements } = require('../lib/nseScraper');
@@ -60,6 +61,7 @@ async function performMidnightWipeIfNeeded() {
         mongoDb.collection('alert_dedup_locks').deleteMany({}),
         cleanupHistoricalIpos().catch(() => {}),
         wipeTodayClosingIpos().catch((err) => console.error('[Midnight Wipe] IPO closing wipe failed:', err.message)),
+        wipeAllCheckHistory().catch((err) => console.error('[Midnight Wipe] IPO check history wipe failed:', err.message)),
       ]);
 
       // Pre-seed today's closing IPOs into MongoDB for the new day

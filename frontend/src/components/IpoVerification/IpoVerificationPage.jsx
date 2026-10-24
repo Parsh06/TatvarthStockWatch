@@ -6,7 +6,7 @@ import {
   Users, CheckCircle2, XCircle, Clock, 
   FileCheck2, Check, Copy, Sparkles, Building2, UserCheck, CreditCard,
   Download, PauseCircle, PlayCircle, StopCircle, Filter, FileSpreadsheet,
-  AlertTriangle, Crown
+  AlertTriangle, Crown, History, Eye, ArrowUpRight, Zap
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import clsx from 'clsx'
@@ -67,6 +67,109 @@ export default function IpoVerificationPage() {
   const [streamSearch, setStreamSearch] = useState('')
   const abortControllerRef = useRef(null)
 
+  // ── Today's Check History State ─────────────────────────────────────────────
+  const [checkHistory, setCheckHistory] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [selectedHistoryCheck, setSelectedHistoryCheck] = useState(null)
+  const [showHistoryModal, setShowHistoryModal] = useState(false)
+
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true)
+    try {
+      const data = await apiClient('/api/ipo/history')
+      setCheckHistory(Array.isArray(data.history) ? data.history : [])
+    } catch (err) {
+      console.warn('Failed to load check history:', err.message)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchHistory()
+  }, [fetchHistory])
+
+  async function handleClearHistory() {
+    if (checkHistory.length === 0) return
+    if (!window.confirm("Clear today's check history? Live and automated checks will still run normally.")) return
+    try {
+      await apiClient('/api/ipo/history', { method: 'DELETE' })
+      setCheckHistory([])
+      toast.success("Today's check history cleared")
+    } catch (err) {
+      toast.error('Failed to clear check history')
+    }
+  }
+
+  function formatCheckedTime(isoStr) {
+    if (!isoStr) return 'Today'
+    try {
+      const d = new Date(isoStr)
+      return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+    } catch {
+      return 'Today'
+    }
+  }
+
+  function handleLoadHistoryIntoWorkspace(item) {
+    if (!item) return
+
+    const matchSym = symbols.find(s => 
+      String(s.symbol || '').toUpperCase() === String(item.symbol || '').toUpperCase() ||
+      String(s.clientId || '').toUpperCase() === String(item.symbol || '').toUpperCase()
+    )
+    if (matchSym) {
+      setSelectedSymbol(matchSym)
+    } else {
+      setSelectedSymbol({
+        symbol: item.symbol,
+        name: item.ipoName || item.symbol,
+        registrar: item.registrar || 'KFINTECH',
+      })
+    }
+
+    const formattedResults = (item.results || []).map(r => {
+      const sharesAllotted = Number(r.sharesAllotted || 0)
+      const appliedShares = Number(r.appliedShares || 0)
+      const isAllotted = sharesAllotted > 0 || r.status === 'allotted'
+      const isFound = isAllotted || r.status === 'not_allotted' || (r.records && r.records.length > 0)
+
+      const records = (r.records && r.records.length > 0) ? r.records : [
+        {
+          allottedShares: sharesAllotted,
+          appliedShares: appliedShares,
+          dpClientId: r.dpId || 'N/A',
+          applicationNumber: r.appNo || 'N/A',
+          category: r.category || 'Regular',
+          applicantName: r.name,
+        }
+      ]
+
+      return {
+        applicantId: r.id || r.applicantId,
+        name: r.name,
+        maskedPan: r.maskedPan,
+        status: isFound ? 'found' : (r.status === 'error' ? 'error' : 'not_found'),
+        records,
+        error: r.error || null,
+      }
+    })
+
+    setBulkResult({
+      symbol: item.symbol,
+      ipoName: item.ipoName || item.symbol,
+      provider: item.registrar,
+      type: item.type,
+      checkedAt: item.checkedAt,
+      fromHistory: true,
+      results: formattedResults,
+      verifiedAt: item.checkedAt,
+    })
+
+    setShowHistoryModal(false)
+    toast.success(`Loaded ${item.ipoName || item.symbol} into workspace`)
+  }
+
   // ── Live Registrar Health State ─────────────────────────────────────────────
   const [registrarHealth, setRegistrarHealth] = useState(null)
 
@@ -81,6 +184,7 @@ export default function IpoVerificationPage() {
       .catch(() => {})
     return () => { isMounted = false }
   }, [])
+
 
   // ── Fetch Master Unified IPO Symbols ────────────────────────────────────────
   const fetchSymbols = useCallback(async () => {
@@ -409,6 +513,7 @@ export default function IpoVerificationPage() {
         toast('Verification cancelled', { icon: '⏸️' })
       } else {
         toast.success(`Verification complete across ${totalApplicants} applicants!`)
+        fetchHistory()
       }
     } catch (err) {
       if (!controller.signal.aborted) {
@@ -686,6 +791,187 @@ export default function IpoVerificationPage() {
             </span>
           </div>
         </div>
+      </div>
+
+      {/* ── TODAY'S PREVIOUS ALLOTMENT CHECKS (ZERO SERVER LOAD) ──────────────── */}
+      <div className="bg-surface rounded-3xl p-6 sm:p-7 border border-border shadow-sm space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+              <History className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-lg font-black text-textPrimary tracking-tight">Today's Allotment Checks</h2>
+                <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-[10px] font-extrabold tracking-wide">
+                  {checkHistory.length} {checkHistory.length === 1 ? 'Check' : 'Checks'}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                  <Zap className="w-3 h-3" /> Zero Server Load
+                </span>
+              </div>
+              <p className="text-xs text-textMuted mt-0.5">
+                Instant cached records for today's manual and automated allotment runs • Wiped daily at 12:00 AM Midnight IST
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-center">
+            <button
+              type="button"
+              onClick={fetchHistory}
+              disabled={historyLoading}
+              className="px-3 py-1.5 rounded-xl border border-border text-xs font-semibold text-textMuted hover:text-textPrimary hover:bg-surfaceHover transition-all flex items-center gap-1.5"
+              title="Refresh check history"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${historyLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+
+            {checkHistory.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearHistory}
+                className="px-3 py-1.5 rounded-xl border border-danger/20 text-xs font-semibold text-danger hover:bg-danger/10 transition-all flex items-center gap-1.5"
+                title="Clear today's check history"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear Today</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {historyLoading && checkHistory.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="p-5 rounded-2xl bg-background border border-border animate-pulse space-y-3">
+                <div className="h-4 bg-border/40 rounded w-1/3"></div>
+                <div className="h-5 bg-border/60 rounded w-3/4"></div>
+                <div className="h-4 bg-border/30 rounded w-1/2"></div>
+              </div>
+            ))}
+          </div>
+        ) : checkHistory.length === 0 ? (
+          <div className="p-6 rounded-2xl bg-background/60 border border-border/80 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-textPrimary">No Allotment Checks Recorded Yet Today</h3>
+              <p className="text-xs text-textMuted max-w-2xl">
+                Whenever you check family allotment bids or when StockWatch's background engine auto-checks newly released IPO allotments, the complete applicant breakdown will appear here for instant review with zero server query.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {checkHistory.map(item => {
+              const summary = item.summary || { total: 0, allotted: 0, notAllotted: 0, notFound: 0 }
+              const isAuto = item.type === 'AUTO'
+              const reg = String(item.registrar || 'KFINTECH').toUpperCase()
+
+              const regBadgeColor = 
+                reg.includes('MUFG') || reg.includes('LINK') ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' :
+                reg.includes('BIG') ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20' :
+                'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
+
+              const regDisplay = 
+                reg.includes('MUFG') || reg.includes('LINK') ? 'Link Intime' :
+                reg.includes('BIG') ? 'Bigshare' : 'KFintech'
+
+              return (
+                <div
+                  key={item.id || item.symbol}
+                  className="group relative p-5 rounded-2xl bg-background hover:bg-surface border border-border hover:border-primary/40 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {isAuto ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 text-[10px] font-extrabold tracking-wide">
+                            <Zap className="w-3 h-3" /> Auto Drop
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/20 text-[10px] font-bold tracking-wide">
+                            <UserCheck className="w-3 h-3" /> Manual
+                          </span>
+                        )}
+
+                        <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-bold ${regBadgeColor}`}>
+                          {regDisplay}
+                        </span>
+                      </div>
+
+                      <span className="text-[11px] font-medium text-textMuted flex items-center gap-1 shrink-0">
+                        <Clock className="w-3 h-3" />
+                        {formatCheckedTime(item.checkedAt)}
+                      </span>
+                    </div>
+
+                    <div className="pt-1">
+                      <h3 className="text-sm font-extrabold text-textPrimary group-hover:text-primary transition-colors truncate" title={item.ipoName || item.symbol}>
+                        {item.ipoName || item.symbol}
+                      </h3>
+                      <p className="text-xs font-mono text-textMuted mt-0.5 truncate">
+                        {item.symbol}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {summary.allotted > 0 ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs font-black">
+                          🎉 {summary.allotted} Allotted
+                        </span>
+                      ) : null}
+
+                      {summary.notAllotted > 0 ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 text-xs font-semibold">
+                          📋 {summary.notAllotted} Not Allotted
+                        </span>
+                      ) : null}
+
+                      {summary.notFound > 0 ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-500/10 text-textMuted border border-border text-xs font-medium">
+                          {summary.notFound} Not Applied
+                        </span>
+                      ) : null}
+
+                      <span className="text-[11px] font-medium text-textMuted ml-auto">
+                        {summary.total} {summary.total === 1 ? 'applicant' : 'applicants'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2 border-t border-border">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedHistoryCheck(item)
+                          setShowHistoryModal(true)
+                        }}
+                        className="flex-1 py-2 px-3 rounded-xl bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/20 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        View Breakdown
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleLoadHistoryIntoWorkspace(item)}
+                        className="p-2 rounded-xl bg-surface hover:bg-surfaceHover text-textMuted hover:text-textPrimary border border-border transition-all"
+                        title="Load into main results table & export"
+                      >
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -1541,6 +1827,197 @@ export default function IpoVerificationPage() {
                   className="flex-1 py-2.5 rounded-xl bg-danger text-white text-sm font-semibold hover:bg-danger/90 transition-all"
                 >
                   Remove
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── HISTORICAL CHECK BREAKDOWN MODAL ──────────────────────────────────── */}
+      <AnimatePresence>
+        {showHistoryModal && selectedHistoryCheck && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-surface rounded-3xl p-6 sm:p-8 border border-border shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col space-y-6 overflow-hidden"
+            >
+              {/* Modal Header */}
+              <div className="flex items-start justify-between gap-4 pb-4 border-b border-border">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-[10px] font-extrabold uppercase tracking-wide">
+                      {selectedHistoryCheck.registrar || 'KFINTECH'}
+                    </span>
+                    {selectedHistoryCheck.type === 'AUTO' ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 text-[10px] font-extrabold tracking-wide">
+                        <Zap className="w-3 h-3" /> Automated Drop Check
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/20 text-[10px] font-bold tracking-wide">
+                        <UserCheck className="w-3 h-3" /> Manual Portfolio Check
+                      </span>
+                    )}
+                    <span className="text-xs text-textMuted flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      Checked at {formatCheckedTime(selectedHistoryCheck.checkedAt)}
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-black text-textPrimary tracking-tight">
+                    {selectedHistoryCheck.ipoName || selectedHistoryCheck.symbol}
+                  </h2>
+                  <p className="text-xs font-mono text-textMuted">
+                    Symbol: {selectedHistoryCheck.symbol}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowHistoryModal(false)}
+                  className="w-9 h-9 rounded-xl text-textMuted hover:text-textPrimary hover:bg-surfaceHover flex items-center justify-center transition-all shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Counters */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-2xl bg-background border border-border text-center">
+                  <p className="text-xl font-black text-textPrimary">
+                    {selectedHistoryCheck.summary?.total ?? selectedHistoryCheck.results?.length ?? 0}
+                  </p>
+                  <p className="text-[10px] font-extrabold text-textMuted uppercase tracking-wider mt-0.5">Total Checked</p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 dark:bg-success/5 dark:border-success/15 text-center">
+                  <p className="text-xl font-black text-emerald-700 dark:text-success">
+                    {selectedHistoryCheck.summary?.allotted ?? 0}
+                  </p>
+                  <p className="text-[10px] font-extrabold text-emerald-800 dark:text-success uppercase tracking-wider mt-0.5">Allotted 🎉</p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-sky-50/80 border border-sky-200/80 dark:bg-primary/5 dark:border-primary/10 text-center">
+                  <p className="text-xl font-black text-sky-700 dark:text-primary">
+                    {selectedHistoryCheck.summary?.notAllotted ?? 0}
+                  </p>
+                  <p className="text-[10px] font-extrabold text-sky-800 dark:text-primary uppercase tracking-wider mt-0.5">Not Allotted</p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-rose-50/80 border border-rose-200/80 dark:bg-danger/5 dark:border-danger/10 text-center">
+                  <p className="text-xl font-black text-rose-700 dark:text-danger">
+                    {selectedHistoryCheck.summary?.notFound ?? 0}
+                  </p>
+                  <p className="text-[10px] font-extrabold text-rose-800 dark:text-danger uppercase tracking-wider mt-0.5">Did Not Apply</p>
+                </div>
+              </div>
+
+              {/* Scrollable Applicant Results Table */}
+              <div className="flex-1 overflow-y-auto max-h-[50vh] rounded-2xl border border-border bg-background divide-y divide-border">
+                {(!selectedHistoryCheck.results || selectedHistoryCheck.results.length === 0) ? (
+                  <div className="p-8 text-center text-sm text-textMuted">No applicant bid records found.</div>
+                ) : (
+                  selectedHistoryCheck.results.map((r, i) => {
+                    const isAllotted = Number(r.sharesAllotted || 0) > 0 || r.status === 'allotted'
+                    const isNotAllotted = r.status === 'not_allotted'
+                    const isNotFound = r.status === 'not_found'
+
+                    return (
+                      <div key={r.id || r.applicantId || i} className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-surface transition-all">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-textPrimary">{r.name || 'Family Member'}</span>
+                            <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-surface border border-border text-textMuted">
+                              {r.maskedPan || 'XXXX'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-3 text-xs text-textMuted flex-wrap pt-0.5">
+                            {r.dpId && r.dpId !== 'N/A' && (
+                              <span className="flex items-center gap-1 font-mono">
+                                DP/Client: <strong className="text-textPrimary">{r.dpId}</strong>
+                              </span>
+                            )}
+                            {r.appNo && r.appNo !== 'N/A' && (
+                              <span className="flex items-center gap-1 font-mono">
+                                App No: <strong className="text-textPrimary">{r.appNo}</strong>
+                              </span>
+                            )}
+                            {r.category && (
+                              <span className="px-2 py-0.5 rounded bg-surface border border-border text-[10px] font-medium">
+                                {r.category}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 self-start sm:self-center shrink-0">
+                          <div className="text-right">
+                            {isAllotted ? (
+                              <div>
+                                <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                                  {r.sharesAllotted} Shs Allotted
+                                </span>
+                                {r.appliedShares > 0 && (
+                                  <p className="text-[10px] text-textMuted">Applied: {r.appliedShares} Shs</p>
+                                )}
+                              </div>
+                            ) : isNotAllotted ? (
+                              <div>
+                                <span className="text-xs font-bold text-sky-600 dark:text-sky-400">
+                                  0 Shs Allotted
+                                </span>
+                                {r.appliedShares > 0 && (
+                                  <p className="text-[10px] text-textMuted">Applied: {r.appliedShares} Shs</p>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs font-medium text-textMuted">
+                                No Bid Found
+                              </span>
+                            )}
+                          </div>
+
+                          <div>
+                            {isAllotted ? (
+                              <span className="px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs font-black tracking-wide">
+                                ALLOTTED
+                              </span>
+                            ) : isNotAllotted ? (
+                              <span className="px-3 py-1.5 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 text-xs font-bold tracking-wide">
+                                NOT ALLOTTED
+                              </span>
+                            ) : (
+                              <span className="px-3 py-1.5 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-xs font-medium">
+                                NOT APPLIED
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setShowHistoryModal(false)}
+                  className="px-4 py-2.5 rounded-xl border border-border text-xs font-semibold text-textMuted hover:bg-surfaceHover transition-all"
+                >
+                  Close
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleLoadHistoryIntoWorkspace(selectedHistoryCheck)}
+                  className="px-5 py-2.5 rounded-xl bg-primary text-white hover:bg-primaryHover text-xs font-bold transition-all flex items-center gap-2 shadow-sm"
+                >
+                  <ArrowUpRight className="w-4 h-4" />
+                  Load into Workspace Table
                 </button>
               </div>
             </motion.div>

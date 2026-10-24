@@ -39,6 +39,8 @@ const {
   normalizeMufgResponse, 
   normalizeBigshareResponse 
 } = require('./ipoUtils');
+const { saveCheckHistory } = require('./ipoCheckHistoryStore');
+
 const { queryMufg } = require('./mufgScraper');
 const { queryBigshare } = require('./bigshareScraper');
 
@@ -711,6 +713,53 @@ async function triggerAutoAllotmentCheck({ symbol, registrar, ipoName, force = f
         }
       }
 
+      // 4. Save to Ephemeral Check History for instant zero-server-load UI review
+      try {
+        const histResults = userResults.map((ur, idx) => {
+          const app = ur.applicant || {};
+          const recs = ur.records || [];
+          const top = recs[0] || {};
+          const sharesAllotted = Number(top.allottedShares || 0);
+          const appliedShares = Number(top.appliedShares || 0);
+          const isAllotted = sharesAllotted > 0 || String(top.allotmentStatus).toLowerCase() === 'allotted';
+          const status = isAllotted ? 'allotted' : (recs.length > 0 ? 'not_allotted' : (ur.status === 'error' ? 'error' : 'not_found'));
+
+          return {
+            id: app.id || `app_${idx}`,
+            applicantId: app.id || `app_${idx}`,
+            name: app.name || 'Family Member',
+            maskedPan: `XXXXXX${app.panLast4 || 'XXXX'}`,
+            status,
+            allotmentStatus: isAllotted ? 'Allotted' : (recs.length > 0 ? 'Not Allotted' : 'Record Not Found'),
+            sharesAllotted,
+            appliedShares,
+            dpId: top.dpId || top.clientId || 'N/A',
+            appNo: top.applicationNumber || 'N/A',
+            category: top.category || 'Regular',
+            records: recs,
+            error: ur.error || null,
+          };
+        });
+
+        await saveCheckHistory({
+          uid,
+          symbol: rawSymbol,
+          ipoName: displayName,
+          registrar: reg,
+          type: 'AUTO',
+          results: histResults,
+          summary: {
+            total: histResults.length,
+            allotted: histResults.filter(h => h.status === 'allotted').length,
+            notAllotted: histResults.filter(h => h.status === 'not_allotted').length,
+            notFound: histResults.filter(h => h.status === 'not_found').length,
+            errors: histResults.filter(h => h.status === 'error').length,
+          }
+        });
+      } catch (hErr) {
+        console.warn(`[IPO Auto Check] History save warning for uid=${uid}:`, hErr.message);
+      }
+
     } catch (userErr) {
       console.error(`[IPO Auto Check] Error processing uid=${uid}:`, userErr.message);
     }
@@ -863,6 +912,52 @@ async function checkUserFamilyPans({ uid, symbol, registrar }) {
     else if (r.status === 'not_allotted') notAllotted++;
     else if (r.status === 'not_found') notFound++;
     else errors++;
+  }
+
+  // 3. Save to Ephemeral Check History
+  try {
+    const histResults = results.map((r, idx) => {
+      const recs = r.records || [];
+      const top = recs[0] || {};
+      const sharesAllotted = Number(r.sharesAllotted || top.allottedShares || 0);
+      const appliedShares = Number(r.appliedShares || top.appliedShares || 0);
+      const isAllotted = sharesAllotted > 0 || r.status === 'allotted' || String(top.allotmentStatus).toLowerCase() === 'allotted';
+      const status = isAllotted ? 'allotted' : (recs.length > 0 ? 'not_allotted' : (r.status === 'error' ? 'error' : 'not_found'));
+
+      return {
+        id: r.id || `app_${idx}`,
+        applicantId: r.id || `app_${idx}`,
+        name: r.name || 'Family Member',
+        maskedPan: `XXXXXX${r.panLast4 || 'XXXX'}`,
+        status,
+        allotmentStatus: isAllotted ? 'Allotted' : (recs.length > 0 ? 'Not Allotted' : 'Record Not Found'),
+        sharesAllotted,
+        appliedShares,
+        dpId: top.dpId || top.clientId || 'N/A',
+        appNo: top.applicationNumber || 'N/A',
+        category: top.category || 'Regular',
+        records: recs,
+        error: r.error || null,
+      };
+    });
+
+    await saveCheckHistory({
+      uid,
+      symbol: rawSymbol,
+      ipoName: rawSymbol,
+      registrar: reg,
+      type: 'MANUAL',
+      results: histResults,
+      summary: {
+        total: histResults.length,
+        allotted,
+        notAllotted,
+        notFound,
+        errors,
+      }
+    });
+  } catch (hErr) {
+    console.warn(`[checkUserFamilyPans] History save warning:`, hErr.message);
   }
 
   return {

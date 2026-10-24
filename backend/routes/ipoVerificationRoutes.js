@@ -742,6 +742,53 @@ module.exports = function (verifyToken) {
 
       const providerName = (reg === 'MUFG' || reg === 'LINKINTIME') ? 'MUFG' : (reg === 'BIGSHARE' || reg === 'BIG_SHARE' ? 'BIGSHARE' : 'KFINTECH');
 
+      // Save to ephemeral check history
+      try {
+        const { saveCheckHistory } = require('../lib/ipoCheckHistoryStore');
+        const histResults = finalResults.map((r, idx) => {
+          const recs = r.records || [];
+          const top = recs[0] || {};
+          const sharesAllotted = Number(top.allottedShares || 0);
+          const appliedShares = Number(top.appliedShares || 0);
+          const isAllotted = sharesAllotted > 0 || String(top.allotmentStatus).toLowerCase() === 'allotted';
+          const status = isAllotted ? 'allotted' : (recs.length > 0 ? 'not_allotted' : (r.status === 'error' ? 'error' : 'not_found'));
+
+          return {
+            id: r.applicantId || `app_${idx}`,
+            applicantId: r.applicantId || `app_${idx}`,
+            name: r.name || 'Family Member',
+            maskedPan: r.maskedPan || 'XXXX',
+            status,
+            allotmentStatus: isAllotted ? 'Allotted' : (recs.length > 0 ? 'Not Allotted' : 'Record Not Found'),
+            sharesAllotted,
+            appliedShares,
+            dpId: top.dpClientId || top.dpId || top.clientId || 'N/A',
+            appNo: top.applicationNumber || top.appNo || 'N/A',
+            category: top.category || 'Regular',
+            records: recs,
+            error: r.error || null,
+          };
+        });
+
+        await saveCheckHistory({
+          uid: req.uid,
+          symbol,
+          ipoName: req.body.ipoName || symbol,
+          registrar: providerName,
+          type: 'MANUAL',
+          results: histResults,
+          summary: {
+            total: histResults.length,
+            allotted: histResults.filter(h => h.status === 'allotted').length,
+            notAllotted: histResults.filter(h => h.status === 'not_allotted').length,
+            notFound: histResults.filter(h => h.status === 'not_found').length,
+            errors: histResults.filter(h => h.status === 'error').length,
+          }
+        });
+      } catch (histErr) {
+        console.warn('[IPO Bulk Verify] History save warning:', histErr.message);
+      }
+
       res.json({
         success: true,
         symbol,
@@ -756,5 +803,56 @@ module.exports = function (verifyToken) {
     }
   });
 
+  // ── GET /api/ipo/history ────────────────────────────────────────────────────
+  router.get('/history', verifyToken, async (req, res) => {
+    try {
+      const { getUserCheckHistory } = require('../lib/ipoCheckHistoryStore');
+      const history = await getUserCheckHistory(req.uid);
+      res.json({ success: true, history });
+    } catch (err) {
+      console.error('[IPO History GET Error]', err.message);
+      res.status(500).json({ success: false, error: 'Failed to fetch check history', history: [] });
+    }
+  });
+
+  // ── POST /api/ipo/history ───────────────────────────────────────────────────
+  router.post('/history', verifyToken, async (req, res) => {
+    try {
+      const { saveCheckHistory } = require('../lib/ipoCheckHistoryStore');
+      const { symbol, ipoName, registrar, type = 'MANUAL', results = [], summary } = req.body || {};
+      if (!symbol) {
+        return res.status(400).json({ success: false, error: 'Symbol is required' });
+      }
+
+      const doc = await saveCheckHistory({
+        uid: req.uid,
+        symbol,
+        ipoName,
+        registrar,
+        type,
+        results,
+        summary,
+      });
+
+      res.json({ success: true, record: doc });
+    } catch (err) {
+      console.error('[IPO History POST Error]', err.message);
+      res.status(500).json({ success: false, error: 'Failed to save check history' });
+    }
+  });
+
+  // ── DELETE /api/ipo/history ─────────────────────────────────────────────────
+  router.delete('/history', verifyToken, async (req, res) => {
+    try {
+      const { clearUserCheckHistory } = require('../lib/ipoCheckHistoryStore');
+      const deletedCount = await clearUserCheckHistory(req.uid);
+      res.json({ success: true, message: 'Check history cleared for today', deletedCount });
+    } catch (err) {
+      console.error('[IPO History DELETE Error]', err.message);
+      res.status(500).json({ success: false, error: 'Failed to clear check history' });
+    }
+  });
+
   return router;
 };
+
