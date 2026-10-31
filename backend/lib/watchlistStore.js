@@ -225,13 +225,38 @@ async function getWatchersForInstruments(instrumentKeys) {
   await ensureIndexes();
   const db = await getDb();
   try {
+    const rawCodes = [];
+    const rawSymbols = [];
+    for (const key of instrumentKeys) {
+      if (typeof key !== 'string') continue;
+      if (key.startsWith('BSE:')) {
+        const c = key.slice(4).trim();
+        if (c) rawCodes.push(c);
+      } else if (key.startsWith('NSE:')) {
+        const s = key.slice(4).trim().toUpperCase();
+        if (s) rawSymbols.push(s);
+      } else {
+        rawCodes.push(key.trim());
+        rawSymbols.push(key.trim().toUpperCase());
+      }
+    }
+
+    const orConditions = [
+      { instrumentKey: { $in: instrumentKeys } },
+      { instrumentKeys: { $in: instrumentKeys } },
+    ];
+    if (rawCodes.length > 0) {
+      orConditions.push({ ltdCode: { $in: rawCodes } });
+      orConditions.push({ bseCode: { $in: rawCodes } });
+      orConditions.push({ scripCode: { $in: rawCodes } });
+    }
+    if (rawSymbols.length > 0) {
+      orConditions.push({ symbol: { $in: rawSymbols } });
+      orConditions.push({ nseSymbol: { $in: rawSymbols } });
+    }
+
     const docs = await db.collection('watchlists')
-      .find({
-        $or: [
-          { instrumentKey: { $in: instrumentKeys } },
-          { instrumentKeys: { $in: instrumentKeys } }
-        ]
-      }, { projection: { userId: 1 } })
+      .find({ $or: orConditions }, { projection: { userId: 1 } })
       .toArray();
 
     const uids = new Set();

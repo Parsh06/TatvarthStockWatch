@@ -147,9 +147,25 @@ router.post('/bulk', verifyToken, async (req, res) => {
 
   if (toAdd.length > 0) {
     const mongoDb = await getDb();
-    const docs = toAdd.map((s) => ({ ...s, userId: req.uid }));
+    const redisNotifStore = require('../lib/redis/redisNotificationStore');
+    const docs = toAdd.map((s) => {
+      const keys = watchlistStore.buildInstrumentKey(s);
+      return {
+        ...s,
+        instrumentKey: keys[0] || null,
+        instrumentKeys: keys,
+        userId: req.uid,
+      };
+    });
     await mongoDb.collection('watchlists').insertMany(docs);
     watchlistStore.invalidateWatchlistCache();
+
+    // Sync to Redis hot routing sets asynchronously
+    for (const d of docs) {
+      for (const k of (d.instrumentKeys || [])) {
+        redisNotifStore.addWatcher(k, req.uid).catch(() => {});
+      }
+    }
   }
 
   res.json({ added, skipped, planCapped, maxAllowed: planCheck.maxAllowed });

@@ -42,8 +42,8 @@ async function searchMoneyControl(q) {
         }
       }
       return {
-        bseCode: bseCode || item.sc_id || '',
-        symbol: symbol || item.stock_name || item.name || '',
+        bseCode: (/^\d{5,7}$/.test(bseCode)) ? bseCode : '',
+        symbol: symbol || item.stock_name || item.name || item.sc_id || '',
         scripName: item.name || item.stock_name || '',
         isin: isin || '',
         type: item.sc_sector || 'Equity',

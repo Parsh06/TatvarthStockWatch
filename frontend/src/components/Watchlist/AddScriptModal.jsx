@@ -68,7 +68,13 @@ export default function AddScriptModal({ isOpen, onClose }) {
   }
 
   const alreadyInWL = selected
-    ? watchlist.some(s => (s.ltdCode || s.bseCode || '') === selected.bseCode)
+    ? watchlist.some(s => {
+        const sBse = String(s.ltdCode || s.bseCode || '').trim()
+        const sSym = String(s.symbol || s.nseSymbol || '').trim().toUpperCase()
+        const selBse = String(selected.bseCode || '').trim()
+        const selSym = String(selected.symbol || '').trim().toUpperCase()
+        return (selBse && sBse === selBse) || (selSym && sSym === selSym)
+      })
     : false
 
   async function handleAdd() {
@@ -76,19 +82,26 @@ export default function AddScriptModal({ isOpen, onClose }) {
     if (alreadyInWL) return toast('Already in watchlist', { icon: '⭐' })
     setAdding(true)
     try {
+      const isBseNumeric = /^\d{5,7}$/.test(String(selected.bseCode || '').trim())
+      const bseVal = isBseNumeric ? String(selected.bseCode).trim() : ''
+      const symVal = String(selected.symbol || (!isBseNumeric ? selected.bseCode : '') || '').trim().toUpperCase()
+
       await addScript({
-        scriptName: selected.scripName,
-        ltdCode:    selected.bseCode,
-        nseSymbol:  selected.symbol  || '',
-        isin:       selected.isin    || '',
+        scriptName: selected.scripName || symVal || bseVal,
+        ltdCode:    bseVal,
+        bseCode:    bseVal,
+        symbol:     symVal,
+        nseSymbol:  symVal,
+        isin:       selected.isin || '',
         exchange,
         group:      group.trim() || undefined,
         notes:      notes.trim() || undefined,
       })
-      toast.success(`${selected.scripName} added to watchlist`)
+      toast.success(`${selected.scripName || symVal} added to watchlist`)
       onClose()
-    } catch {
-      toast.error('Failed to add script')
+    } catch (err) {
+      console.error('[AddScriptModal error]', err)
+      toast.error(err.message || 'Failed to add script')
     } finally {
       setAdding(false)
     }

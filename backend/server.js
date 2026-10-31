@@ -394,25 +394,51 @@ if (require.main === module) {
     // Autonomous background worker if enabled (Render / standalone container)
     // On Vercel serverless, background intervals are suppressed; background duties are handled exclusively by Render
     if (!IS_VERCEL && (process.env.ENABLE_BACKGROUND_WORKER === 'true' || process.env.RUN_CRON_WORKER === 'true')) {
-      console.log('  Alert cron:    ACTIVE (Autonomous background worker polling every 60s on Render | 1m Mon-Fri 08:30-16:30)');
+      console.log('  Alert cron:    ACTIVE (Dynamic Ultra-Low-Latency Worker: 25s Core Market | 60s Evening | Keep-Alive Active)');
       const { runGlobalCronTick } = require('./services/cronService');
-      // Run initial tick after boot stagger (5s)
-      setTimeout(() => {
-        runGlobalCronTick().catch((e) => console.error('[Background Worker Boot Error]', e.message));
-      }, 5000);
-      // Scheduled tick every 60 seconds (1 minute):
-      // - Mon-Fri 08:30-16:30 IST: 1-minute high-frequency polling (zero delay)
-      // - Mon-Fri 16:30-23:45 IST: 2-minute cadence
-      // - Saturday 09:00-23:45 IST: 5-minute normal weekend cadence
-      // - Sunday & Deep Night: 30-minute cadence
-      const WORKER_INTERVAL_MS = 60 * 1000;
-      setInterval(async () => {
+      const { getMarketCadence } = require('./lib/time/istTime');
+
+      // Dynamic Market Cadence Worker Loop:
+      // Ensures zero overlapping runs and dynamically increases polling to 25s during trading hours.
+      async function scheduleNextWorkerTick() {
         try {
           await runGlobalCronTick();
         } catch (e) {
           console.error('[Background Worker Loop Error]', e.message);
         }
-      }, WORKER_INTERVAL_MS);
+
+        // Determine next dynamic poll interval based on IST trading window
+        const cadence = getMarketCadence(new Date());
+        let nextIntervalMs = 60 * 1000; // default 60s
+        if (cadence.window === 'CORE_TRADING_HOURS') {
+          nextIntervalMs = 25 * 1000; // 25-second ultra-low-latency polling during market hours!
+        } else if (cadence.window === 'EVENING_RESULTS_HOURS') {
+          nextIntervalMs = 60 * 1000; // 60s during evening corporate disclosures
+        } else if (cadence.window === 'SATURDAY_BOARD_MEETINGS') {
+          nextIntervalMs = 2 * 60 * 1000; // 2 minutes on Saturday
+        } else {
+          nextIntervalMs = 15 * 60 * 1000; // 15 minutes deep night / Sunday off-market
+        }
+
+        setTimeout(scheduleNextWorkerTick, nextIntervalMs);
+      }
+
+      // Initial tick after boot stagger (5s)
+      setTimeout(scheduleNextWorkerTick, 5000);
+
+      // Render Free Tier Keep-Alive Self-Ping:
+      // Render free services spin down after 15 minutes of inactivity when no HTTP requests arrive.
+      // Pinging the public URL (/api/health) every 9 minutes guarantees the service stays 100% warm & active.
+      const RENDER_PUBLIC_URL = process.env.RENDER_EXTERNAL_URL || 'https://tatvarthstockwatch.onrender.com';
+      const KEEP_ALIVE_INTERVAL_MS = 9 * 60 * 1000;
+      setInterval(() => {
+        try {
+          const https = require('https');
+          https.get(`${RENDER_PUBLIC_URL}/api/health`, { timeout: 10000 }, (res) => {
+            // Heartbeat received
+          }).on('error', () => {});
+        } catch {}
+      }, KEEP_ALIVE_INTERVAL_MS);
     } else if (IS_VERCEL) {
       console.log('  Alert cron:    DELEGATED TO RENDER (Vercel running in stateless serverless mode)');
     } else {

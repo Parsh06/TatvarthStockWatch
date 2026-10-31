@@ -13,6 +13,42 @@ const watchlistStore = require('../watchlistStore');
  * @param {Array<object>} announcements
  * @returns {Promise<Set<string>>} Unique recipient UIDs
  */
+/**
+ * Resolves ALL market scope users with Redis-first lookup and zero-downtime Firestore fallback.
+ */
+async function getEffectiveAllScopeUsers() {
+  let uids = await redisNotifStore.getScopeAllUsers();
+  if (Array.isArray(uids) && uids.length > 0) {
+    return uids;
+  }
+
+  // Fallback: Query Firestore for users who opted in to ALL market announcements
+  try {
+    const admin = require('firebase-admin');
+    const db = admin.firestore();
+    const snap = await db.collection('users')
+      .where('prefs.notifyAllAnnouncements', '==', true)
+      .get();
+
+    const fallbackUids = [];
+    snap.forEach(doc => {
+      if (doc.id) fallbackUids.push(doc.id);
+    });
+
+    // Asynchronously populate Redis cache
+    if (fallbackUids.length > 0) {
+      for (const u of fallbackUids) {
+        redisNotifStore.addScopeAllUser(u).catch(() => {});
+      }
+    }
+
+    return fallbackUids;
+  } catch (err) {
+    console.warn('[NotificationRouter] Firestore fallback for ALL scope users warning:', err.message);
+    return [];
+  }
+}
+
 async function resolveRecipientsForBatch(announcements) {
   const recipientUids = new Set();
 
@@ -20,8 +56,8 @@ async function resolveRecipientsForBatch(announcements) {
     return recipientUids;
   }
 
-  // 1. Resolve ALL market scope users from Redis
-  const allScopeUsers = await redisNotifStore.getScopeAllUsers();
+  // 1. Resolve ALL market scope users (Redis + Firestore fallback)
+  const allScopeUsers = await getEffectiveAllScopeUsers();
   allScopeUsers.forEach(uid => recipientUids.add(uid));
 
   // 2. Extract unique instrument keys from announcements
@@ -94,8 +130,8 @@ async function resolveRecipientsMapForBatch(announcements) {
     return recipientsMap;
   }
 
-  // 1. Resolve ALL market scope users ONCE
-  const allScopeUsers = await redisNotifStore.getScopeAllUsers();
+  // 1. Resolve ALL market scope users ONCE (Redis + Firestore fallback)
+  const allScopeUsers = await getEffectiveAllScopeUsers();
   const allScopeSet = new Set(allScopeUsers);
 
   // 2. Normalize announcements & collect unique instrument keys across the batch

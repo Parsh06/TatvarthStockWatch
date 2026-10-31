@@ -18,12 +18,15 @@ const { getMarketCadence, getISTDateTime, isIpoAllotmentCheckWindow } = require(
 
 // In-memory cache for announcements (for fast preview/stats)
 const _cache = { announcements: [] };
+let _isCronRunning = false;
 let _lastHeavyScrapeTime = 0;
 let _lastRegistrarCheckTime = 0;
 const REGISTRAR_CADENCE_MS = 5 * 60 * 1000; // 5 minutes during the 7 PM - 2 AM allotment window
 let _lastFirestoreMetaUpdateTime = 0;
 const FIRESTORE_META_IDLE_THROTTLE_MS = 15 * 60 * 1000; // 15-minute heartbeat when idle (saves ~1300 redundant writes/day)
 let _lastFiiDiiSyncedDate = '';
+let _lastPlanLifecycleCheckTime = 0;
+const PLAN_LIFECYCLE_INTERVAL_MS = 6 * 60 * 60 * 1000; // Throttled to once every 6 hours
 
 function getAnnouncementsMemoryCache() {
   return _cache.announcements;
@@ -189,10 +192,17 @@ async function processPlanExpirationsAndReminders() {
  * @param {{ force?: boolean }} [options={}]
  */
 async function runGlobalCronTick(options = {}) {
-  const force = Boolean(options.force);
+  if (_isCronRunning) {
+    console.log('[Global Cron] Previous tick still executing — skipping duplicate concurrent invocation');
+    return { started: false, running: true, message: 'Tick already in progress' };
+  }
+  _isCronRunning = true;
 
-  // 1. Midnight Wipe (IST) check - ALWAYS runs first regardless of cadence
-  const wipeResult = await performMidnightWipeIfNeeded();
+  try {
+    const force = Boolean(options.force);
+
+    // 1. Midnight Wipe (IST) check - ALWAYS runs first regardless of cadence
+    const wipeResult = await performMidnightWipeIfNeeded();
 
   // 2. Market Hours Guard: evaluate trading cadence in IST
   const now = new Date();
@@ -277,14 +287,15 @@ async function runGlobalCronTick(options = {}) {
 
   // 4 & 6. IPO Allotment Symbol Discovery & Alert Pipeline
   let ipoStats = { newIpos: 0 };
-  const DAYTIME_REGISTRAR_CADENCE_MS = 20 * 60 * 1000;
+  const DAYTIME_REGISTRAR_CADENCE_MS = 60 * 60 * 1000; // 1 hour outside active evening window
   const inIpoWindow = isIpoAllotmentCheckWindow(new Date());
+  const isCoreTrading = cadence.window === 'CORE_TRADING_HOURS';
   const elapsedRegistrar = Date.now() - _lastRegistrarCheckTime;
   const effectiveCadence = inIpoWindow ? REGISTRAR_CADENCE_MS : DAYTIME_REGISTRAR_CADENCE_MS;
   const shouldCheckRegistrars = Boolean(
     options.force ||
     options.forceRegistrars ||
-    (elapsedRegistrar >= effectiveCadence)
+    (!isCoreTrading && (elapsedRegistrar >= effectiveCadence))
   );
 
   if (shouldCheckRegistrars) {
@@ -354,11 +365,15 @@ async function runGlobalCronTick(options = {}) {
     console.error('[Global Cron] IPO closing tick error:', ipoCloseErr.message);
   }
 
-  // 7b. Membership Plan Expiry & 3-Day Renewal Reminder Engine
-  try {
-    await processPlanExpirationsAndReminders();
-  } catch (planErr) {
-    console.error('[Global Cron] Plan lifecycle error:', planErr.message);
+  // 7b. Membership Plan Expiry & 3-Day Renewal Reminder Engine (Throttled to once every 6h)
+  const elapsedPlan = Date.now() - _lastPlanLifecycleCheckTime;
+  if (options.force || elapsedPlan >= PLAN_LIFECYCLE_INTERVAL_MS) {
+    _lastPlanLifecycleCheckTime = Date.now();
+    try {
+      await processPlanExpirationsAndReminders();
+    } catch (planErr) {
+      console.error('[Global Cron] Plan lifecycle error:', planErr.message);
+    }
   }
 
   // 7c. Daily FII / DII Institutional Flow Sync (Mon-Fri between 17:30 and 23:45 IST)
@@ -423,19 +438,22 @@ async function runGlobalCronTick(options = {}) {
     console.log(`[Global Cron] Idle tick (0 new items). Firestore write skipped (${minsSince}m/15m).`);
   }
 
-  return {
-    started: true,
-    throttled: false,
-    window: cadence.window,
-    bseFetched: bseAll.length,
-    nseFetched: nseAll.length,
-    totalFetched: allFetched.length,
-    newAnnouncements: newAnnouncements.length,
-    saved: savedCount,
-    engine: engineStats,
-    ipoStats,
-    ipoClosingTick: ipoClosingTickStats,
-  };
+    return {
+      started: true,
+      throttled: false,
+      window: cadence.window,
+      bseFetched: bseAll.length,
+      nseFetched: nseAll.length,
+      totalFetched: allFetched.length,
+      newAnnouncements: newAnnouncements.length,
+      saved: savedCount,
+      engine: engineStats,
+      ipoStats,
+      ipoClosingTick: ipoClosingTickStats,
+    };
+  } finally {
+    _isCronRunning = false;
+  }
 }
 
 /**

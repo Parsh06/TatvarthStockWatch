@@ -268,16 +268,58 @@ async function scheduleStage2FamilyPanCheck({ symbol, registrar, ipoName, delayM
   // 2. Set In-Process Timer (for instant local / worker execution at +5 mins)
   setTimeout(async () => {
     try {
+      const mdbLocal = await getDb();
+      if (mdbLocal) {
+        const col = mdbLocal.collection('ipo_scheduled_checks');
+        // Atomically claim the job so cronService poller won't run it simultaneously
+        const claim = await col.updateOne(
+          { _id: jobId, status: 'PENDING' },
+          { $set: { status: 'PROCESSING', startedAt: new Date() } }
+        );
+        if (claim.modifiedCount === 0) {
+          console.log(`[IPO Dispatcher:Stage2] Timer check for ${jobId} already claimed or completed. Skipping.`);
+          return;
+        }
+      }
+
       console.log(`[IPO Dispatcher:Stage2] 5-minute timer fired for "${displayName}" (${reg}). Executing automated verification...`);
-      await triggerAutoAllotmentCheck({
+      const result = await triggerAutoAllotmentCheck({
         symbol: rawSymbol,
         registrar: reg,
         ipoName: displayName,
-        force: true, // Bypass lock so 5m follow-up always runs
+        force: false, // Enforce 24h deduplication lock
         scheduledCheckId: jobId,
       });
+
+      if (mdbLocal) {
+        await mdbLocal.collection('ipo_scheduled_checks').updateOne(
+          { _id: jobId },
+          {
+            $set: {
+              status: 'COMPLETED',
+              completedAt: new Date(),
+              result,
+            }
+          }
+        ).catch(() => {});
+      }
     } catch (timerErr) {
       console.error(`[IPO Dispatcher:Stage2] Timer check error for ${jobId}:`, timerErr.message);
+      try {
+        const mdbLocal = await getDb();
+        if (mdbLocal) {
+          await mdbLocal.collection('ipo_scheduled_checks').updateOne(
+            { _id: jobId },
+            {
+              $set: {
+                status: 'FAILED',
+                failedAt: new Date(),
+                error: timerErr.message,
+              }
+            }
+          ).catch(() => {});
+        }
+      } catch {}
     }
   }, Math.max(1000, delayMs)).unref();
 
@@ -372,7 +414,7 @@ async function processPendingScheduledChecks() {
           symbol: job.symbol,
           registrar: job.registrar,
           ipoName: job.ipoName,
-          force: true,
+          force: false,
           scheduledCheckId: job._id,
         });
 
@@ -617,12 +659,12 @@ async function triggerAutoAllotmentCheck({ symbol, registrar, ipoName, force = f
         const pushBody = `Congratulations! ${names} allotted shares! DP/App details verified on ${reg}. Tap to view full breakdown.`;
         const pushUrl = `/ipo-check?symbol=${encodeURIComponent(rawSymbol)}&registrar=${reg}&auto=1`;
 
-        // 1. Web Push
+        // 1. Web Push (deterministic tag prevents duplicate alerts in OS tray)
         await sendWebPushToUser(uid, {
           title: pushTitle,
           body: pushBody,
           url: pushUrl,
-          tag: `ipo-allotment-win-${rawSymbol}-${Date.now()}`,
+          tag: `ipo-allotment-win-${reg}-${rawSymbol}`,
           type: 'ipo-allotment-win',
           actions: [
             { action: 'view-allotment', title: 'View Allotment' },
@@ -644,9 +686,9 @@ async function triggerAutoAllotmentCheck({ symbol, registrar, ipoName, force = f
           await sendTelegram(targetChat, tgText).catch(() => {});
         }
 
-        // 3. Save into alerts history
+        // 3. Save into alerts history with deterministic deduplicating ID
         await appendAlert(uid, {
-          id: `IPO_ALLOTMENT_WIN_${rawSymbol}_${Date.now()}`,
+          id: `IPO_ALLOTMENT_WIN_${reg}_${rawSymbol}_${dateIST}`,
           type: 'IPO_ALLOTMENT_WIN',
           title: pushTitle,
           message: pushBody,
@@ -669,7 +711,7 @@ async function triggerAutoAllotmentCheck({ symbol, registrar, ipoName, force = f
           title: pushTitle,
           body: pushBody,
           url: pushUrl,
-          tag: `ipo-allotment-none-${rawSymbol}-${Date.now()}`,
+          tag: `ipo-allotment-none-${reg}-${rawSymbol}`,
           type: 'ipo-allotment-none',
           actions: [
             { action: 'view-status', title: 'Check Details' }
@@ -686,7 +728,7 @@ async function triggerAutoAllotmentCheck({ symbol, registrar, ipoName, force = f
         }
 
         await appendAlert(uid, {
-          id: `IPO_ALLOTMENT_NON_${rawSymbol}_${Date.now()}`,
+          id: `IPO_ALLOTMENT_NON_${reg}_${rawSymbol}_${dateIST}`,
           type: 'IPO_ALLOTMENT_NON',
           title: pushTitle,
           message: pushBody,

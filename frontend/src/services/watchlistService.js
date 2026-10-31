@@ -23,7 +23,7 @@ export async function getWatchlist(uid) {
 
 export async function addScript(uid, scriptData) {
   const { ltdCode, symbol, scriptName, exchange, notes, isin, group } = normalizeScript(scriptData)
-  if (!ltdCode) throw new Error('scriptData must include an LTD Code')
+  if (!ltdCode && !symbol) throw new Error('Must include at least a BSE Code or NSE Symbol')
 
   const res = await apiClient('/api/watchlist', {
     method: 'POST',
@@ -31,10 +31,13 @@ export async function addScript(uid, scriptData) {
   })
   
   // Call catch-up logic
-  apiClient('/api/watchlist/catchup', {
-    method: 'POST',
-    body: JSON.stringify({ scriptCode: ltdCode })
-  }).catch(e => console.error('[Watchlist Catchup]', e))
+  const catchupCode = ltdCode || symbol
+  if (catchupCode) {
+    apiClient('/api/watchlist/catchup', {
+      method: 'POST',
+      body: JSON.stringify({ scriptCode: catchupCode })
+    }).catch(e => console.error('[Watchlist Catchup]', e))
+  }
   
   return res
 }

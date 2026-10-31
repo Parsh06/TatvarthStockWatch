@@ -151,14 +151,14 @@ function getMarketCadence(date = new Date()) {
   const t2345 = 23 * 60 + 45;  // 23:45 IST (11:45 PM)
   const t0900 = 9 * 60;        // 09:00 IST
 
-  // 1. Weekdays Core Trading & Pre-Open (Mon-Fri 08:30 to 16:30 IST): 1-minute high-frequency polling
-  // Runs on every 60-second worker tick for sub-minute live statutory filing ingestion
+  // 1. Weekdays Core Trading & Pre-Open (Mon-Fri 08:30 to 16:30 IST): 25-second ultra-high-frequency polling
+  // Runs on dynamic ~25-second worker loop for zero-delay live statutory filing ingestion
   if (isWeekday && currentMinutes >= t0830 && currentMinutes <= t1630) {
     return {
       window: 'CORE_TRADING_HOURS',
       isWeekend: false,
-      minIntervalMinutes: 0, // 0-min delay: executes on every 60s worker tick
-      description: 'Weekday Core Trading (08:30 - 16:30 IST): 1-minute high-frequency polling',
+      minIntervalMinutes: 0, // 0-min delay: executes on every worker tick
+      description: 'Weekday Core Trading (08:30 - 16:30 IST): 25-second ultra-high-frequency polling',
     };
   }
 
