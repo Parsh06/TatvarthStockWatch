@@ -1,6 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const { getNseGainersLosers } = require('../services/nseService');
+const { getNSECookies, getNSEHeaders } = require('../lib/nseScraper');
 
 module.exports = function (verifyToken) {
   const router = express.Router();
@@ -61,33 +62,20 @@ module.exports = function (verifyToken) {
       let response;
       if (from === to) {
         try {
-          // Fetch cookies from homepage first to avoid 401/403/timeout
-          const baseRes = await axios.get('https://www.nseindia.com', {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-              'Accept-Language': 'en-US,en;q=0.9',
-              'Accept-Encoding': 'gzip, deflate',
-              'Connection': 'keep-alive'
-            },
-            timeout: 15000
-          });
-          const cookies = baseRes.headers['set-cookie'] ? baseRes.headers['set-cookie'].map(c => c.split(';')[0]).join('; ') : '';
+          const cookies = await getNSECookies();
+          const dynamicHeaders = typeof getNSEHeaders === 'function' ? getNSEHeaders('api') : {};
 
           // Fetch live snapshot
           const snapRes = await axios.get(
             `https://www.nseindia.com/api/snapshot-capital-market-largedeal`,
             {
               headers: {
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate',
-                'Connection': 'keep-alive',
+                ...dynamicHeaders,
                 'Referer': 'https://www.nseindia.com/market-data/bulk-block-deals',
-                'Cookie': cookies
+                'Cookie': cookies || ''
               },
-              timeout: 30000
+              timeout: 20000,
+              validateStatus: (s) => s === 200
             }
           );
           

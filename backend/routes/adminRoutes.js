@@ -1018,27 +1018,8 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
 
     // 5. NSE Scraper API
     try {
-      const start = Date.now();
-      const nseResp = await axios.get('https://www.nseindia.com/api/allIndices', {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
-          'Referer': 'https://www.nseindia.com/',
-          'Accept': '*/*',
-        },
-        timeout: 5000,
-        validateStatus: () => true,
-      });
-      const latencyMs = Date.now() - start;
-      const ok = nseResp.status >= 200 && nseResp.status < 400;
-      checks.nse = {
-        name: 'NSE Corporate Scraper',
-        status: ok ? (latencyMs < 1500 ? 'healthy' : 'degraded') : (nseResp.status === 403 ? 'blocked' : 'down'),
-        statusCode: nseResp.status,
-        latencyMs,
-        details: {
-          endpoint: 'www.nseindia.com',
-        },
-      };
+      const { testNSEConnectivity } = require('../lib/nseScraper');
+      checks.nse = await testNSEConnectivity();
     } catch (err) {
       checks.nse = {
         name: 'NSE Corporate Scraper',
@@ -1216,22 +1197,14 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       }
 
       if (serviceName === 'nse') {
-        const resp = await axios.get('https://www.nseindia.com/api/allIndices', {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
-            'Referer': 'https://www.nseindia.com/',
-            'Accept': '*/*',
-          },
-          timeout: 6000,
-          validateStatus: () => true,
-        });
-        const latencyMs = Date.now() - start;
+        const { testNSEConnectivity } = require('../lib/nseScraper');
+        const nseCheck = await testNSEConnectivity(true);
         return res.json({
-          success: resp.status >= 200 && resp.status < 400,
-          service: 'NSE API',
-          statusCode: resp.status,
-          latencyMs,
-          sample: resp.data?.data ? `Received ${resp.data.data.length} indices` : 'Connected',
+          success: nseCheck.status === 'healthy' || nseCheck.status === 'degraded',
+          service: 'NSE Corporate Scraper',
+          statusCode: nseCheck.statusCode,
+          latencyMs: nseCheck.latencyMs,
+          sample: nseCheck.details?.profile ? `Profile: ${nseCheck.details.profile} (${nseCheck.details.sessionActive ? 'Active Session' : 'Connected'})` : 'Connected',
         });
       }
 

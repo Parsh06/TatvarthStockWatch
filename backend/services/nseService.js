@@ -2,34 +2,7 @@ const axios = require('axios');
 const nseCache = require('../cache/nseCache');
 const { normalizeNseDataset } = require('../utils/normalizeNseData');
 const { generateNseCsv } = require('../utils/generateCsv');
-
-const DEFAULT_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Accept-Encoding': 'gzip, deflate',
-  'Connection': 'keep-alive',
-};
-
-/**
- * Establishes session cookie from NSE homepage.
- */
-async function getSessionCookies() {
-  try {
-    const res = await axios.get('https://www.nseindia.com', {
-      headers: DEFAULT_HEADERS,
-      timeout: 12000,
-      maxRedirects: 5,
-      validateStatus: () => true,
-    });
-    if (res.headers['set-cookie']) {
-      return res.headers['set-cookie'].map(c => c.split(';')[0]).join('; ');
-    }
-  } catch (err) {
-    console.warn('[nseService] Session cookie fetch warning:', err.message);
-  }
-  return '';
-}
+const { getNSECookies, getNSEHeaders } = require('../lib/nseScraper');
 
 /**
  * Fetches and normalizes NSE Gainers or Losers dataset for a specific index category.
@@ -64,15 +37,24 @@ async function getNseGainersLosers(type = 'gainer', index = 'allSec') {
 
   // 3. Fetch fresh data from NSE Provider
   const fetchPromise = (async () => {
-    const cookies = await getSessionCookies();
-    const headers = { ...DEFAULT_HEADERS };
-    if (cookies) headers['Cookie'] = cookies;
+    let rawData = {};
+    try {
+      const cookies = await getNSECookies();
+      const dynamicHeaders = typeof getNSEHeaders === 'function' ? getNSEHeaders('api') : {};
+      const headers = {
+        ...dynamicHeaders,
+        'Referer': 'https://www.nseindia.com/market-data/live-equity-market',
+      };
+      if (cookies) headers['Cookie'] = cookies;
 
-    const nseIndexParam = normType === 'loser' ? 'loosers' : 'gainers';
-    const nseUrl = `https://www.nseindia.com/api/live-analysis-variations?index=${nseIndexParam}`;
+      const nseIndexParam = normType === 'loser' ? 'loosers' : 'gainers';
+      const nseUrl = `https://www.nseindia.com/api/live-analysis-variations?index=${nseIndexParam}`;
 
-    const res = await axios.get(nseUrl, { headers, timeout: 20000 });
-    const rawData = res?.data || {};
+      const res = await axios.get(nseUrl, { headers, timeout: 15000, validateStatus: (s) => s === 200 });
+      rawData = res?.data || {};
+    } catch (err) {
+      console.warn('[nseService] Live fetch warning:', err.message);
+    }
 
     // Extract requested category section
     let rawList = [];

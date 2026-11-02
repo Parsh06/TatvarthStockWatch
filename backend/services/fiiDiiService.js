@@ -20,7 +20,7 @@
  */
 
 const axios = require('axios');
-const { getNSECookies } = require('../lib/nseScraper');
+const { getNSECookies, getNSEHeaders } = require('../lib/nseScraper');
 const { getDb } = require('../lib/mongoClient');
 const { getISTDateTime, getISTDateString } = require('../lib/time/istTime');
 const { broadcastWebPushToAll } = require('../lib/webPushNotifier');
@@ -113,34 +113,45 @@ function normalizeCategoryData(rawArray) {
  * Fetches both All-Exchanges and NSE-Only datasets in parallel using shared session cookies
  */
 async function fetchFromNse() {
-  const cookies = await getNSECookies();
-  const requestHeaders = {
-    ...HEADERS,
-    Cookie: cookies || '',
-  };
+  try {
+    const cookies = await getNSECookies();
+    const dynamicHeaders = typeof getNSEHeaders === 'function' ? getNSEHeaders('api') : {};
+    const requestHeaders = {
+      ...dynamicHeaders,
+      'Accept': '*/*',
+      'Referer': 'https://www.nseindia.com/reports/fii-dii',
+      'Cookie': cookies || '',
+    };
 
-  const [resReact, resNse] = await Promise.all([
-    axios.get(NSE_FII_DII_COMBINED_URL, {
-      headers: requestHeaders,
-      timeout: 10000,
-      validateStatus: (s) => s === 200,
-    }),
-    axios.get(NSE_FII_DII_NSE_ONLY_URL, {
-      headers: requestHeaders,
-      timeout: 10000,
-      validateStatus: (s) => s === 200,
-    }).catch(err => {
-      console.warn('[FiiDiiService] NSE-only endpoint warning:', err.message);
-      return { data: null };
-    }),
-  ]);
+    const [resReact, resNse] = await Promise.all([
+      axios.get(NSE_FII_DII_COMBINED_URL, {
+        headers: requestHeaders,
+        timeout: 10000,
+        validateStatus: (s) => s === 200,
+      }).catch(err => {
+        console.warn('[FiiDiiService] Combined endpoint warning:', err.message);
+        return { data: null };
+      }),
+      axios.get(NSE_FII_DII_NSE_ONLY_URL, {
+        headers: requestHeaders,
+        timeout: 10000,
+        validateStatus: (s) => s === 200,
+      }).catch(err => {
+        console.warn('[FiiDiiService] NSE-only endpoint warning:', err.message);
+        return { data: null };
+      }),
+    ]);
 
-  const combined = normalizeCategoryData(resReact.data);
-  const nseOnly = resNse.data ? normalizeCategoryData(resNse.data) : null;
+    if (!resReact || !resReact.data) {
+      return null;
+    }
 
-  if (!combined) {
-    throw new Error('Invalid response structure from NSE fiidii API');
-  }
+    const combined = normalizeCategoryData(resReact.data);
+    const nseOnly = resNse && resNse.data ? normalizeCategoryData(resNse.data) : null;
+
+    if (!combined) {
+      return null;
+    }
 
   // Calculate other exchanges (BSE + MSEI contribution)
   let otherExchanges = null;
@@ -162,21 +173,25 @@ async function fetchFromNse() {
     };
   }
 
-  return {
-    date: combined.date,
-    displayDate: combined.displayDate,
-    combined,
-    nseOnly: nseOnly || combined,
-    otherExchanges,
-    // Top-level compatibility fields
-    fii: combined.fii,
-    dii: combined.dii,
-    totalNet: combined.totalNet,
-    totalBuy: combined.totalBuy,
-    totalSell: combined.totalSell,
-    sentiment: combined.sentiment,
-    updatedAt: new Date().toISOString(),
-  };
+    return {
+      date: combined.date,
+      displayDate: combined.displayDate,
+      combined,
+      nseOnly: nseOnly || combined,
+      otherExchanges,
+      // Top-level compatibility fields
+      fii: combined.fii,
+      dii: combined.dii,
+      totalNet: combined.totalNet,
+      totalBuy: combined.totalBuy,
+      totalSell: combined.totalSell,
+      sentiment: combined.sentiment,
+      updatedAt: new Date().toISOString(),
+    };
+  } catch (err) {
+    console.warn('[FiiDiiService] fetchFromNse exception:', err.message);
+    return null;
+  }
 }
 
 /**
