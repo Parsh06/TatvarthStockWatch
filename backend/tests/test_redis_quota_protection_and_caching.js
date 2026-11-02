@@ -14,7 +14,7 @@
 
 const assert = require('assert');
 const redisClient = require('../lib/redis/redisClient');
-const { globalRateLimiter, strictRateLimiter, shouldBypassRateLimit } = require('../middleware/rateLimiter');
+const { globalRateLimiter, adminQueryLimiter, strictRateLimiter, shouldBypassRateLimit } = require('../middleware/rateLimiter');
 const redisNotifStore = require('../lib/redis/redisNotificationStore');
 const { loadAdminProfile } = require('../middleware/requireAdmin');
 
@@ -151,6 +151,49 @@ async function runTests() {
 
     const secondLock = await redisNotifStore.acquireDedupLock(annId, uid, 'PUSH');
     assert.strictEqual(secondLock, false, 'Second lock attempt for same announcement/user/channel must be rejected in-memory');
+
+    redisNotifStore.clearDedupMemorySet();
+    // After clear, memory set is empty
+  });
+
+  await testAsync('Batch watcher retrieval (getWatchersBatch & addWatchersBatch) pipeline caching', async () => {
+    const key1 = 'BSE:500112';
+    const key2 = 'BSE:500180';
+    const key3 = 'NSE:INFY';
+
+    await redisNotifStore.addWatchersBatch(key1, ['user-a', 'user-b']);
+    await redisNotifStore.addWatchersBatch(key2, ['user-c']);
+
+    const batchMap = await redisNotifStore.getWatchersBatch([key1, key2, key3]);
+    assert.ok(batchMap.has(key1), 'Map must contain key1');
+    assert.ok(batchMap.has(key2), 'Map must contain key2');
+    assert.ok(batchMap.has(key3), 'Map must contain key3');
+
+    assert.ok(batchMap.get(key1).includes('user-a'));
+    assert.ok(batchMap.get(key1).includes('user-b'));
+    assert.ok(batchMap.get(key2).includes('user-c'));
+    assert.strictEqual(batchMap.get(key3).length, 0, 'Unwatched key3 must return empty array');
+  });
+
+  await testAsync('Admin query rate limiter operates in-memory (0 Redis commands)', async () => {
+    const adminReq = {
+      originalUrl: '/api/admin/stats',
+      baseUrl: '/api/admin',
+      path: '/stats',
+      headers: { 'x-forwarded-for': '127.0.0.1' },
+      uid: 'admin-test-user',
+    };
+
+    let allowed = 0;
+    const mockRes = {
+      setHeader: () => {},
+      status: () => ({ json: (d) => d })
+    };
+
+    for (let i = 0; i < 50; i++) {
+      await adminQueryLimiter(adminReq, mockRes, () => allowed++);
+    }
+    assert.strictEqual(allowed, 50, 'All 50 admin stats queries must be allowed via in-memory limiter');
   });
 
   // ── TEST SUITE 4: In-Memory Rate Limiting Execution ─────────────────────────

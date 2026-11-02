@@ -56,6 +56,13 @@ app.use(helmet({
 app.use(requestIdMiddleware);
 app.use(stripClientUserParams);
 
+// ── Inbound Traffic Timestamp Tracker (Smart Idle Keep-Alive) ──────────────────
+let _lastInboundHttpTime = Date.now();
+app.use((req, res, next) => {
+  _lastInboundHttpTime = Date.now();
+  next();
+});
+
 // ── Runtime Detection (Hybrid Architecture: Vercel Serverless + Render Worker) ─
 const IS_VERCEL = Boolean(process.env.VERCEL || process.env.NOW_REGION);
 const IS_RENDER = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
@@ -430,19 +437,23 @@ if (require.main === module) {
       // Initial tick after boot stagger (5s)
       setTimeout(scheduleNextWorkerTick, 5000);
 
-      // Render Free Tier Keep-Alive Self-Ping:
-      // Render free services spin down after 15 minutes of inactivity when no HTTP requests arrive.
-      // Pinging the public URL (/api/health) every 9 minutes guarantees the service stays 100% warm & active.
+      // Render Free Tier Smart Keep-Alive:
+      // Render free services spin down after 15 minutes of inactivity if no incoming HTTP traffic arrives.
+      // Every 3 minutes, we check if the server has been idle of inbound traffic for >= 11 minutes.
+      // If idle >= 11 minutes, dispatch 1 ping to reset Render's 15m timer; otherwise skip completely (saves bandwidth).
       const RENDER_PUBLIC_URL = process.env.RENDER_EXTERNAL_URL || 'https://tatvarthstockwatch.onrender.com';
-      const KEEP_ALIVE_INTERVAL_MS = 9 * 60 * 1000;
+      const KEEP_ALIVE_CHECK_MS = 3 * 60 * 1000;
       setInterval(() => {
-        try {
-          const https = require('https');
-          https.get(`${RENDER_PUBLIC_URL}/api/health`, { timeout: 10000 }, (res) => {
-            // Heartbeat received
-          }).on('error', () => {});
-        } catch {}
-      }, KEEP_ALIVE_INTERVAL_MS);
+        const idleMs = Date.now() - _lastInboundHttpTime;
+        if (idleMs >= 11 * 60 * 1000) {
+          try {
+            const https = require('https');
+            https.get(`${RENDER_PUBLIC_URL}/api/health`, { timeout: 10000 }, (res) => {
+              // Heartbeat received, resets Render 15-minute inactivity timer
+            }).on('error', () => {});
+          } catch {}
+        }
+      }, KEEP_ALIVE_CHECK_MS);
     } else if (IS_VERCEL) {
       console.log('  Alert cron:    DELEGATED TO RENDER (Vercel running in stateless serverless mode)');
     } else {

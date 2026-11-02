@@ -70,19 +70,21 @@ async function resolveRecipientsForBatch(announcements) {
     if (nse) instrumentKeys.add(`NSE:${nse}`);
   }
 
-  // 3. For each instrument key, query Redis set (or fallback to Mongo)
-  for (const key of instrumentKeys) {
-    const watchers = await redisNotifStore.getWatchers(key);
-    if (watchers && watchers.length > 0) {
+  // 3. For each instrument key, query Redis batch (pipelined) or fallback to Mongo
+  const keysArray = Array.from(instrumentKeys);
+  const batchWatchersMap = await redisNotifStore.getWatchersBatch(keysArray);
+
+  for (const key of keysArray) {
+    const watchers = batchWatchersMap.get(key) || [];
+    if (watchers.length > 0) {
       watchers.forEach(uid => recipientUids.add(uid));
     } else {
       // Fallback query to MongoDB if Redis key is missing
       const mongoWatchers = await watchlistStore.getWatchersForInstruments([key]);
-      mongoWatchers.forEach(uid => {
-        recipientUids.add(uid);
-        // Seed Redis asynchronously
-        redisNotifStore.addWatcher(key, uid).catch(() => {});
-      });
+      mongoWatchers.forEach(uid => recipientUids.add(uid));
+      if (mongoWatchers.length > 0) {
+        redisNotifStore.addWatchersBatch(key, mongoWatchers).catch(() => {});
+      }
     }
   }
 
@@ -153,22 +155,23 @@ async function resolveRecipientsMapForBatch(announcements) {
     }
   }
 
-  // 3. Batch fetch watchers per unique instrument key (cached per run)
+  // 3. Batch fetch watchers across all unique instrument keys via Redis Pipeline / 30m in-memory cache
+  const keysArray = Array.from(instrumentKeysNeeded);
+  const batchWatchersMap = await redisNotifStore.getWatchersBatch(keysArray);
   const instrumentWatchersMap = new Map();
-  for (const key of instrumentKeysNeeded) {
-    let watcherSet = new Set();
-    const watchers = await redisNotifStore.getWatchers(key);
-    if (watchers && watchers.length > 0) {
-      watcherSet = new Set(watchers);
+
+  for (const key of keysArray) {
+    const cachedWatchers = batchWatchersMap.get(key) || [];
+    if (cachedWatchers.length > 0) {
+      instrumentWatchersMap.set(key, new Set(cachedWatchers));
     } else {
-      // Fallback query to MongoDB if Redis key is unseeded or missing
+      // Fallback query to MongoDB only if Redis key returned empty
       const mongoWatchers = await watchlistStore.getWatchersForInstruments([key]);
-      watcherSet = new Set(mongoWatchers);
-      mongoWatchers.forEach(uid => {
-        redisNotifStore.addWatcher(key, uid).catch(() => {});
-      });
+      instrumentWatchersMap.set(key, new Set(mongoWatchers));
+      if (mongoWatchers.length > 0) {
+        redisNotifStore.addWatchersBatch(key, mongoWatchers).catch(() => {});
+      }
     }
-    instrumentWatchersMap.set(key, watcherSet);
   }
 
   // 4. Map recipient UIDs per announcement ID

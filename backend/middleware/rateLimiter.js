@@ -107,6 +107,14 @@ setInterval(() => {
 // Global app rate limiter: Uses high-speed in-memory store (0 Redis commands consumed)
 const globalRateLimiter = createLimiter({ maxRequests: 120, windowMs: WINDOW_MS, useDistributed: false });
 
+// Fast in-memory rate limiter for Admin dashboard queries (/stats, /users, /audit) (0 Redis commands consumed)
+const adminQueryLimiter = createLimiter({
+  maxRequests: 120,
+  windowMs: WINDOW_MS,
+  errorMessage: 'Admin rate limit exceeded. Please wait a moment.',
+  useDistributed: false,
+});
+
 // Strict rate limiter for sensitive auth & onboarding endpoints: Distributed with circuit fallback
 const strictRateLimiter = createLimiter({
   maxRequests: 15,
@@ -125,6 +133,7 @@ const userMutationRateLimiter = createLimiter({
 
 module.exports = {
   globalRateLimiter,
+  adminQueryLimiter,
   strictRateLimiter,
   userMutationRateLimiter,
   createLimiter,

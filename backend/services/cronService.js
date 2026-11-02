@@ -67,6 +67,13 @@ async function performMidnightWipeIfNeeded() {
         wipeAllCheckHistory().catch((err) => console.error('[Midnight Wipe] IPO check history wipe failed:', err.message)),
       ]);
 
+      try {
+        const redisNotifStore = require('../lib/redis/redisNotificationStore');
+        if (typeof redisNotifStore.clearDedupMemorySet === 'function') {
+          redisNotifStore.clearDedupMemorySet();
+        }
+      } catch {}
+
       // Pre-seed today's closing IPOs into MongoDB for the new day
       try {
         const ipoResult = await getIposClosingToday();

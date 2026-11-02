@@ -111,40 +111,40 @@ const redis = _rawRedis ? new Proxy(_rawRedis, {
       return function() {
         const rawPipe = obj.pipeline ? obj.pipeline() : null;
         let commandCount = 0;
-        const pipeObj = {
-          incr(...args) { commandCount++; if (rawPipe) rawPipe.incr(...args); return pipeObj; },
-          pexpire(...args) { commandCount++; if (rawPipe) rawPipe.pexpire(...args); return pipeObj; },
-          expire(...args) { commandCount++; if (rawPipe) rawPipe.expire(...args); return pipeObj; },
-          set(...args) { commandCount++; if (rawPipe) rawPipe.set(...args); return pipeObj; },
-          del(...args) { commandCount++; if (rawPipe) rawPipe.del(...args); return pipeObj; },
-          hset(...args) { commandCount++; if (rawPipe) rawPipe.hset(...args); return pipeObj; },
-          hdel(...args) { commandCount++; if (rawPipe) rawPipe.hdel(...args); return pipeObj; },
-          sadd(...args) { commandCount++; if (rawPipe) rawPipe.sadd(...args); return pipeObj; },
-          srem(...args) { commandCount++; if (rawPipe) rawPipe.srem(...args); return pipeObj; },
-          lpush(...args) { commandCount++; if (rawPipe) rawPipe.lpush(...args); return pipeObj; },
-          rpush(...args) { commandCount++; if (rawPipe) rawPipe.rpush(...args); return pipeObj; },
-          async exec() {
-            if (isCircuitOpen()) {
-              _telemetry.inMemoryFallbackCalls += commandCount;
-              return new Array(commandCount).fill(1);
+        const pipeProxy = new Proxy({}, {
+          get(_, cmd) {
+            if (cmd === 'exec') {
+              return async function() {
+                if (isCircuitOpen()) {
+                  _telemetry.inMemoryFallbackCalls += commandCount;
+                  return new Array(commandCount).fill(1);
+                }
+                try {
+                  const res = rawPipe ? await rawPipe.exec() : [];
+                  _telemetry.commandsExecuted += commandCount;
+                  _telemetry.pipelineBatches++;
+                  _telemetry.lastCommandAt = new Date().toISOString();
+                  return res;
+                } catch (err) {
+                  if (isQuotaError(err)) {
+                    tripCircuit(err.message);
+                    _telemetry.inMemoryFallbackCalls += commandCount;
+                    return new Array(commandCount).fill(1);
+                  }
+                  throw err;
+                }
+              };
             }
-            try {
-              const res = await rawPipe.exec();
-              _telemetry.commandsExecuted += commandCount;
-              _telemetry.pipelineBatches++;
-              _telemetry.lastCommandAt = new Date().toISOString();
-              return res;
-            } catch (err) {
-              if (isQuotaError(err)) {
-                tripCircuit(err.message);
-                _telemetry.inMemoryFallbackCalls += commandCount;
-                return new Array(commandCount).fill(1);
+            return function(...args) {
+              commandCount++;
+              if (rawPipe && typeof rawPipe[cmd] === 'function') {
+                rawPipe[cmd](...args);
               }
-              throw err;
-            }
+              return pipeProxy;
+            };
           }
-        };
-        return pipeObj;
+        });
+        return pipeProxy;
       };
     }
 

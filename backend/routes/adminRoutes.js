@@ -29,7 +29,7 @@ const { db, admin } = require('../lib/firebaseAdmin');
 const { getDb } = require('../lib/mongoClient');
 const { ObjectId } = require('mongodb');
 const axios = require('axios');
-const { strictRateLimiter } = require('../middleware/rateLimiter');
+const { strictRateLimiter, adminQueryLimiter } = require('../middleware/rateLimiter');
 const { broadcastWebPushToAll, sendWebPushToUser } = require('../lib/webPushNotifier');
 
 module.exports = function adminRoutes(verifyToken, requireAdmin) {
@@ -126,7 +126,7 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
   // All routes need verifyToken first; individual routes add requireAdmin('read'/'write')
 
   // ── GET /api/admin/stats ───────────────────────────────────────────────────
-  router.get('/stats', verifyToken, requireAdmin('read'), strictRateLimiter, async (req, res) => {
+  router.get('/stats', verifyToken, requireAdmin('read'), adminQueryLimiter, async (req, res) => {
     try {
       const mongoDb = await getDb();
 
@@ -197,7 +197,7 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
   });
 
   // ── GET /api/admin/users ──────────────────────────────────────────────────
-  router.get('/users', verifyToken, requireAdmin('read'), strictRateLimiter, async (req, res) => {
+  router.get('/users', verifyToken, requireAdmin('read'), adminQueryLimiter, async (req, res) => {
     try {
       const { search = '', limit: rawLimit = '100', pageToken } = req.query;
       const maxResults = Math.min(parseInt(rawLimit, 10) || 100, 500);

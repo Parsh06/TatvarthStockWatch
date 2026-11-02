@@ -8,7 +8,7 @@ const redisKeys = require('./redisKeys');
  * Reduces Upstash Redis command volume by >95% via fast local memory caching.
  */
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes in-memory TTL (event-driven invalidation)
 
 // In-memory caches for high-frequency hot data
 let _scopeAllUsersCache = { users: null, expiresAt: 0 };
@@ -120,6 +120,96 @@ async function getWatchers(instrumentKey) {
   } catch (err) {
     console.error(`[RedisNotifStore] getWatchers error (${instrumentKey}):`, err.message);
     return cached ? cached.members : [];
+  }
+}
+
+/**
+ * Batched watcher retrieval using Redis Pipeline.
+ * Queries memory first; aggregates all missing keys into a SINGLE network roundtrip.
+ *
+ * @param {string[]} instrumentKeys - Array of "BSE:500325" or "NSE:RELIANCE"
+ * @returns {Promise<Map<string, string[]>>} Map of instrumentKey -> array of UIDs
+ */
+async function getWatchersBatch(instrumentKeys = []) {
+  const resultMap = new Map();
+  if (!Array.isArray(instrumentKeys) || instrumentKeys.length === 0) {
+    return resultMap;
+  }
+
+  const missingKeys = [];
+  const now = Date.now();
+
+  for (const key of instrumentKeys) {
+    if (!key) continue;
+    const cached = _watchersCache.get(key);
+    if (cached && now < cached.expiresAt) {
+      resultMap.set(key, cached.members);
+    } else {
+      missingKeys.push(key);
+    }
+  }
+
+  // If all were cached in memory, return in 0ms (0 Redis commands)
+  if (missingKeys.length === 0) {
+    return resultMap;
+  }
+
+  // If Redis is unavailable, fallback to existing memory/empty
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) {
+    for (const key of missingKeys) {
+      const cached = _watchersCache.get(key);
+      resultMap.set(key, cached ? cached.members : []);
+    }
+    return resultMap;
+  }
+
+  // Query all missing keys in a single pipelined Redis HTTP call
+  try {
+    const pipeline = redis.pipeline();
+    for (const key of missingKeys) {
+      pipeline.smembers(redisKeys.watchlistUsers(key));
+    }
+    const results = await pipeline.exec();
+
+    missingKeys.forEach((key, idx) => {
+      const members = results && Array.isArray(results[idx]) ? results[idx] : [];
+      _watchersCache.set(key, { members, expiresAt: now + CACHE_TTL_MS });
+      resultMap.set(key, members);
+    });
+
+    return resultMap;
+  } catch (err) {
+    console.error('[RedisNotifStore] getWatchersBatch pipeline error:', err.message);
+    for (const key of missingKeys) {
+      const cached = _watchersCache.get(key);
+      resultMap.set(key, cached ? cached.members : []);
+    }
+    return resultMap;
+  }
+}
+
+/**
+ * Batch adds multiple watchers for an instrument key in a single Redis SADD command.
+ */
+async function addWatchersBatch(instrumentKey, uids = []) {
+  if (!instrumentKey || !Array.isArray(uids) || uids.length === 0) return false;
+  let cached = _watchersCache.get(instrumentKey);
+  const now = Date.now();
+  if (!cached) {
+    cached = { members: [...new Set(uids)], expiresAt: now + CACHE_TTL_MS };
+    _watchersCache.set(instrumentKey, cached);
+  } else {
+    for (const uid of uids) {
+      if (!cached.members.includes(uid)) cached.members.push(uid);
+    }
+  }
+  if (!UPSTASH_ENABLED || !redis || !isRedisAvailable()) return true;
+  try {
+    await redis.sadd(redisKeys.watchlistUsers(instrumentKey), ...uids);
+    return true;
+  } catch (err) {
+    console.error(`[RedisNotifStore] addWatchersBatch error (${instrumentKey}):`, err.message);
+    return false;
   }
 }
 
@@ -251,6 +341,10 @@ async function getIpoClosingUsers() {
   }
 }
 
+function clearDedupMemorySet() {
+  _dedupMemorySet.clear();
+}
+
 // Prune expired in-memory caches every 10 minutes
 setInterval(() => {
   const now = Date.now();
@@ -260,7 +354,7 @@ setInterval(() => {
   for (const [k, v] of _prefsCache) {
     if (now > v.expiresAt) _prefsCache.delete(k);
   }
-  if (_dedupMemorySet.size > 25000) {
+  if (_dedupMemorySet.size > 100000) {
     _dedupMemorySet.clear();
   }
 }, 10 * 60_000);
@@ -623,9 +717,12 @@ module.exports = {
   addWatcher,
   removeWatcher,
   getWatchers,
+  getWatchersBatch,
+  addWatchersBatch,
   setPrefs,
   getPrefs,
   acquireDedupLock,
+  clearDedupMemorySet,
   // IPO closing (legacy single-notification)
   addIpoClosingUser,
   removeIpoClosingUser,

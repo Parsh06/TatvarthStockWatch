@@ -49,6 +49,7 @@ module.exports = function marketRoutes(verifyToken) {
           error: 'Volume spurt data is temporarily unavailable. Please try again.',
         });
       }
+      res.setHeader('Cache-Control', 'public, max-age=45, stale-while-revalidate=90');
       res.json(snapshot);
     } catch (err) {
       console.error('Failed to fetch volume spurt:', err.message);
@@ -63,6 +64,7 @@ module.exports = function marketRoutes(verifyToken) {
       const page = parseInt(req.query.page, 10) || 1;
       const search = (req.query.search || '').toLowerCase();
       const finalData = await fetchIpoGmpData(page, search);
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
       res.json(finalData);
     } catch (err) {
       console.error('Failed to fetch IPO GMP data:', err.message);
