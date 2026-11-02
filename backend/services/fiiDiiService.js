@@ -365,10 +365,18 @@ async function getLatestFiiDiiData(forceRefresh = false) {
       latestRecord = history[history.length - 1];
     }
 
-    // 2. If no record in DB or forceRefresh requested, fetch live
-    if (!latestRecord || forceRefresh) {
+    // 2. Intelligent today's release detection:
+    // If no record, or forceRefresh requested, OR if we are in/after evening window (17:30+ IST on weekday)
+    // and the latest record in DB is from a previous trading day, attempt to fetch today's live release.
+    const nowIST = getISTDateTime();
+    const todayIST = nowIST.dateIST;
+    const isWeekday = nowIST.istDay >= 1 && nowIST.istDay <= 5;
+    const isEvening = (nowIST.istHour > 17 || (nowIST.istHour === 17 && nowIST.istMinute >= 30)) && nowIST.istHour < 24;
+    const isStaleForToday = Boolean(isWeekday && isEvening && latestRecord && latestRecord.date !== todayIST);
+
+    if (!latestRecord || forceRefresh || isStaleForToday) {
       const live = await fetchFromNse();
-      if (live) {
+      if (live && live.date) {
         latestRecord = live;
         await upsertFiiDiiRecord(live);
         history = await getFiiDiiHistory(10);
@@ -430,7 +438,7 @@ async function syncDailyFiiDii(options = {}) {
     const live = await fetchFromNse();
     if (!live || !live.date) {
       console.log('[FiiDiiService] Real-time NSE feed challenged or awaiting release — serving verified database history.');
-      return { synced: true, pendingRelease: true, servingHistorical: true };
+      return { synced: false, pendingRelease: true, servingHistorical: true };
     }
 
     await upsertFiiDiiRecord(live);

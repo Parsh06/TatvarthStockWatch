@@ -12,6 +12,7 @@ import {
   Table as TableIcon,
   Sparkles,
   ExternalLink,
+  RefreshCw,
 } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts';
 import clsx from 'clsx';
@@ -37,7 +38,7 @@ function formatNumber(val) {
   }).format(val);
 }
 
-export default function FiiDiiWidget({ data, loading, error }) {
+export default function FiiDiiWidget({ data, loading, error, onRefresh, refreshing }) {
   const [activeScope, setActiveScope] = useState('combined'); // 'combined' | 'nseOnly' | 'tables'
 
   if (loading) {
@@ -129,6 +130,17 @@ export default function FiiDiiWidget({ data, loading, error }) {
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/5 text-textMuted border border-border font-mono">
                 {asOf}
               </span>
+              {onRefresh && (
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  disabled={refreshing || loading}
+                  className="p-1 rounded-lg text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-white/5 transition-all disabled:opacity-50"
+                  title="Refresh FII/DII Data"
+                >
+                  <RefreshCw className={clsx('w-3.5 h-3.5', (refreshing || loading) && 'animate-spin text-primary')} />
+                </button>
+              )}
             </div>
             <p className="text-xs text-textMuted mt-0.5">
               Foreign & Domestic Institutional cash market turnover & daily net flow

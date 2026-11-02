@@ -85,6 +85,8 @@ export default function DashboardPage() {
           <FiiDiiWidget
             data={d.fiiDii}
             loading={loading && !d.fiiDii}
+            refreshing={refreshing}
+            onRefresh={refresh}
             error={sourceStatus('fiiDii') === 'error'}
           />
         </Row>
