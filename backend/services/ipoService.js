@@ -10,6 +10,10 @@ const { getCanonicalIpoKey, computeIpoFingerprint, computeNameSimilarity } = req
 //  < 0.72 = genuinely different companies       → keep separate
 const FUZZY_THRESHOLD = 0.72;
 
+// In-memory cache for live IPO GMP & subscription queries (60s TTL)
+const _ipoGmpCache = new Map();
+const IPO_GMP_CACHE_TTL_MS = 60 * 1000;
+
 /**
  * Merge `incoming` IPO entry into the existing entry at `key` in `map`.
  * Best values from either source always win (highest GMP, richest exchange, etc.)
@@ -55,17 +59,24 @@ function _mergeEntry(map, key, incoming) {
 
 async function fetchIpoGmpData(page = 1, search = '') {
   search = search.toLowerCase();
+  const cacheKey = `${page}:${search}`;
+
+  const cached = _ipoGmpCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.data;
+  }
   
   const mbGmpUrl = `https://mainboardgmp.com/ipos-pagination.php?type=all&page=${page}&search=${encodeURIComponent(search)}&year=`;
   
-  // Investorgain URL for current active/upcoming IPOs
+  // Investorgain URLs: Report 331 (GMP) & Report 333 (Live Subscriptions)
   const date = new Date();
   const currentYear = date.getFullYear();
   const nextYear = currentYear + 1;
   const igUrl = `https://webnodejs.investorgain.com/cloud/v2/report/data-read/331/1/8/${currentYear}/${currentYear}-${nextYear.toString().slice(-2)}/0/all?search=${encodeURIComponent(search)}&v=11-18`;
+  const igSubUrl = `https://webnodejs.investorgain.com/cloud/v2/report/data-read/333/1/8/${currentYear}/${currentYear}-${nextYear.toString().slice(-2)}/0/all?search=${encodeURIComponent(search)}&v=11-18`;
 
-  // Fetch concurrently
-  const [mbGmpRes, igRes] = await Promise.allSettled([
+  // Fetch all 3 data streams concurrently
+  const [mbGmpRes, igRes, igSubRes] = await Promise.allSettled([
     axios.get(mbGmpUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -79,11 +90,19 @@ async function fetchIpoGmpData(page = 1, search = '') {
         'Referer': 'https://www.investorgain.com/'
       },
       timeout: 8000
+    }),
+    axios.get(igSubUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://www.investorgain.com/'
+      },
+      timeout: 8000
     })
   ]);
 
   const mbData = mbGmpRes.status === 'fulfilled' ? mbGmpRes.value?.data : null;
   const igData = igRes.status === 'fulfilled' ? igRes.value?.data : null;
+  const igSubData = igSubRes.status === 'fulfilled' ? igSubRes.value?.data : null;
 
   const mbTransportOk = mbGmpRes.status === 'fulfilled' && mbGmpRes.value?.status === 200;
   const mbSchemaValid = mbData && typeof mbData === 'object' && Array.isArray(mbData.data);
@@ -106,13 +125,59 @@ async function fetchIpoGmpData(page = 1, search = '') {
       usable: igTransportOk && igSchemaValid,
       count: igSchemaValid ? igData.reportTableData.length : 0,
     },
+    investorgainSub: {
+      attempted: true,
+      usable: igSubRes.status === 'fulfilled' && Array.isArray(igSubData?.reportTableData),
+      count: Array.isArray(igSubData?.reportTableData) ? igSubData.reportTableData.length : 0,
+    }
   };
+
+  // Helper: Canonical match key
+  const getMatchKey = (name) => getCanonicalIpoKey(name);
+
+  // Helper: Clean subscription value (e.g. 0.66 -> 0.66x)
+  const formatSubRatio = (val) => {
+    if (!val || val === '--' || val === '-') return '-';
+    const s = String(val).replace(/<[^>]+>/g, '').trim();
+    if (!s || s === '-' || s === '--') return '-';
+    return s.endsWith('x') ? s : `${s}x`;
+  };
+
+  // Build Subscription Map from Report 333
+  const subMap = new Map();
+  if (sourcesStatus.investorgainSub.usable) {
+    igSubData.reportTableData.forEach(item => {
+      let subName = item['~ipo_name'] || '';
+      const nameMatch = item.Name?.match(/title="([^"]+)"/);
+      if (nameMatch) subName = nameMatch[1];
+      subName = subName.replace(' IPO', '').trim();
+
+      let totalTimes = '';
+      const totalMatch = item.Total?.match(/<b>([\d.]+)<\/b>/);
+      if (totalMatch) totalTimes = totalMatch[1];
+      else totalTimes = (item.Total || '').replace(/<[^>]+>/g, '').trim();
+
+      let updatedAt = '';
+      const timeMatch = item.Total?.match(/<small[^>]*><b>([^<]+)<\/b><\/small>/);
+      if (timeMatch) updatedAt = timeMatch[1];
+
+      const subEntry = {
+        total: totalTimes && totalTimes !== '-' ? (totalTimes.endsWith('x') ? totalTimes : `${totalTimes}x`) : '-',
+        qib: formatSubRatio(item.QIB),
+        nii: formatSubRatio(item.NII),
+        shni: formatSubRatio(item.SHNI),
+        bhni: formatSubRatio(item.BHNI),
+        retail: formatSubRatio(item.RII),
+        updatedAt: updatedAt || null,
+      };
+
+      if (item['~id']) subMap.set(String(item['~id']), subEntry);
+      if (subName) subMap.set(getMatchKey(subName), subEntry);
+    });
+  }
 
   let finalData = { data: [], current_page: page, total_pages: 1, total: 0 };
   const companySet = new Set();
-
-  // Use canonical key for within-scraper enrichment dedup (fetchIpoGmpData only)
-  const getMatchKey = (name) => getCanonicalIpoKey(name);
 
   // Process MainboardGMP (Primary Source)
   if (sourcesStatus.mainboardGmp.usable) {
@@ -137,12 +202,32 @@ async function fetchIpoGmpData(page = 1, search = '') {
       const gmpMatch = item.GMP?.match(/<b>([\d.]+)<\/b>/);
       if (gmpMatch && gmpMatch[1] !== '--') gmp = parseFloat(gmpMatch[1]);
 
+      // Extract GMP Range from HTML (e.g. 5 ↓ / 15 ↑)
+      let gmp_range = null;
+      if (item.GMP) {
+        const rangeMatch = item.GMP.match(/([\d.]+\s*[↓]\s*\/\s*[\d.]+\s*[↑])/);
+        if (rangeMatch) gmp_range = rangeMatch[1].trim();
+      }
+      const max_gmp = parseFloat(item['~max_gmp1']) || null;
+
+      // Extract exact exchange & segment (Mainboard vs BSE SME / NSE SME)
+      let listing_exch = item['~IPO_Category'] === 'SME' ? 'SME' : 'Mainboard';
+      if (item.Name) {
+        if (item.Name.includes('BSE SME')) listing_exch = 'BSE SME';
+        else if (item.Name.includes('NSE SME')) listing_exch = 'NSE SME';
+        else if (item.Name.includes('BSE & NSE') || item.Name.includes('NSE & BSE')) listing_exch = 'NSE & BSE';
+        else if (item.Name.includes('NSE') && item.Name.includes('BSE')) listing_exch = 'NSE & BSE';
+        else if (item.Name.includes('BSE')) listing_exch = 'BSE';
+        else if (item.Name.includes('NSE')) listing_exch = 'NSE';
+      }
+      const is_sme = listing_exch.includes('SME') || item['~IPO_Category'] === 'SME';
+      const segment = is_sme ? 'SME' : 'MAINBOARD';
+
       // Extract Status (upcoming, open, closed)
       let tab_status = 'closed';
       const now = new Date();
       const openD = new Date(item['~Srt_Open']);
       const closeD = new Date(item['~Srt_Close']);
-      // Add 1 day to closeD to cover the whole day
       closeD.setHours(23, 59, 59, 999);
       if (now < openD) tab_status = 'upcoming';
       else if (now >= openD && now <= closeD) tab_status = 'open';
@@ -154,6 +239,14 @@ async function fetchIpoGmpData(page = 1, search = '') {
         return isNaN(d) ? ds : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ');
       };
 
+      const addDaysToDate = (ds, days) => {
+        if (!ds || ds === '0000-00-00') return '-';
+        const d = new Date(ds);
+        if (isNaN(d)) return '-';
+        d.setDate(d.getDate() + days);
+        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ');
+      };
+
       // Extract rating (count fire emojis)
       let fireRating = 0;
       if (item.Rating) {
@@ -163,8 +256,33 @@ async function fetchIpoGmpData(page = 1, search = '') {
       
       // Clean IPO size
       let ipoSize = (item['IPO Size'] || '-').replace(/&#8377;/g, '₹');
-
       const rawCloseDate = item['~Srt_Close'] || item.close_date || '';
+      const rawBoaDate = item['~Srt_BoA_Dt'] || item['BoA Dt'] || '';
+      const rawListingDate = item['~Str_Listing'] || item.Listing || '';
+
+      const subEntry = subMap.get(String(item['~id'])) || subMap.get(getMatchKey(company_name)) || null;
+      const subscriptionObj = subEntry || {
+        total: item['Sub'] || '-',
+        qib: '-',
+        nii: '-',
+        shni: '-',
+        bhni: '-',
+        retail: '-',
+        updatedAt: null,
+      };
+
+      const lotVal = item['Lot'] || '0';
+      const priceVal = item['Price (₹)'] || '0';
+      const lotNum = parseInt(String(lotVal).replace(/,/g, ''), 10) || 0;
+      const priceNum = parseFloat(String(priceVal).replace(/[^0-9.]/g, '')) || 0;
+      const minInvestment = (lotNum > 0 && priceNum > 0) ? Math.round(lotNum * priceNum) : null;
+
+      let anchorStatus = '-';
+      if (item.Anchor) {
+        if (item.Anchor.includes('❌')) anchorStatus = 'No';
+        else if (item.Anchor.includes('✔️') || item.Anchor.includes('✅')) anchorStatus = 'Yes';
+        else anchorStatus = item.Anchor.replace(/<[^>]+>/g, '').trim() || '-';
+      }
 
       return {
         id: item['~id'] || Math.floor(Math.random() * 100000),
@@ -172,19 +290,29 @@ async function fetchIpoGmpData(page = 1, search = '') {
         company_name,
         company_logo: null,
         logo_txt: company_name.substring(0, 2).toUpperCase(),
-        listing_exch: item['~IPO_Category'] === 'SME' ? 'SME' : 'Mainboard',
+        listing_exch,
+        segment,
         gmp,
+        gmp_range,
+        max_gmp,
         open_date: formatDate(item['~Srt_Open']),
         close_date: formatDate(item['~Srt_Close']),
         closeDateISO: parseToISTDateString(rawCloseDate),
-        listing_date: formatDate(item['~Str_Listing']),
-        issue_price: item['Price (₹)'] || '0',
-        lot_size: item['Lot'] || '0',
+        boa_date: formatDate(rawBoaDate),
+        refund_date: addDaysToDate(rawBoaDate, 1),
+        demat_date: addDaysToDate(rawListingDate, -1),
+        listing_date: formatDate(rawListingDate),
+        issue_price: priceVal,
+        lot_size: lotVal,
+        min_investment: minInvestment,
         tab_status,
-        subscription: item['Sub'] || '-',
+        subscription: subscriptionObj.total !== '-' ? subscriptionObj.total : (item['Sub'] || '-'),
+        subscriptions: subscriptionObj,
         pe_ratio: item['~P/E'] || '-',
         ipo_size: ipoSize,
-        fire_rating: fireRating
+        fire_rating: fireRating,
+        anchor: anchorStatus,
+        gmp_updated_on: item['Updated-On'] ? item['Updated-On'].replace(/<[^>]+>/g, '').trim() : null,
       };
     });
 
@@ -201,26 +329,57 @@ async function fetchIpoGmpData(page = 1, search = '') {
       const rawCloseDate = mbIpo.close_date || igIpo?.close_date || '';
       const closeDateISO = parseToISTDateString(rawCloseDate) || igIpo?.closeDateISO;
 
+      const subEntry = subMap.get(String(mbIpo.id)) || subMap.get(nameKey) || igIpo?.subscriptions;
+      const lotVal = (igIpo?.lot_size && igIpo.lot_size !== '0') ? igIpo.lot_size : (mbIpo.lot_size || '0');
+      const priceVal = (igIpo?.issue_price && igIpo.issue_price !== '0') ? igIpo.issue_price : (mbIpo.issue_price || '0');
+      const lotNum = parseInt(String(lotVal).replace(/,/g, ''), 10) || 0;
+      const priceNum = parseFloat(String(priceVal).replace(/[^0-9.]/g, '')) || 0;
+      const minInvestment = (lotNum > 0 && priceNum > 0) ? Math.round(lotNum * priceNum) : null;
+
       if (igIpo) {
         return {
           ...mbIpo,
           closeDateISO,
-          subscription: igIpo.subscription,
+          listing_exch: igIpo.listing_exch || mbIpo.listing_exch || 'Mainboard',
+          segment: igIpo.segment || ((mbIpo.listing_exch || '').toUpperCase().includes('SME') ? 'SME' : 'MAINBOARD'),
+          boa_date: igIpo.boa_date || '-',
+          refund_date: igIpo.refund_date || '-',
+          demat_date: igIpo.demat_date || '-',
+          subscription: subEntry?.total && subEntry.total !== '-' ? subEntry.total : igIpo.subscription,
+          subscriptions: subEntry || igIpo.subscriptions || { total: igIpo.subscription || '-', qib: '-', nii: '-', shni: '-', bhni: '-', retail: '-', updatedAt: null },
           pe_ratio: igIpo.pe_ratio,
           ipo_size: igIpo.ipo_size,
           fire_rating: igIpo.fire_rating,
           gmp: igIpo.gmp > 0 ? igIpo.gmp : mbIpo.gmp,
-          issue_price: igIpo.issue_price && igIpo.issue_price !== '0' ? igIpo.issue_price : mbIpo.issue_price,
-          lot_size: igIpo.lot_size && igIpo.lot_size !== '0' ? igIpo.lot_size : mbIpo.lot_size
+          gmp_range: igIpo.gmp_range || null,
+          max_gmp: igIpo.max_gmp || null,
+          issue_price: priceVal,
+          lot_size: lotVal,
+          min_investment: minInvestment,
+          anchor: igIpo.anchor,
+          gmp_updated_on: igIpo.gmp_updated_on,
         };
       }
       return {
         ...mbIpo,
         closeDateISO,
-        subscription: '-',
+        listing_exch: mbIpo.listing_exch || 'Mainboard',
+        segment: (mbIpo.listing_exch || '').toUpperCase().includes('SME') ? 'SME' : 'MAINBOARD',
+        boa_date: '-',
+        refund_date: '-',
+        demat_date: '-',
+        subscription: subEntry?.total && subEntry.total !== '-' ? subEntry.total : (mbIpo.subscription || '-'),
+        subscriptions: subEntry || { total: mbIpo.subscription || '-', qib: '-', nii: '-', shni: '-', bhni: '-', retail: '-', updatedAt: null },
         pe_ratio: '-',
         ipo_size: '-',
-        fire_rating: 0
+        fire_rating: 0,
+        gmp_range: null,
+        max_gmp: null,
+        lot_size: lotVal,
+        issue_price: priceVal,
+        min_investment: minInvestment,
+        anchor: '-',
+        gmp_updated_on: null,
       };
     });
 
@@ -270,6 +429,7 @@ async function fetchIpoGmpData(page = 1, search = '') {
   });
 
   finalData.sourcesStatus = sourcesStatus;
+  _ipoGmpCache.set(cacheKey, { data: finalData, expiresAt: Date.now() + IPO_GMP_CACHE_TTL_MS });
   return finalData;
 }
 

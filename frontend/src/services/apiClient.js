@@ -29,8 +29,7 @@ const VERCEL_BASE_URL = (
 
 const isLocalDev = Boolean(
   typeof window !== 'undefined' &&
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
-  (import.meta.env.VITE_BACKEND_URL || '').includes('localhost')
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
 )
 
 // ── Worker & Long-Running Maintenance Routes (Exclusively Render) ──────────────
@@ -219,7 +218,12 @@ export async function apiClient(url, options = {}) {
 
   // 2. If running locally, route directly to local dev server
   if (isLocalDev) {
-    const localTarget = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'}${url}`
+    const localHost = (
+      import.meta.env.VITE_BACKEND_URL &&
+      !import.meta.env.VITE_BACKEND_URL.includes('onrender.com') &&
+      !import.meta.env.VITE_BACKEND_URL.includes('vercel.app')
+    ) ? import.meta.env.VITE_BACKEND_URL.replace(/\/$/, '') : 'http://localhost:3000'
+    const localTarget = `${localHost}${url}`
     const res = await executeRequest(localTarget, options, headers)
     return handleResponse(res, url, options)
   }

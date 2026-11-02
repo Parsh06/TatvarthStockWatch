@@ -69,6 +69,10 @@ const ALLOWED_EXACT_ORIGINS = new Set([
   'https://tatvarth-stockwatch.vercel.app',
   'https://tatvarth-stock-watch.vercel.app',
   'https://tatvarthstockwatch.onrender.com',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
 ].filter(Boolean));
 
 const DEV_ORIGIN_REGEX = /^http:\/\/(localhost|127\.0\.0\.1):(5173|4173|3000|5000)$/;
