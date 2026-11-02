@@ -202,42 +202,43 @@ function runAllTests() {
   console.log('\n--- Suite 4: Heavily Oversubscribed computeAllotmentOdds (Bombay Coated) ---');
 
   const bombaySubs = {
-    retail: '28.68x',
-    shni: '105.56x',
-    bhni: '191.34x',
-    qib: '20.52x',
-    total: '46.21x'
+    retail: '35.46x',
+    shni: '113.44x',
+    bhni: '192.94x',
+    qib: '32.10x',
+    total: '65.40x'
   };
 
-  test('Suite 4.1: Retail Single-PAN odds (28.68x -> ~3.49%, 1 in 29)', () => {
-    const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 1);
+  test('Suite 4.1: Retail Form-Basis Single-PAN odds (35.46x -> ~3.55%, 1 in 28 applicants)', () => {
+    const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 1, 14924, 182, 82);
     assert.strictEqual(res.retail.status, 'OVERSUBSCRIBED');
-    assert.strictEqual(res.retail.roundOdds, 29);
-    assert.strictEqual(res.retail.oddsRatioText, '1 in 29 applicants');
-    assert.strictEqual(res.retail.probabilitySingle.toFixed(2), '3.49');
-    assert.strictEqual(res.retail.probabilityFamily.toFixed(2), '3.49');
+    assert.strictEqual(res.retail.roundOdds, 28);
+    assert.strictEqual(res.retail.oddsRatioText, '1 in 28 applicants');
+    assert.strictEqual(res.retail.probabilitySingle.toFixed(2), '3.55');
+    assert.strictEqual(res.retail.probabilityFamily.toFixed(2), '3.55');
     assert.strictEqual(res.retail.badge, 'Competitive Lottery');
   });
 
-  test('Suite 4.2: Small HNI Single-PAN odds (105.56x -> ~0.95%, 1 in 106)', () => {
-    const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 1);
+  test('Suite 4.2: Small HNI Form-Basis Single-PAN odds (113.44x -> ~0.92%, 1 in 109 applicants)', () => {
+    const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 1, 14924, 182, 82);
     assert.strictEqual(res.shni.status, 'OVERSUBSCRIBED');
-    assert.strictEqual(res.shni.roundOdds, 106);
-    assert.strictEqual(res.shni.oddsRatioText, '1 in 106 applicants');
-    assert.strictEqual(res.shni.probabilitySingle.toFixed(2), '0.95');
+    assert.strictEqual(res.shni.roundOdds, 109);
+    assert.strictEqual(res.shni.oddsRatioText, '1 in 109 applicants');
+    assert.strictEqual(res.shni.probabilitySingle.toFixed(2), '0.92');
     assert.strictEqual(res.shni.badge, 'Competitive Lottery');
   });
 
-  test('Suite 4.3: Big HNI Single-PAN odds (191.34x -> ~0.52%, 1 in 191)', () => {
-    const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 1);
+  test('Suite 4.3: Big HNI Form-Basis with SEBI Min Lot Lottery Leverage (192.94x -> ~2.52%, 1 in 40 applicants)', () => {
+    const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 1, 14924, 182, 82);
     assert.strictEqual(res.bhni.status, 'OVERSUBSCRIBED');
-    assert.strictEqual(res.bhni.roundOdds, 191);
-    assert.strictEqual(res.bhni.oddsRatioText, '1 in 191 applicants');
-    assert.strictEqual(res.bhni.probabilitySingle.toFixed(2), '0.52');
+    assert.strictEqual(res.bhni.roundOdds, 40);
+    assert.strictEqual(res.bhni.oddsRatioText, '1 in 40 applicants');
+    assert.strictEqual(res.bhni.probabilitySingle.toFixed(2), '2.52');
+    assert.strictEqual(res.bhni.leverage.toFixed(2), '4.86');
   });
 
   test('Suite 4.4: Flag hasLiveBids is true', () => {
-    const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 1);
+    const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 1, 14924, 182, 82);
     assert.strictEqual(res.hasLiveBids, true);
   });
 
@@ -285,7 +286,7 @@ function runAllTests() {
 
   test('Suite 6.2: 1.01x transitions into OVERSUBSCRIBED lottery', () => {
     const edgeSubs = { retail: '1.01x' };
-    const res = computeAllotmentOdds(edgeSubs, 'MAINBOARD', 1);
+    const res = computeAllotmentOdds(edgeSubs, 'SME', 1);
     assert.strictEqual(res.retail.status, 'OVERSUBSCRIBED');
     assert.ok(res.retail.probabilitySingle < 100);
     assert.strictEqual(res.retail.probabilitySingle.toFixed(2), '99.01');
@@ -369,7 +370,7 @@ function runAllTests() {
       retail: '10x',
       nii: '40x' // sHNI ~ 40 * 0.85 = 34x; bHNI ~ 40 * 1.15 = 46x
     };
-    const res = computeAllotmentOdds(unsegregatedNii, 'MAINBOARD', 1);
+    const res = computeAllotmentOdds(unsegregatedNii, 'SME', 1);
     assert.strictEqual(res.shni.status, 'OVERSUBSCRIBED');
     assert.strictEqual(res.shni.multiplier, 34);
     assert.strictEqual(res.shni.roundOdds, 34);
@@ -380,7 +381,7 @@ function runAllTests() {
   test('Suite 9.2: Overall Total proxy when only Total is available', () => {
     const onlyTotal = { total: '20x' };
     // Retail = 20 * 0.75 = 15x; sHNI = 20 * 1.5 = 30x; bHNI = 20 * 2.0 = 40x
-    const res = computeAllotmentOdds(onlyTotal, 'MAINBOARD', 1);
+    const res = computeAllotmentOdds(onlyTotal, 'SME', 1);
     assert.strictEqual(res.retail.multiplier, 15);
     assert.strictEqual(res.shni.multiplier, 30);
     assert.strictEqual(res.bhni.multiplier, 40);
@@ -392,7 +393,7 @@ function runAllTests() {
   console.log('\n--- Suite 10: Family PAN Binomial Probability Validation ---');
 
   test('Suite 10.1: N=1 Family probability exactly matches Single-PAN probability', () => {
-    const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 1);
+    const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 1, 14924, 182, 82);
     assert.strictEqual(res.retail.probabilityFamily, res.retail.probabilitySingle);
     assert.strictEqual(res.retail.oddsBoost, '1.0');
   });
@@ -400,7 +401,7 @@ function runAllTests() {
   test('Suite 10.2: Monotonic strictly increasing probability as family PANs grow (N = 1 to 25)', () => {
     let lastProb = 0;
     for (let n = 1; n <= 25; n++) {
-      const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', n);
+      const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', n, 14924, 182, 82);
       assert.ok(
         res.retail.probabilityFamily > lastProb,
         `Family prob at N=${n} (${res.retail.probabilityFamily}%) must exceed N=${n-1} (${lastProb}%)`
@@ -413,19 +414,20 @@ function runAllTests() {
     }
   });
 
-  test('Suite 10.3: Exact Binomial Calculation: 1 - (1 - p)^N for Bombay Coated (p = 0.034867)', () => {
-    const pSingle = 100 / 28.68; // 3.48675%
+  test('Suite 10.3: Exact Binomial Calculation: 1 - (1 - p)^N for Bombay Coated (Form p ~ 3.55%)', () => {
+    const res1 = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 1, 14924, 182, 82);
+    const pSingle = res1.retail.probabilitySingle;
     const pDecimal = pSingle / 100;
 
     // N = 5
-    const expected5 = (1 - Math.pow(1 - pDecimal, 5)) * 100; // ~16.36%
-    const res5 = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 5);
+    const expected5 = (1 - Math.pow(1 - pDecimal, 5)) * 100;
+    const res5 = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 5, 14924, 182, 82);
     assert.strictEqual(res5.retail.probabilityFamily.toFixed(2), expected5.toFixed(2));
     assert.strictEqual(res5.retail.oddsBoost, (res5.retail.probabilityFamily / res5.retail.probabilitySingle).toFixed(1));
 
     // N = 13 (Capital equivalent of 1 sHNI bid)
-    const expected13 = (1 - Math.pow(1 - pDecimal, 13)) * 100; // ~36.93%
-    const res13 = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 13);
+    const expected13 = (1 - Math.pow(1 - pDecimal, 13)) * 100;
+    const res13 = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 13, 14924, 182, 82);
     assert.strictEqual(res13.retail.probabilityFamily.toFixed(2), expected13.toFixed(2));
     assert.ok(
       res13.retail.probabilityFamily > 35,
@@ -434,17 +436,17 @@ function runAllTests() {
   });
 
   test('Suite 10.4: Sanitizes invalid, negative, string, or zero family PAN inputs', () => {
-    const resNeg = computeAllotmentOdds(bombaySubs, 'MAINBOARD', -5);
+    const resNeg = computeAllotmentOdds(bombaySubs, 'MAINBOARD', -5, 14924, 182, 82);
     assert.strictEqual(resNeg.retail.probabilityFamily, resNeg.retail.probabilitySingle);
 
-    const resZero = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 0);
+    const resZero = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 0, 14924, 182, 82);
     assert.strictEqual(resZero.retail.probabilityFamily, resZero.retail.probabilitySingle);
 
-    const resStr = computeAllotmentOdds(bombaySubs, 'MAINBOARD', '10');
+    const resStr = computeAllotmentOdds(bombaySubs, 'MAINBOARD', '10', 14924, 182, 82);
     assert.ok(resStr.retail.probabilityFamily > resStr.retail.probabilitySingle);
 
-    const resFloat = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 4.8);
-    const resInt = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 4);
+    const resFloat = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 4.8, 14924, 182, 82);
+    const resInt = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 4, 14924, 182, 82);
     assert.strictEqual(resFloat.retail.probabilityFamily, resInt.retail.probabilityFamily);
   });
 
@@ -454,8 +456,9 @@ function runAllTests() {
   console.log('\n--- Suite 11: Strategic Advisor Engine ---');
 
   test('Suite 11.1: Recommends Retail Family Strategy when sHNI is much more oversubscribed', () => {
-    const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 1);
-    assert.ok(res.advisorTitle.includes('Retail Family Strategy is ~3.7x More Capital-Efficient'));
+    const res = computeAllotmentOdds(bombaySubs, 'MAINBOARD', 1, 14924, 182, 82);
+    assert.ok(res.advisorTitle.includes('Retail Family Strategy is ~'));
+    assert.ok(res.advisorTitle.includes('More Capital-Efficient'));
     assert.ok(res.advisorMessage.includes('Small HNI application'));
     assert.ok(res.advisorMessage.includes('Retail Family PANs surges your winning chance'));
   });

@@ -87,8 +87,8 @@ export default function IpoDetailModal({ ipo, onClose }) {
 
   // Compute real-time SEBI allotment probability and mathematical odds
   const allotmentOdds = useMemo(() => {
-    return computeAllotmentOdds(sub, ipo?.segment, familyPans, minInvestment || 15000);
-  }, [sub, ipo?.segment, familyPans, minInvestment]);
+    return computeAllotmentOdds(sub, ipo?.segment, familyPans, minInvestment || 15000, ipo?.lot_size, ipo?.issue_price);
+  }, [sub, ipo?.segment, familyPans, minInvestment, ipo?.lot_size, ipo?.issue_price]);
 
   // Reset or initialize calculator lots
   useEffect(() => {
@@ -508,9 +508,12 @@ export default function IpoDetailModal({ ipo, onClose }) {
                       </span>
                     </h3>
                   </div>
-                  <span className="text-[11px] text-textMuted">
-                    Based on SEBI Draw of Lots & official category quotas
-                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-textMuted">
+                    <span className="inline-flex items-center gap-1 font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20 text-[10px]">
+                      Form-Basis Odds (Twitter / Analyst Standard)
+                    </span>
+                    <span>Computed on distinct PAN applications via SEBI Draw of Lots</span>
+                  </div>
                 </div>
 
                 {/* 3 Category Probability Cards (Retail, Small HNI, Big HNI) */}
@@ -542,15 +545,21 @@ export default function IpoDetailModal({ ipo, onClose }) {
 
                     <div className="pt-2 border-t border-border/50 text-[10px] space-y-1 text-textMuted font-sans">
                       <div className="flex justify-between">
-                        <span>Demand Multiplier:</span>
+                        <span>Share Demand:</span>
                         <strong className="text-textPrimary font-mono">{sub.retail || '-'}</strong>
                       </div>
+                      {allotmentOdds.retail.formMultiplier > 0 && (
+                        <div className="flex justify-between">
+                          <span>Form Demand:</span>
+                          <span className="text-emerald-500 font-mono font-semibold">~{allotmentOdds.retail.formMultiplier}x forms</span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span>Quota & Cap:</span>
                         <span className="text-textPrimary font-medium">≤ ₹2 Lakhs (35%)</span>
                       </div>
                       <div className="text-[9px] text-textMuted/90 pt-0.5">
-                        Rule: <strong>SEBI Draw of Lots</strong> (1 Min Lot / lucky PAN)
+                        Rule: <strong>SEBI Draw of Lots</strong> (1 Lot / lucky PAN)
                       </div>
                     </div>
                   </div>
@@ -582,9 +591,15 @@ export default function IpoDetailModal({ ipo, onClose }) {
 
                     <div className="pt-2 border-t border-border/50 text-[10px] space-y-1 text-textMuted font-sans">
                       <div className="flex justify-between">
-                        <span>Demand Multiplier:</span>
+                        <span>Share Demand:</span>
                         <strong className="text-textPrimary font-mono">{sub.shni || '-'}</strong>
                       </div>
+                      {allotmentOdds.shni.formMultiplier > 0 && (
+                        <div className="flex justify-between">
+                          <span>Form Demand:</span>
+                          <span className="text-amber-500 font-mono font-semibold">~{allotmentOdds.shni.formMultiplier}x forms</span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span>Quota & Cap:</span>
                         <span className="text-textPrimary font-medium">₹2L – ₹10L (5%)</span>
@@ -622,15 +637,21 @@ export default function IpoDetailModal({ ipo, onClose }) {
 
                     <div className="pt-2 border-t border-border/50 text-[10px] space-y-1 text-textMuted font-sans">
                       <div className="flex justify-between">
-                        <span>Demand Multiplier:</span>
+                        <span>Share Demand:</span>
                         <strong className="text-textPrimary font-mono">{sub.bhni || '-'}</strong>
                       </div>
+                      {allotmentOdds.bhni.formMultiplier > 0 && (
+                        <div className="flex justify-between">
+                          <span>Form Demand:</span>
+                          <span className="text-blue-500 font-mono font-semibold">~{allotmentOdds.bhni.formMultiplier}x forms</span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
-                        <span>Quota & Cap:</span>
-                        <span className="text-textPrimary font-medium">&gt; ₹10 Lakhs (10%)</span>
+                        <span>Quota Leverage:</span>
+                        <span className="text-primary font-mono font-semibold">+{allotmentOdds.bhni.leverage ? allotmentOdds.bhni.leverage.toFixed(1) : '5.0'}x boost</span>
                       </div>
                       <div className="text-[9px] text-textMuted/90 pt-0.5">
-                        Rule: <strong>Min Lot Lottery / Pro-Rata</strong>
+                        Rule: <strong>Min sHNI Lot Lottery</strong> (~₹2L allotment)
                       </div>
                     </div>
                   </div>

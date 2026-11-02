@@ -119,15 +119,19 @@ export function parseSubscriptionValue(val) {
 
 /**
  * Computes exact SEBI allotment probability and odds across Retail, Small HNI, and Big HNI.
+ * Supports both Share-Basis subscription demand and SEBI Application (Form/PAN) Basis lottery odds.
  *
  * @param {Object} subObj - Object containing { retail, shni, bhni, nii, total }
  * @param {string} segment - "MAINBOARD" or "SME"
  * @param {number} familyPans - Number of distinct family PAN cards (1 to 25)
  * @param {number} minInvestment - Approximate minimum lot cost in INR
+ * @param {number|string} lotSize - IPO minimum bidding lot size (e.g. 182)
+ * @param {number|string} issuePrice - Issue cut-off price (e.g. 82)
  * @returns {Object} Comprehensive odds, probabilities, badges, and strategic advisory recommendations
  */
-export function computeAllotmentOdds(subObj, segment = 'MAINBOARD', familyPans = 1, minInvestment = 15000) {
+export function computeAllotmentOdds(subObj, segment = 'MAINBOARD', familyPans = 1, minInvestment = 15000, lotSize = 0, issuePrice = 0) {
   const pansCount = Math.max(1, parseInt(familyPans, 10) || 1);
+  const isSme = String(segment || '').toUpperCase().includes('SME');
 
   const subRetail = parseSubscriptionValue(subObj?.retail);
   const subShni   = parseSubscriptionValue(subObj?.shni);
@@ -140,9 +144,34 @@ export function computeAllotmentOdds(subObj, segment = 'MAINBOARD', familyPans =
   const effectiveShni   = subShni > 0 ? subShni : (subNii > 0 ? subNii * 0.85 : (subTotal > 0 ? subTotal * 1.5 : 0));
   const effectiveBhni   = subBhni > 0 ? subBhni : (subNii > 0 ? subNii * 1.15 : (subTotal > 0 ? subTotal * 2.0 : 0));
 
-  const buildCategoryOdds = (mult, categoryTitle, sebiRule, categoryQuotaTag) => {
-    if (mult <= 0) {
+  // Determine lot applications to compute exact bHNI lottery leverage ratio
+  let bHniLeverage = 5.0; // Standard mainboard default (₹10L / ₹2L = 5.0)
+  let retailBidIntensity = isSme ? 1.0 : 1.26; // Multi-lot bidding intensity factor in mainboard retail
+  let shniBidIntensity = isSme ? 1.0 : 1.04;   // Slight multi-lot bidding intensity factor in mainboard sHNI
+
+  const cleanLot = parseInt(String(lotSize || '').replace(/[^0-9]/g, ''), 10) || 0;
+  const cleanPrice = parseFloat(String(issuePrice || '').replace(/[^0-9.]/g, '')) || 0;
+
+  if (isSme) {
+    bHniLeverage = 1.0;
+  } else if (cleanLot > 0 && cleanPrice > 0) {
+    const costPerLot = Math.round(cleanLot * cleanPrice);
+    if (costPerLot > 0) {
+      const retailMaxLots = Math.max(1, Math.floor(200000 / costPerLot));
+      const sHniMin = retailMaxLots + 1;
+      const sHniMax = Math.max(sHniMin, Math.floor(1000000 / costPerLot));
+      const bHniMin = sHniMax + 1;
+      if (sHniMin > 0 && bHniMin >= sHniMin) {
+        bHniLeverage = bHniMin / sHniMin;
+      }
+    }
+  }
+
+  const buildCategoryOdds = (rawMult, divisor, categoryTitle, sebiRule, categoryQuotaTag) => {
+    if (rawMult <= 0) {
       return {
+        rawMultiplier: 0,
+        formMultiplier: 0,
         multiplier: 0,
         probabilitySingle: 0,
         probabilityFamily: 0,
@@ -152,13 +181,19 @@ export function computeAllotmentOdds(subObj, segment = 'MAINBOARD', familyPans =
         rule: sebiRule,
         quotaTag: categoryQuotaTag,
         badge: 'Early / Upcoming',
-        badgeClass: 'text-textMuted bg-slate-100 dark:bg-white/5 border-border'
+        badgeClass: 'text-textMuted bg-slate-100 dark:bg-white/5 border-border',
+        leverage: divisor
       };
     }
 
-    if (mult <= 1.0) {
+    // Effective form/application subscription multiplier
+    const formMult = rawMult / divisor;
+
+    if (formMult <= 1.0) {
       return {
-        multiplier: mult,
+        rawMultiplier: rawMult,
+        formMultiplier: parseFloat(formMult.toFixed(2)),
+        multiplier: rawMult,
         probabilitySingle: 100,
         probabilityFamily: 100,
         oddsRatioText: '1 in 1 (100% Guaranteed)',
@@ -167,13 +202,14 @@ export function computeAllotmentOdds(subObj, segment = 'MAINBOARD', familyPans =
         rule: 'Every valid applicant receives 1 lot guaranteed. Remaining shares allotted pro-rata.',
         quotaTag: categoryQuotaTag,
         badge: '100% Guaranteed',
-        badgeClass: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'
+        badgeClass: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20',
+        leverage: divisor
       };
     }
 
-    // Oversubscribed
-    const probSingle = Math.min(100, Math.max(0.01, 100 / mult));
-    const roundOdds  = Math.max(1, Math.round(mult));
+    // Oversubscribed: Computerized lottery based on applicant forms (PANs)
+    const probSingle = Math.min(100, Math.max(0.01, 100 / formMult));
+    const roundOdds  = Math.max(1, Math.round(formMult));
     
     // Binomial Probability for N family PANs: 1 - (1 - p)^N
     // If pansCount === 1, exactly equals probSingle without floating-point cancellation drift
@@ -184,7 +220,9 @@ export function computeAllotmentOdds(subObj, segment = 'MAINBOARD', familyPans =
     const oddsBoost  = probSingle > 0 ? (probFamily / probSingle).toFixed(1) : '1.0';
 
     return {
-      multiplier: mult,
+      rawMultiplier: rawMult,
+      formMultiplier: parseFloat(formMult.toFixed(2)),
+      multiplier: rawMult,
       probabilitySingle: probSingle,
       probabilityFamily: probFamily,
       oddsBoost,
@@ -198,29 +236,33 @@ export function computeAllotmentOdds(subObj, segment = 'MAINBOARD', familyPans =
         ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'
         : probSingle >= 5 
         ? 'text-amber-500 bg-amber-500/10 border-amber-500/20'
-        : 'text-rose-500 bg-rose-500/10 border-rose-500/20'
+        : 'text-rose-500 bg-rose-500/10 border-rose-500/20',
+      leverage: divisor
     };
   };
 
   const retail = buildCategoryOdds(
     effectiveRetail,
+    retailBidIntensity,
     'Retail (RII)',
-    'SEBI Draw of Lots (Pure Computerized Lottery for 1 Min Lot)',
+    'SEBI Draw of Lots (Pure Computerized Lottery for 1 Min Lot / lucky PAN. Multi-lot bids do not increase lottery odds.)',
     '≤ ₹2 Lakhs (35% Quota)'
   );
 
   const shni = buildCategoryOdds(
     effectiveShni,
+    shniBidIntensity,
     'Small HNI (sHNI)',
-    'SEBI April 2022 Lottery (Only Min sHNI Lot, excess bid refunded)',
+    'SEBI April 2022 Lottery (Only Min sHNI Lot allotted, excess bid refunded. Lottery among valid PAN forms.)',
     '₹2L – ₹10L (5% Quota)'
   );
 
   const bhni = buildCategoryOdds(
     effectiveBhni,
+    bHniLeverage,
     'Big HNI (bHNI)',
     effectiveBhni > 10
-      ? 'SEBI bHNI Lottery for Min Lot (Due to heavy oversubscription)'
+      ? `SEBI bHNI Lottery: Each winning applicant receives the minimum sHNI allotment size (~₹2 Lakhs), satisfying ${bHniLeverage.toFixed(1)}x more applicants than raw share quota!`
       : 'SEBI Min Lot + Pro-Rata Distribution of surplus',
     '> ₹10 Lakhs (10% Quota)'
   );
@@ -230,11 +272,11 @@ export function computeAllotmentOdds(subObj, segment = 'MAINBOARD', familyPans =
   let advisorMessage = '';
 
   if (effectiveRetail > 0 && effectiveShni > 0) {
-    if (effectiveRetail <= 1.0) {
+    if (retail.roundOdds <= 1) {
       advisorTitle = `Retail Category Undersubscribed (100% Guaranteed)`;
       advisorMessage = `All valid Retail applicants will receive 1 full lot guaranteed. This is an optimal entry window for 1-lot applicants.`;
-    } else if (effectiveShni > effectiveRetail) {
-      const timesBetter = (effectiveShni / effectiveRetail).toFixed(1);
+    } else if (shni.roundOdds > retail.roundOdds) {
+      const timesBetter = (shni.roundOdds / retail.roundOdds).toFixed(1);
       advisorTitle = `Retail Family Strategy is ~${timesBetter}x More Capital-Efficient`;
       advisorMessage = `Instead of blocking ~₹2 Lakhs in 1 Small HNI application (${shni.oddsRatioText}, ${shni.probabilitySingle.toFixed(2)}% chance), distributing that same capital across ${pansCount > 1 ? pansCount : '10–13'} Retail Family PANs surges your winning chance to ~${retail.probabilityFamily.toFixed(1)}%!`;
     } else {

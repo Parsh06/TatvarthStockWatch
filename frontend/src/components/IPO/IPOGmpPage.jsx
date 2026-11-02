@@ -946,18 +946,22 @@ export default function IPOGmpPage() {
                         )}
                         {(() => {
                           const rawRetail = parseFloat(String(m.subscriptions?.retail || '').replace(/[^0-9.]/g, '')) || 0;
-                          if (rawRetail > 1) {
+                          const isSme = String(m.segment || '').toUpperCase().includes('SME');
+                          const formRetail = isSme ? rawRetail : rawRetail / 1.26;
+                          const roundRetailOdds = Math.round(formRetail);
+
+                          if (roundRetailOdds > 1) {
                             return (
                               <div className="flex justify-end mt-0.5">
                                 <span 
-                                  title={`SEBI Retail Allotment Odds: 1 in ${Math.round(rawRetail)} applicants (Click row for full simulator)`} 
+                                  title={`SEBI Retail Allotment Odds (Form Basis): 1 in ${roundRetailOdds} applicants (Raw share demand: ${rawRetail}x). Click row for full simulator.`} 
                                   className="text-[9px] font-mono font-bold text-amber-500 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1 py-0.2 rounded"
                                 >
-                                  🎯 1 in {Math.round(rawRetail)}
+                                  🎯 1 in {roundRetailOdds}
                                 </span>
                               </div>
                             );
-                          } else if (rawRetail > 0 && rawRetail <= 1) {
+                          } else if (rawRetail > 0) {
                             return (
                               <div className="flex justify-end mt-0.5">
                                 <span 
