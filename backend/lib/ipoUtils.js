@@ -300,13 +300,14 @@ function normalizeBigshareResponse(bigshareData, pan = '') {
 //   "Fly-Hi Maritime"               → "flyhimaritime"
 //   "Rays of Belief Ltd"            → "raysofbelief"
 //   "Rays of Belief"                → "raysofbelief"
-const CORPORATE_SUFFIX_REGEX = /\b(ltd|limited|pvt|private|technologies|technology|services|service|travels|travel|industries|industry|enterprises|enterprise|solutions|solution|holdings|holding|ventures|venture|corporation|corp|inc|llp|llc|ipo)\b\.?/gi;
+const CORPORATE_SUFFIX_REGEX = /\b(and|co|company|ltd|limited|pvt|private|technologies|technology|services|service|travels|travel|industries|industry|enterprises|enterprise|solutions|solution|holdings|holding|ventures|venture|corporation|corp|inc|llp|llc|ipo)\b\.?/gi;
 
 function getCanonicalIpoKey(name) {
   if (!name || typeof name !== 'string') return '';
   return name
     .toLowerCase()
-    .replace(CORPORATE_SUFFIX_REGEX, '')   // strip corporate suffixes
+    .replace(/&/g, ' and ')
+    .replace(CORPORATE_SUFFIX_REGEX, '')   // strip corporate suffixes & stop words
     .replace(/[^a-z0-9]/g, '')             // strip all non-alphanumeric
     .trim();
 }

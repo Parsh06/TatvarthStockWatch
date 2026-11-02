@@ -301,8 +301,46 @@ function computeAllotmentOdds(subObj, segment = 'MAINBOARD', familyPans = 1, min
   };
 }
 
+/**
+ * Validates whether a fetched listing date is genuine and chronologically plausible
+ * relative to the issue closing date.
+ * Under SEBI regulations (T+3 settlement), an IPO never lists on or before its closing date.
+ * Upstream scrapers (e.g. MainboardGMP) occasionally populate listing_date = close_date as a placeholder.
+ *
+ * @param {string|null} listingDate - Formatted listing date string (e.g. "05 Nov 2026", "2026-11-05")
+ * @param {string|null} closeDate - Formatted closing date string (e.g. "02 Nov 2026", "2026-11-02")
+ * @returns {boolean} True if listing date is genuine and strictly after close date; false if invalid/placeholder
+ */
+function isValidListingDate(listingDate, closeDate) {
+  if (!listingDate || typeof listingDate !== 'string') return false;
+  const cleanList = listingDate.trim();
+  if (!cleanList || cleanList === '-' || cleanList === '0000-00-00' || cleanList === 'TBD' || cleanList === 'NA' || cleanList === 'N/A') {
+    return false;
+  }
+  if (!closeDate || typeof closeDate !== 'string') return true;
+  const cleanClose = closeDate.trim();
+  if (!cleanClose || cleanClose === '-' || cleanClose === '0000-00-00') return true;
+
+  // Exact string match (e.g. "02 Nov 2026" and "02 Nov 2026") indicates an upstream placeholder
+  if (cleanList.toLowerCase() === cleanClose.toLowerCase()) {
+    return false;
+  }
+
+  const dList = new Date(cleanList);
+  const dClose = new Date(cleanClose);
+  if (!isNaN(dList.getTime()) && !isNaN(dClose.getTime())) {
+    // Listing must be strictly after closing date
+    if (dList.getTime() <= dClose.getTime()) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 module.exports = {
   computeLotApplications,
   parseSubscriptionValue,
-  computeAllotmentOdds
+  computeAllotmentOdds,
+  isValidListingDate
 };

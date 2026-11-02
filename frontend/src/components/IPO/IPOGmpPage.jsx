@@ -7,6 +7,7 @@ import {
 import clsx from 'clsx';
 import { apiClient } from '../../services/apiClient';
 import { exportToXLSX } from '../../utils/csvParser';
+import { isValidListingDate } from '../../utils/ipoAllotmentMath';
 import PageTransition from '../Common/PageTransition';
 import Loader, { Spinner } from '../Common/Loader';
 import IpoDetailModal from './IpoDetailModal';
@@ -166,7 +167,7 @@ export default function IPOGmpPage() {
         'Allotment Date (BoA)': m.allotment_date || '-',
         'Refund Date': m.refund_date || '-',
         'Demat Credit Date': m.demat_date || '-',
-        'Listing Date': m.listing_date,
+        'Listing Date': isValidListingDate(m.listing_date, m.close_date) ? m.listing_date : '-',
         'Issue Size': m.ipo_size || '-',
         'P/E Ratio': m.pe_ratio || '-',
         'Issue Price': m.issue_price,
@@ -914,7 +915,9 @@ export default function IPOGmpPage() {
                       <td className="px-4 py-3 text-xs text-textMuted">
                         <div><span className="opacity-70">Open:</span> <span className="text-textPrimary font-medium">{m.open_date || '-'}</span></div>
                         <div><span className="opacity-70">Close:</span> <span className={clsx("font-medium", isCT ? "text-red-400 font-bold" : "text-textPrimary")}>{m.close_date || '-'}</span></div>
-                        <div><span className="opacity-70">List:</span> <span className="text-textPrimary font-medium">{m.listing_date || '-'}</span></div>
+                        {isValidListingDate(m.listing_date, m.close_date) && (
+                          <div><span className="opacity-70">List:</span> <span className="text-emerald-500 font-medium font-mono">{m.listing_date}</span></div>
+                        )}
                       </td>
 
                       {/* Size, PE */}

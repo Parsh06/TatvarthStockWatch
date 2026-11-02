@@ -30,7 +30,7 @@ import {
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import { computeLotApplications, computeAllotmentOdds } from '../../utils/ipoAllotmentMath';
+import { computeLotApplications, computeAllotmentOdds, isValidListingDate } from '../../utils/ipoAllotmentMath';
 
 export default function IpoDetailModal({ ipo, onClose }) {
   const [copied, setCopied] = useState(false);
@@ -154,7 +154,7 @@ export default function IpoDetailModal({ ipo, onClose }) {
       ` • 3. Allotment (BoA): ${ipo.boa_date || '-'}`,
       ` • 4. Initiation of Refunds: ${ipo.refund_date || '-'}`,
       ` • 5. Credit of Shares to Demat: ${ipo.demat_date || '-'}`,
-      ` • 6. Listing Date: ${ipo.listing_date || '-'}`,
+      ` • 6. Listing Date: ${isValidListingDate(ipo.listing_date, ipo.close_date) ? ipo.listing_date : 'To be announced'}`,
       `\n🔗 Track live on Tatvarth StockWatch: https://tatvarthstockwatch.web.app/ipo-gmp`
     );
 
@@ -1001,8 +1001,11 @@ export default function IpoDetailModal({ ipo, onClose }) {
                 {/* 6. Listing Date */}
                 <div className="bg-surface border border-border/50 rounded-xl p-2.5 space-y-0.5">
                   <span className="text-textMuted text-[10px] block">6. Listing on Exchange</span>
-                  <span className="font-semibold text-textPrimary text-sm block text-emerald-500 font-bold">
-                    {ipo.listing_date || '-'}
+                  <span className={clsx(
+                    "font-semibold text-sm block",
+                    isValidListingDate(ipo.listing_date, ipo.close_date) ? "text-emerald-500 font-bold font-mono" : "text-textMuted italic text-xs font-sans"
+                  )}>
+                    {isValidListingDate(ipo.listing_date, ipo.close_date) ? ipo.listing_date : 'To be announced'}
                   </span>
                 </div>
               </div>

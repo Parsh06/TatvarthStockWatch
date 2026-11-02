@@ -3,6 +3,7 @@
 const axios = require('axios');
 const { getISTDateString, parseToISTDateString } = require('../lib/time/istTime');
 const { getCanonicalIpoKey, computeIpoFingerprint, computeNameSimilarity } = require('../lib/ipoUtils');
+const { isValidListingDate } = require('../lib/ipoAllotmentMath');
 
 // ── Module-level dedup constants ───────────────────────────────────────────────
 // Sørensen-Dice token-set similarity threshold for IPO name matching.
@@ -13,6 +14,21 @@ const FUZZY_THRESHOLD = 0.72;
 // In-memory cache for live IPO GMP & subscription queries (60s TTL)
 const _ipoGmpCache = new Map();
 const IPO_GMP_CACHE_TTL_MS = 60 * 1000;
+
+// Format dates to DD MMM YYYY (e.g. "05 Nov 2026")
+const formatDate = (ds) => {
+  if (!ds || ds === '0000-00-00' || ds === '-') return '-';
+  const d = new Date(ds);
+  return isNaN(d.getTime()) ? ds : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ');
+};
+
+const addDaysToDate = (ds, days) => {
+  if (!ds || ds === '0000-00-00' || ds === '-') return '-';
+  const d = new Date(ds);
+  if (isNaN(d.getTime())) return '-';
+  d.setDate(d.getDate() + days);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ');
+};
 
 /**
  * Merge `incoming` IPO entry into the existing entry at `key` in `map`.
@@ -232,21 +248,6 @@ async function fetchIpoGmpData(page = 1, search = '') {
       if (now < openD) tab_status = 'upcoming';
       else if (now >= openD && now <= closeD) tab_status = 'open';
 
-      // Format dates to DD MMM YYYY
-      const formatDate = (ds) => {
-        if (!ds || ds === '0000-00-00') return '-';
-        const d = new Date(ds);
-        return isNaN(d) ? ds : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ');
-      };
-
-      const addDaysToDate = (ds, days) => {
-        if (!ds || ds === '0000-00-00') return '-';
-        const d = new Date(ds);
-        if (isNaN(d)) return '-';
-        d.setDate(d.getDate() + days);
-        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ');
-      };
-
       // Extract rating (count fire emojis)
       let fireRating = 0;
       if (item.Rating) {
@@ -259,6 +260,9 @@ async function fetchIpoGmpData(page = 1, search = '') {
       const rawCloseDate = item['~Srt_Close'] || item.close_date || '';
       const rawBoaDate = item['~Srt_BoA_Dt'] || item['BoA Dt'] || '';
       const rawListingDate = item['~Str_Listing'] || item.Listing || '';
+      const formattedClose = formatDate(rawCloseDate);
+      const formattedListing = formatDate(rawListingDate);
+      const validListing = isValidListingDate(formattedListing, formattedClose) ? formattedListing : '-';
 
       const subEntry = subMap.get(String(item['~id'])) || subMap.get(getMatchKey(company_name)) || null;
       const subscriptionObj = subEntry || {
@@ -296,12 +300,12 @@ async function fetchIpoGmpData(page = 1, search = '') {
         gmp_range,
         max_gmp,
         open_date: formatDate(item['~Srt_Open']),
-        close_date: formatDate(item['~Srt_Close']),
+        close_date: formattedClose,
         closeDateISO: parseToISTDateString(rawCloseDate),
         boa_date: formatDate(rawBoaDate),
         refund_date: addDaysToDate(rawBoaDate, 1),
         demat_date: addDaysToDate(rawListingDate, -1),
-        listing_date: formatDate(rawListingDate),
+        listing_date: validListing,
         issue_price: priceVal,
         lot_size: lotVal,
         min_investment: minInvestment,
@@ -328,6 +332,17 @@ async function fetchIpoGmpData(page = 1, search = '') {
       const igIpo = igMap.get(nameKey);
       const rawCloseDate = mbIpo.close_date || igIpo?.close_date || '';
       const closeDateISO = parseToISTDateString(rawCloseDate) || igIpo?.closeDateISO;
+      const formattedClose = formatDate(rawCloseDate) || mbIpo.close_date || '-';
+
+      // Resolve valid listing date:
+      // MainboardGMP has a known upstream bug where it sets listing_date = close_date as a placeholder.
+      // We always prefer Investorgain's verified listing date if valid, or MainboardGMP's listing date if valid.
+      let resolvedListingDate = '-';
+      if (igIpo && isValidListingDate(igIpo.listing_date, formattedClose)) {
+        resolvedListingDate = igIpo.listing_date;
+      } else if (isValidListingDate(mbIpo.listing_date, formattedClose)) {
+        resolvedListingDate = mbIpo.listing_date;
+      }
 
       const subEntry = subMap.get(String(mbIpo.id)) || subMap.get(nameKey) || igIpo?.subscriptions;
       const lotVal = (igIpo?.lot_size && igIpo.lot_size !== '0') ? igIpo.lot_size : (mbIpo.lot_size || '0');
@@ -339,7 +354,11 @@ async function fetchIpoGmpData(page = 1, search = '') {
       if (igIpo) {
         return {
           ...mbIpo,
+          company_name: igIpo.company_name || mbIpo.company_name,
+          open_date: igIpo.open_date || mbIpo.open_date || '-',
+          close_date: formattedClose,
           closeDateISO,
+          listing_date: resolvedListingDate,
           listing_exch: igIpo.listing_exch || mbIpo.listing_exch || 'Mainboard',
           segment: igIpo.segment || ((mbIpo.listing_exch || '').toUpperCase().includes('SME') ? 'SME' : 'MAINBOARD'),
           boa_date: igIpo.boa_date || '-',
@@ -362,7 +381,9 @@ async function fetchIpoGmpData(page = 1, search = '') {
       }
       return {
         ...mbIpo,
+        close_date: formattedClose,
         closeDateISO,
+        listing_date: resolvedListingDate,
         listing_exch: mbIpo.listing_exch || 'Mainboard',
         segment: (mbIpo.listing_exch || '').toUpperCase().includes('SME') ? 'SME' : 'MAINBOARD',
         boa_date: '-',
