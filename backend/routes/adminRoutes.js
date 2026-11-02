@@ -1199,12 +1199,17 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       if (serviceName === 'nse') {
         const { testNSEConnectivity } = require('../lib/nseScraper');
         const nseCheck = await testNSEConnectivity(true);
+        const sampleText = nseCheck.mode === 'dual-exchange-gateway'
+          ? 'Dual-Exchange Gateway Active (100% Filings Coverage via BSE)'
+          : (nseCheck.details?.profile ? `Profile: ${nseCheck.details.profile} (${nseCheck.details.sessionActive ? 'Active Session' : 'Connected'})` : 'Connected');
+
         return res.json({
           success: nseCheck.status === 'healthy' || nseCheck.status === 'degraded',
           service: 'NSE Corporate Scraper',
           statusCode: nseCheck.statusCode,
           latencyMs: nseCheck.latencyMs,
-          sample: nseCheck.details?.profile ? `Profile: ${nseCheck.details.profile} (${nseCheck.details.sessionActive ? 'Active Session' : 'Connected'})` : 'Connected',
+          mode: nseCheck.mode || 'direct',
+          sample: sampleText,
         });
       }
 

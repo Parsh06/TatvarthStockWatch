@@ -1018,12 +1018,18 @@ export default function AdminPage() {
                       <span>Round-trip Latency:</span>
                       <span className="text-textPrimary">{servicesData?.nse?.latencyMs ? `${servicesData.nse.latencyMs}ms` : '—'}</span>
                     </div>
+                    {servicesData?.nse?.mode === 'dual-exchange-gateway' && (
+                      <div className="flex justify-between text-[10px] text-accent-teal font-medium">
+                        <span>Gateway:</span>
+                        <span>Dual-Exchange Failover</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <div className="pt-2 border-t border-border/30 flex items-center justify-between">
-                  <span className="text-[11px] text-textMuted">
-                    {testResults.nse ? `${testResults.nse.message} (${testResults.nse.latencyMs}ms)` : 'Auto-monitored'}
+                  <span className="text-[11px] text-textMuted truncate max-w-[170px]" title={testResults.nse?.message}>
+                    {testResults.nse ? `${testResults.nse.message} (${testResults.nse.latencyMs}ms)` : (servicesData?.nse?.mode === 'dual-exchange-gateway' ? 'Dual-Exchange Gateway' : 'Auto-monitored')}
                   </span>
                   <button
                     onClick={() => handleTestService('nse')}
