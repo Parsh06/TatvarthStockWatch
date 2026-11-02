@@ -921,7 +921,7 @@ export default function IPOGmpPage() {
                       <td className="px-4 py-3 text-right font-medium text-textMuted">{m.ipo_size || '-'}</td>
                       <td className="px-4 py-3 text-right font-medium text-textMuted">{m.pe_ratio || '-'}</td>
 
-                      {/* Subscription (Total + Retail/sHNI/bHNI Breakdown) */}
+                      {/* Subscription (Total + Retail/sHNI/bHNI Breakdown + Allotment Odds Indicator) */}
                       <td className="px-4 py-3 text-right">
                         <span className={clsx(
                           "font-bold font-mono text-sm block",
@@ -944,6 +944,33 @@ export default function IPOGmpPage() {
                             )}
                           </div>
                         )}
+                        {(() => {
+                          const rawRetail = parseFloat(String(m.subscriptions?.retail || '').replace(/[^0-9.]/g, '')) || 0;
+                          if (rawRetail > 1) {
+                            return (
+                              <div className="flex justify-end mt-0.5">
+                                <span 
+                                  title={`SEBI Retail Allotment Odds: 1 in ${Math.round(rawRetail)} applicants (Click row for full simulator)`} 
+                                  className="text-[9px] font-mono font-bold text-amber-500 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1 py-0.2 rounded"
+                                >
+                                  🎯 1 in {Math.round(rawRetail)}
+                                </span>
+                              </div>
+                            );
+                          } else if (rawRetail > 0 && rawRetail <= 1) {
+                            return (
+                              <div className="flex justify-end mt-0.5">
+                                <span 
+                                  title="Retail Category Undersubscribed (100% Guaranteed 1 Lot Allotment)" 
+                                  className="text-[9px] font-mono font-bold text-emerald-500 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.2 rounded"
+                                >
+                                  ✓ 100% Odds
+                                </span>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </td>
 
                       {/* Issue Price */}
