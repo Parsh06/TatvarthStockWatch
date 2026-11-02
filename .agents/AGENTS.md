@@ -28,6 +28,7 @@ config change, structural change), you MUST update `GEMINI.md` to reflect the ch
 7. **Store Pattern**: Firestore/MongoDB ops go through `lib/*Store.js` — never import directly in routes
 8. **API Client**: Frontend must use `apiClient.js` for all backend calls
 9. **Update GEMINI.md**: After every structural change, update the master context file
+10. **Zero-Cost & Free-Tier Quota Invariants**: Never introduce changes that exceed free quotas on Upstash Redis (500k cmds/mo), Render (750 free instance hrs/mo across workspace - exactly 1 active web service), Firestore (50k reads / 20k writes/day), MongoDB Atlas (512MB), or Gemini AI. Always prioritize local in-memory caching (Map/Set with TTL), lazy evaluations, batching, and circuit breakers.
 
 ## Styling
 - Use Tailwind CSS with custom tokens from `tailwind.config.js`

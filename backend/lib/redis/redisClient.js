@@ -15,6 +15,14 @@ let _circuitTrippedAt = 0;
 let _circuitReason = '';
 const CIRCUIT_COOLDOWN_MS = 60 * 60 * 1000; // 60 minutes cooldown when quota/rate-limit hit
 
+// In-process telemetry for Redis command auditing and quota preservation
+const _telemetry = {
+  commandsExecuted: 0,
+  pipelineBatches: 0,
+  inMemoryFallbackCalls: 0,
+  lastCommandAt: null,
+};
+
 function isQuotaError(err) {
   if (!err) return false;
   const msg = (err.message || String(err)).toLowerCase();
@@ -66,6 +74,14 @@ function getCircuitStatus() {
     cooldownRemainingSec: open ? Math.max(0, Math.ceil((_circuitOpenUntil - now) / 1000)) : 0,
     reason: _circuitReason || null,
     mode: open ? 'in-memory-fallback' : (UPSTASH_ENABLED && _rawRedis ? 'active' : 'disabled'),
+    telemetry: {
+      commandsExecuted: _telemetry.commandsExecuted,
+      pipelineBatches: _telemetry.pipelineBatches,
+      inMemoryFallbackCalls: _telemetry.inMemoryFallbackCalls,
+      lastCommandAt: _telemetry.lastCommandAt,
+      monthlyFreeTierLimit: 500000,
+      quotaSafeBudgetDaily: Math.floor(500000 / 31),
+    },
   };
 }
 
@@ -109,13 +125,19 @@ const redis = _rawRedis ? new Proxy(_rawRedis, {
           rpush(...args) { commandCount++; if (rawPipe) rawPipe.rpush(...args); return pipeObj; },
           async exec() {
             if (isCircuitOpen()) {
+              _telemetry.inMemoryFallbackCalls += commandCount;
               return new Array(commandCount).fill(1);
             }
             try {
-              return await rawPipe.exec();
+              const res = await rawPipe.exec();
+              _telemetry.commandsExecuted += commandCount;
+              _telemetry.pipelineBatches++;
+              _telemetry.lastCommandAt = new Date().toISOString();
+              return res;
             } catch (err) {
               if (isQuotaError(err)) {
                 tripCircuit(err.message);
+                _telemetry.inMemoryFallbackCalls += commandCount;
                 return new Array(commandCount).fill(1);
               }
               throw err;
@@ -129,6 +151,7 @@ const redis = _rawRedis ? new Proxy(_rawRedis, {
     if (typeof obj[prop] === 'function') {
       return async function(...args) {
         if (isCircuitOpen()) {
+          _telemetry.inMemoryFallbackCalls++;
           if (prop === 'get') return null;
           if (prop === 'smembers' || prop === 'keys') return [];
           if (prop === 'hgetall') return {};
@@ -140,6 +163,8 @@ const redis = _rawRedis ? new Proxy(_rawRedis, {
 
         try {
           const res = await obj[prop](...args);
+          _telemetry.commandsExecuted++;
+          _telemetry.lastCommandAt = new Date().toISOString();
           // If a successful call occurs after a previous trip, clear circuit
           if (_circuitOpen && prop === 'ping') {
             _circuitOpen = false;
@@ -150,6 +175,7 @@ const redis = _rawRedis ? new Proxy(_rawRedis, {
         } catch (err) {
           if (isQuotaError(err)) {
             tripCircuit(err.message);
+            _telemetry.inMemoryFallbackCalls++;
             if (prop === 'get') return null;
             if (prop === 'smembers' || prop === 'keys') return [];
             if (prop === 'hgetall') return {};
@@ -167,6 +193,14 @@ const redis = _rawRedis ? new Proxy(_rawRedis, {
   }
 }) : null;
 
+function getRedisUsageTelemetry() {
+  return {
+    ..._telemetry,
+    monthlyFreeTierLimit: 500000,
+    quotaSafeBudgetDaily: Math.floor(500000 / 31),
+  };
+}
+
 module.exports = {
   get redis() {
     return redis;
@@ -175,6 +209,7 @@ module.exports = {
   isRedisAvailable,
   isCircuitOpen,
   getCircuitStatus,
+  getRedisUsageTelemetry,
   tripCircuit,
   resetCircuit,
 };

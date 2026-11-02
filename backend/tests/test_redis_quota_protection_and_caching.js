@@ -144,7 +144,7 @@ async function runTests() {
   });
 
   await testAsync('Dedup lock caches in local memory Set and prevents duplicate dispatches', async () => {
-    const annId = 'ANN-TEST-999';
+    const annId = 'ANN-TEST-' + Date.now();
     const uid = 'uid-dedup-test';
     const firstLock = await redisNotifStore.acquireDedupLock(annId, uid, 'PUSH');
     assert.strictEqual(firstLock, true, 'First lock attempt must succeed');
