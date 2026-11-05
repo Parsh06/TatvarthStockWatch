@@ -123,6 +123,18 @@ async function fetchOfsList(options = {}) {
 
     _ofsListCache = { data: payload, fetchedAt: now };
 
+    // Asynchronously persist latest snapshot to MongoDB for cold-boot continuity
+    try {
+      const { getDb } = require('./mongoClient');
+      getDb().then(db => {
+        db.collection('ofs_snapshots').updateOne(
+          { _id: 'latest' },
+          { $set: { _id: 'latest', scrapedAt: payload.scrapedAt, total: payload.total, data: payload.data, updatedAt: new Date() } },
+          { upsert: true }
+        ).catch(() => {});
+      }).catch(() => {});
+    } catch {}
+
     // Asynchronously pre-fetch bid books for active OPEN/UPCOMING issues in background
     const activeSlugs = ofsItems.filter(i => (i.status === 'OPEN' || i.status === 'UPCOMING') && i.slug).map(i => i.slug);
     Promise.allSettled(activeSlugs.map(slug => fetchOfsDetail(slug, { forceRefresh: true }))).catch(() => {});
@@ -136,7 +148,38 @@ async function fetchOfsList(options = {}) {
       _ofsListCache.data.consecutiveFailures = (_ofsListCache.data.consecutiveFailures || 0) + 1;
       return _ofsListCache.data; // Serve stale cache on network failure
     }
-    throw new Error(`Failed to scrape OFS data: ${err.message}`);
+
+    // Attempt MongoDB cold snapshot recovery before returning empty
+    try {
+      const { getDb } = require('./mongoClient');
+      const db = await getDb();
+      const snap = await db.collection('ofs_snapshots').findOne({ _id: 'latest' });
+      if (snap && Array.isArray(snap.data)) {
+        _ofsListCache = {
+          data: {
+            scrapedAt: snap.scrapedAt || new Date().toISOString(),
+            total: snap.total || snap.data.length,
+            stale: true,
+            consecutiveFailures: 1,
+            data: snap.data,
+          },
+          fetchedAt: Date.now(),
+        };
+        return _ofsListCache.data;
+      }
+    } catch (dbErr) {
+      console.warn('[OFS Scraper] MongoDB snapshot fallback error:', dbErr.message);
+    }
+
+    // Fail-safe graceful fallback — never crash the frontend
+    return {
+      scrapedAt: new Date().toISOString(),
+      total: 0,
+      stale: true,
+      consecutiveFailures: 1,
+      data: [],
+      error: err.message,
+    };
   }
 }
 

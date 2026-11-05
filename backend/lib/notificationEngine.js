@@ -274,6 +274,7 @@ async function processNewAnnouncements(newAnnouncements, opts = {}) {
  */
 async function processInvertedAnnouncements({ newAnnouncements, classified, stats, runId, verbose, isShadow = false }) {
   const startTime = Date.now();
+  const db = await getDb();
   const prefsStore = require('./prefsStore');
   const { sendTelegramAlert, isConfigured: isTelegramOk } = require('./telegramNotifier');
   const { getStableAnnouncementId } = require('./notification/notificationRouter');
@@ -338,10 +339,21 @@ async function processInvertedAnnouncements({ newAnnouncements, classified, stat
       });
 
       if (pushDecision.shouldNotify) {
-        // Atomic deduplication via Redis SET NX EX (keyed by ann.id + uid)
+        // Multi-tier atomic deduplication: Redis fast lock + MongoDB persistent lock
         const acquired = await redisNotifStore.acquireDedupLock(annId, uid, 'PUSH', 86400);
         if (acquired) {
-          toDispatchPush.push({ uid, announcement: ann });
+          let mongoAcquired = true;
+          try {
+            mongoAcquired = await acquireDedupLock(db, uid, ann);
+          } catch (mongoErr) {
+            if (mongoErr.code === 11000) mongoAcquired = false;
+          }
+
+          if (mongoAcquired) {
+            toDispatchPush.push({ uid, announcement: ann });
+          } else {
+            stats.alreadySent++;
+          }
         } else {
           stats.alreadySent++;
         }

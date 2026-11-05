@@ -25,15 +25,37 @@ function getDb() {
  * @param {object} deviceInfo  - { platform, browser, userAgent }
  */
 async function registerDevice(uid, deviceId, subscription, deviceInfo = {}) {
-  if (!uid || !deviceId || !subscription) {
+  if (!uid || !deviceId || !subscription || !subscription.endpoint) {
     console.warn('[PushStore] registerDevice called with missing params');
     return false;
   }
 
   const db = getDb();
-  const ref = db.collection('users').doc(uid).collection('pushDevices').doc(deviceId);
+  const devicesCol = db.collection('users').doc(uid).collection('pushDevices');
   const now = new Date().toISOString();
 
+  // 1. Clean up any existing devices for this user that share the EXACT same endpoint
+  try {
+    const duplicateSnap = await devicesCol
+      .where('subscription.endpoint', '==', subscription.endpoint)
+      .get();
+    
+    if (!duplicateSnap.empty) {
+      const batch = db.batch();
+      duplicateSnap.docs.forEach((doc) => {
+        if (doc.id !== deviceId) {
+          batch.delete(doc.ref);
+          console.log(`[PushStore] Pruned duplicate endpoint doc ${doc.id} for user ${uid}`);
+        }
+      });
+      await batch.commit();
+    }
+  } catch (err) {
+    console.warn('[PushStore] Duplicate endpoint check warning:', err.message);
+  }
+
+  // 2. Upsert the current device
+  const ref = devicesCol.doc(deviceId);
   await ref.set({
     subscription,
     platform:  deviceInfo.platform  || 'unknown',
@@ -43,8 +65,25 @@ async function registerDevice(uid, deviceId, subscription, deviceInfo = {}) {
     lastSeenAt: now,
   }, { merge: true });
 
-  // Always update lastSeenAt even if the doc already existed
   await ref.update({ lastSeenAt: now });
+
+  // 3. Keep at most 3 newest active devices per user (prune stale devices)
+  try {
+    const allSnap = await devicesCol.get();
+    if (allSnap.size > 3) {
+      const docs = allSnap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }));
+      docs.sort((a, b) => new Date(b.lastSeenAt || b.createdAt || 0) - new Date(a.lastSeenAt || a.createdAt || 0));
+      const batch = db.batch();
+      // Keep first 3, delete the rest
+      docs.slice(3).forEach(d => {
+        batch.delete(d.ref);
+        console.log(`[PushStore] Auto-pruned stale excess device ${d.id} for user ${uid}`);
+      });
+      await batch.commit();
+    }
+  } catch (pruneErr) {
+    console.warn('[PushStore] Device pruning warning:', pruneErr.message);
+  }
 
   console.log(`[PushStore] Registered device ${deviceId} for user ${uid} (${deviceInfo.platform}/${deviceInfo.browser})`);
   return true;
@@ -113,10 +152,25 @@ async function getAllDevices(uid) {
   const db = getDb();
   try {
     const snap = await db.collection('users').doc(uid).collection('pushDevices').get();
-    return snap.docs.map(doc => ({
+    const rawDevices = snap.docs.map(doc => ({
       deviceId: doc.id,
       ...doc.data(),
     }));
+
+    // Deduplicate on subscription.endpoint and keep the most recently active device
+    rawDevices.sort((a, b) => new Date(b.lastSeenAt || b.createdAt || 0) - new Date(a.lastSeenAt || a.createdAt || 0));
+
+    const seenEndpoints = new Set();
+    const uniqueDevices = [];
+    for (const d of rawDevices) {
+      const ep = d.subscription?.endpoint;
+      if (ep && !seenEndpoints.has(ep)) {
+        seenEndpoints.add(ep);
+        uniqueDevices.push(d);
+      }
+    }
+
+    return uniqueDevices;
   } catch (e) {
     console.error(`[PushStore] Failed to get devices for ${uid}:`, e.message);
     return [];

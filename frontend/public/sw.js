@@ -11,7 +11,7 @@
  * - Cache version management
  */
 
-const CACHE_NAME = 'stockwatch-sw-v5';
+const CACHE_NAME = 'stockwatch-sw-v6';
 const APP_SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -85,7 +85,7 @@ const PRIORITY_CONFIG = {
 
   high: {
     vibrate: [150, 75, 150],
-    renotify: true,
+    renotify: false,
     requireInteraction: false,
   },
 
@@ -165,21 +165,21 @@ function buildNotificationTag(data, type) {
     return String(data.tag);
   }
 
-  const announcementId =
-    data?.announcementId ||
-    data?.announcement?.id;
-
   const companyCode =
     data?.company?.bseCode ||
     data?.company?.code ||
     data?.companyCode;
 
-  if (announcementId) {
-    return `${type}-${announcementId}`;
+  if (companyCode) {
+    return `co-${companyCode}`;
   }
 
-  if (companyCode) {
-    return `${type}-${companyCode}`;
+  const announcementId =
+    data?.announcementId ||
+    data?.announcement?.id;
+
+  if (announcementId) {
+    return `${type}-${announcementId}`;
   }
 
   return `${type}-${Date.now()}`;

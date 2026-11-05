@@ -112,6 +112,16 @@ export default function AllAnnouncementsPage() {
     return set
   }, [watchlist])
 
+  const watchlistBseToNse = useMemo(() => {
+    const map = new Map()
+    watchlist.forEach((s) => {
+      const bse = (s.bseCode || s.ltdCode || s.scripCode || s.scriptCode || s.code || '').toString().trim()
+      const nse = (s.nseSymbol || s.symbol || s.shortName || '').toString().trim().toUpperCase()
+      if (bse && nse) map.set(bse, nse)
+    })
+    return map
+  }, [watchlist])
+
   const isItemInWatchlist = useCallback((a) => {
     if (!a) return false
     return (
@@ -175,7 +185,7 @@ export default function AllAnnouncementsPage() {
   const allItems = useMemo(() => {
     return rawList.map((a) => {
       const bse = a.bseCode || (a.exchange === 'BSE' ? a.scriptCode : (!a.nseSymbol && /^\d+$/.test(a.scriptCode) ? a.scriptCode : ''))
-      const nse = a.nseSymbol || (a.exchange === 'NSE' ? a.scriptCode : '')
+      const nse = a.nseSymbol || (a.exchange === 'NSE' ? a.scriptCode : (bse ? watchlistBseToNse.get(bse) : '')) || ''
       const code = a.scriptCode || bse || nse || ''
       return {
         ...a,
@@ -184,7 +194,7 @@ export default function AllAnnouncementsPage() {
         scriptCode: code,
       }
     })
-  }, [rawList])
+  }, [rawList, watchlistBseToNse])
 
   // Unique categories — scoped to current company if one is selected
   const categoryOptions = useMemo(() => {
@@ -242,8 +252,19 @@ export default function AllAnnouncementsPage() {
     }
     
     // Exchange filtering
-    if (exchange === 'BSE') list = list.filter(a => a.exchange === 'BSE' || a.bseCode || a.source === 'BSE' || (!a.nseSymbol && /^\d+$/.test(a.scriptCode)))
-    if (exchange === 'NSE') list = list.filter(a => a.exchange === 'NSE' || a.nseSymbol || a.source === 'NSE')
+    if (exchange === 'BSE') {
+      list = list.filter(a => a.exchange === 'BSE' || a.bseCode || a.source === 'BSE' || (!a.nseSymbol && /^\d+$/.test(a.scriptCode)))
+    }
+    if (exchange === 'NSE') {
+      const directOrMappedNse = list.filter(a => a.exchange === 'NSE' || a.nseSymbol || a.source === 'NSE')
+      if (directOrMappedNse.length > 0) {
+        list = directOrMappedNse
+      } else {
+        // Fallback: If running in Dual-Exchange Gateway mode and no pure NSE docs, show watchlist matches or full dual-exchange feed
+        const watchlistMatch = list.filter(isItemInWatchlist)
+        list = watchlistMatch.length > 0 ? watchlistMatch : list
+      }
+    }
     
     if (search) {
       const q = search.toLowerCase().trim()
@@ -531,8 +552,8 @@ export default function AllAnnouncementsPage() {
               ) : (
                 <>
                   <p className="text-textMuted text-sm font-medium">No announcements match your current filters</p>
-                  <button onClick={() => { setCatFilter(''); setSearch(''); setOnlyWatchlist(false) }}
-                    className="mt-3 text-xs text-primary hover:underline">Clear filters</button>
+                  <button onClick={() => { setCatFilter(''); setSearch(''); setOnlyWatchlist(false); setExchange('BOTH'); setCodeFilter(''); setCodeLabel('') }}
+                    className="mt-3 text-xs text-primary hover:underline">Clear all filters</button>
                 </>
               )}
             </div>

@@ -91,31 +91,28 @@ async function sendWebPush(subscription, payload, retries = 1, options = {}) {
  * @returns {Promise<{ sent: number, failed: number, expired: number, total: number }>}
  */
 async function sendWebPushToUser(uid, payload) {
-  console.log("SENDING PUSH");
-  console.log({
-    uid,
-    company: payload.title,
-    category: payload.body,
-    subCategory: "N/A" // From payload we might not have raw subcat
-  });
   if (!initWebPush()) return { sent: 0, failed: 0, expired: 0, total: 0 };
   if (!uid) return { sent: 0, failed: 0, expired: 0, total: 0 };
 
   const pushStore = require('./pushStore');
   const devices = await pushStore.getAllDevices(uid);
 
-  if (devices.length === 0) {
+  if (!devices || devices.length === 0) {
     return { sent: 0, failed: 0, expired: 0, total: 0 };
   }
 
+  // Deduplicate endpoints strictly before network dispatch
+  const uniqueEndpoints = new Map();
+  for (const d of devices) {
+    if (d.subscription && d.subscription.endpoint && !uniqueEndpoints.has(d.subscription.endpoint)) {
+      uniqueEndpoints.set(d.subscription.endpoint, d);
+    }
+  }
+
+  const dispatchTargets = Array.from(uniqueEndpoints.values());
   let sent = 0, failed = 0, expired = 0;
 
-  await Promise.all(devices.map(async (device) => {
-    if (!device.subscription) {
-      failed++;
-      return;
-    }
-
+  await Promise.all(dispatchTargets.map(async (device) => {
     const result = await sendWebPush(device.subscription, payload);
 
     if (result.sent) {
@@ -134,11 +131,8 @@ async function sendWebPushToUser(uid, payload) {
     }
   }));
 
-  if (devices.length > 0) {
-    console.log(`[WebPush] User ${uid}: sent=${sent} failed=${failed} expired=${expired} total=${devices.length}`);
-  }
-
-  return { sent, failed, expired, total: devices.length };
+  console.log(`[WebPush] User ${uid}: sent=${sent} failed=${failed} expired=${expired} total=${dispatchTargets.length}`);
+  return { sent, failed, expired, total: dispatchTargets.length };
 }
 
 /**

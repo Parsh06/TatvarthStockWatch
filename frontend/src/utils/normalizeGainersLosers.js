@@ -24,17 +24,18 @@ export function normalizeBseData(row) {
 export function normalizeNseData(row) {
   if (!row) return null
 
-  const openPrice = row.open_price ?? row.openPrice ?? 0
-  const highPrice = row.high_price ?? row.highPrice ?? 0
-  const lowPrice = row.low_price ?? row.lowPrice ?? 0
-  const prevPrice = row.prev_price ?? row.prevPrice ?? 0
-  const ltpVal = row.ltp ?? 0
-  const perChangeVal = row.perChange ?? row.perChangeRaw ?? 0
-  const volumeVal = row.trade_quantity ?? row.tradeQuantity ?? 0
+  const openPrice = typeof row.open_price === 'number' && !isNaN(row.open_price) ? row.open_price : (parseFloat(String(row.openPrice || row.open_price || 0).replace(/,/g, '')) || 0)
+  const highPrice = typeof row.high_price === 'number' && !isNaN(row.high_price) ? row.high_price : (parseFloat(String(row.highPrice || row.high_price || 0).replace(/,/g, '')) || 0)
+  const lowPrice = typeof row.low_price === 'number' && !isNaN(row.low_price) ? row.low_price : (parseFloat(String(row.lowPrice || row.low_price || 0).replace(/,/g, '')) || 0)
+  const prevPrice = typeof row.prev_price === 'number' && !isNaN(row.prev_price) ? row.prev_price : (parseFloat(String(row.prevPrice || row.prev_price || 0).replace(/,/g, '')) || 0)
+  const ltpVal = typeof row.ltp === 'number' && !isNaN(row.ltp) ? row.ltp : (parseFloat(String(row.ltp || 0).replace(/,/g, '')) || 0)
+  const perChangeVal = typeof row.perChange === 'number' && !isNaN(row.perChange) ? row.perChange : (parseFloat(String(row.perChange || row.perChangeRaw || row.percentChange || 0).replace(/,/g, '')) || 0)
+  const volumeVal = typeof row.trade_quantity === 'number' && !isNaN(row.trade_quantity) ? row.trade_quantity : (parseInt(String(row.tradeQuantity || row.trade_quantity || row.volume || 0).replace(/,/g, ''), 10) || 0)
   
   // Value (turnover * 100000 or raw value / totalTradedValue)
   const rawTurnover = row.turnover ?? row.turnover_lakhs ?? row.turnoverInLakhs ?? 0
-  const rawValue = row.value ?? row.totalTradedValue ?? (rawTurnover ? rawTurnover * 100000 : 0)
+  const rawVal = row.value ?? row.totalTradedValue ?? (rawTurnover ? rawTurnover * 100000 : 0)
+  const valueVal = typeof rawVal === 'number' && !isNaN(rawVal) ? rawVal : (parseFloat(String(rawVal || 0).replace(/,/g, '')) || 0)
 
   // CA (Corporate Action date or purpose)
   let caVal = '-'
@@ -48,14 +49,14 @@ export function normalizeNseData(row) {
 
   return {
     symbol: row.symbol || '—',
-    open: typeof openPrice === 'number' ? openPrice : (parseFloat(openPrice) || 0),
-    high: typeof highPrice === 'number' ? highPrice : (parseFloat(highPrice) || 0),
-    low: typeof lowPrice === 'number' ? lowPrice : (parseFloat(lowPrice) || 0),
-    previousClose: typeof prevPrice === 'number' ? prevPrice : (parseFloat(prevPrice) || 0),
-    ltp: typeof ltpVal === 'number' ? ltpVal : (parseFloat(ltpVal) || 0),
-    percentChange: typeof perChangeVal === 'number' ? perChangeVal : (parseFloat(perChangeVal) || 0),
-    volume: typeof volumeVal === 'number' ? volumeVal : (parseInt(volumeVal, 10) || 0),
-    value: typeof rawValue === 'number' ? rawValue : (parseFloat(rawValue) || 0),
+    open: openPrice,
+    high: highPrice,
+    low: lowPrice,
+    previousClose: prevPrice,
+    ltp: ltpVal,
+    percentChange: perChangeVal,
+    volume: volumeVal,
+    value: valueVal,
     ca: caVal,
   }
 }

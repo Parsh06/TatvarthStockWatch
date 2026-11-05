@@ -73,7 +73,7 @@ module.exports = function marketRoutes(verifyToken) {
   });
 
   // GET /api/market/ofs
-  // Returns the latest in-memory OFS snapshot.
+  // Returns the latest in-memory OFS snapshot with resilient fallback.
   router.get('/ofs', verifyToken, async (req, res) => {
     try {
       let snapshot = getLatestOfs();
@@ -82,14 +82,24 @@ module.exports = function marketRoutes(verifyToken) {
         snapshot = await fetchOfsList();
       }
       if (!snapshot) {
-        return res.status(503).json({
-          error: 'OFS data not yet available. The server is warming up. Please try again in 60 seconds.',
-        });
+        snapshot = {
+          scrapedAt: new Date().toISOString(),
+          total: 0,
+          stale: true,
+          data: [],
+        };
       }
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
       res.json(snapshot);
     } catch (err) {
       console.error('Failed to fetch OFS data:', err.message);
-      res.status(500).json({ error: 'Failed to fetch OFS data', details: err.message });
+      res.json({
+        scrapedAt: new Date().toISOString(),
+        total: 0,
+        stale: true,
+        data: [],
+        error: err.message,
+      });
     }
   });
 
