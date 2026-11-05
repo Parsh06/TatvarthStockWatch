@@ -366,12 +366,12 @@ async function getLatestFiiDiiData(forceRefresh = false) {
     }
 
     // 2. Intelligent today's release detection:
-    // If no record, or forceRefresh requested, OR if we are in/after evening window (17:30+ IST on weekday)
+    // If no record, or forceRefresh requested, OR if we are in/after evening window (17:45+ IST on weekday)
     // and the latest record in DB is from a previous trading day, attempt to fetch today's live release.
     const nowIST = getISTDateTime();
     const todayIST = nowIST.dateIST;
     const isWeekday = nowIST.istDay >= 1 && nowIST.istDay <= 5;
-    const isEvening = (nowIST.istHour > 17 || (nowIST.istHour === 17 && nowIST.istMinute >= 30)) && nowIST.istHour < 24;
+    const isEvening = (nowIST.istHour > 17 || (nowIST.istHour === 17 && nowIST.istMinute >= 45)) && nowIST.istHour < 24;
     const isStaleForToday = Boolean(isWeekday && isEvening && latestRecord && latestRecord.date !== todayIST);
 
     if (!latestRecord || forceRefresh || isStaleForToday) {
@@ -400,61 +400,79 @@ async function getLatestFiiDiiData(forceRefresh = false) {
 }
 
 /**
- * Evening cron synchronizer — called during evening market hours (17:30+ IST).
+ * Evening cron synchronizer:
+ * - 5:45 PM IST (17:45 IST): Ingestion begins polling NSE for today's market closing flow.
+ * - 6:00 PM IST (18:00 IST): Automated once-daily Web Push + Telegram broadcast to all users.
  */
 async function syncDailyFiiDii(options = {}) {
   const force = Boolean(options.force);
+  const forceNotify = Boolean(options.forceNotify);
   const notify = options.notify !== false; // default true
 
   const nowIST = getISTDateTime();
   const todayIST = nowIST.dateIST;
   const isWeekday = nowIST.istDay >= 1 && nowIST.istDay <= 5;
-  const isEvening = (nowIST.istHour > 17 || (nowIST.istHour === 17 && nowIST.istMinute >= 30)) && nowIST.istHour < 24;
+
+  // Ingestion starts automatically at 5:45 PM IST on trading weekdays
+  const isFetchWindow = (nowIST.istHour > 17 || (nowIST.istHour === 17 && nowIST.istMinute >= 45)) && nowIST.istHour < 24;
+
+  // Notification broadcast triggers at 6:00 PM IST onwards
+  const isNotificationWindow = (nowIST.istHour >= 18) && nowIST.istHour < 24;
 
   if (!force && !isWeekday) {
     return { synced: false, reason: 'weekend' };
   }
 
-  if (!force && !isEvening) {
+  if (!force && !isFetchWindow) {
     return { synced: false, reason: 'outside_evening_window' };
   }
 
   try {
-    // 1. Check if today's record is ALREADY stored in MongoDB
     const db = await getDb();
-    const existing = await db.collection('fii_dii_history').findOne({ date: todayIST });
+    let recordForToday = await db.collection('fii_dii_history').findOne({ date: todayIST });
 
-    if (existing && !force) {
-      // Check if notification was sent
+    // 1. Ingestion Phase: If today's record is not in DB yet (or force requested), fetch fresh from NSE
+    if (!recordForToday || force) {
+      const live = await fetchFromNse();
+      if (live && live.date) {
+        await upsertFiiDiiRecord(live);
+        _cachedResult = null;
+        _cacheExpiresAt = 0;
+        if (live.date === todayIST) {
+          recordForToday = live;
+          console.log(`[FiiDiiService] ✅ Fresh FII/DII data ingested for today (${live.displayDate}): Combined Net ${live.combined?.totalNet} Cr | NSE Net ${live.nseOnly?.totalNet} Cr`);
+        } else {
+          console.log(`[FiiDiiService] NSE still serving previous session (${live.displayDate}). Awaiting today's (${todayIST}) release.`);
+        }
+      } else {
+        console.log('[FiiDiiService] Real-time NSE feed challenged or awaiting release — serving verified database history.');
+      }
+    }
+
+    // 2. Broadcast Phase: Trigger once-daily notification at 6:00 PM IST (or immediately if forceNotify is true)
+    let broadcastResult = { broadcast: false, reason: 'not_triggered' };
+    const canBroadcastNow = forceNotify || (notify && isNotificationWindow);
+
+    if (recordForToday && canBroadcastNow) {
       const lockDoc = await db.collection('alert_dedup_locks').findOne({ _id: `fiidii_broadcast_${todayIST}` });
-      if (!lockDoc && notify) {
-        await dispatchFiiDiiBroadcast(existing);
+      if (!lockDoc) {
+        broadcastResult = await dispatchFiiDiiBroadcast(recordForToday);
+      } else {
+        broadcastResult = { broadcast: false, reason: 'already_sent_today' };
       }
-      return { synced: true, date: todayIST, alreadyUpToDate: true };
+    } else if (recordForToday && !isNotificationWindow && !forceNotify) {
+      broadcastResult = { broadcast: false, reason: 'scheduled_for_18_00_ist' };
+      console.log(`[FiiDiiService] Today's data ingested (${recordForToday.displayDate}). Broadcast scheduled for 6:00 PM IST.`);
     }
 
-    // 2. Not in DB yet or forced: fetch fresh from NSE
-    const live = await fetchFromNse();
-    if (!live || !live.date) {
-      console.log('[FiiDiiService] Real-time NSE feed challenged or awaiting release — serving verified database history.');
-      return { synced: false, pendingRelease: true, servingHistorical: true };
-    }
-
-    await upsertFiiDiiRecord(live);
-    _cachedResult = null;
-    _cacheExpiresAt = 0;
-
-    // 3. Verify if NSE actually provided TODAY'S data
-    if (live.date === todayIST || force) {
-      console.log(`[FiiDiiService] ✅ Fresh FII/DII data published for today (${live.displayDate}): Combined Net ${live.combined?.totalNet} Cr | NSE Net ${live.nseOnly?.totalNet} Cr`);
-      if (notify) {
-        await dispatchFiiDiiBroadcast(live);
-      }
-      return { synced: true, date: live.date, newlyPublished: true };
-    } else {
-      console.log(`[FiiDiiService] NSE still serving previous session (${live.displayDate}). Awaiting today's (${todayIST}) release.`);
-      return { synced: false, pendingToday: true, nseDate: live.displayDate };
-    }
+    return {
+      synced: Boolean(recordForToday),
+      date: todayIST,
+      hasTodayData: Boolean(recordForToday),
+      broadcastSent: Boolean(broadcastResult.broadcast),
+      broadcastResult,
+      isNotificationWindow,
+    };
   } catch (err) {
     console.warn('[FiiDiiService] Evening sync error:', err.message);
     return { synced: false, error: err.message };

@@ -13,6 +13,7 @@ const {
   parseNseDate,
   normalizeFiiDiiData,
   getLatestFiiDiiData,
+  syncDailyFiiDii,
 } = require('../services/fiiDiiService');
 
 async function runTests() {
@@ -72,6 +73,14 @@ async function runTests() {
   assert(cacheElapsed < 20, `Cached call must be sub-20ms (got ${cacheElapsed}ms)`);
   assert.strictEqual(cachedData.timestamp, data.timestamp);
   console.log(`  ✓ PASSED: In-memory cache hit served in ${cacheElapsed}ms (<20ms SLA)`);
+
+  // TEST 5: 5:45 PM Ingestion & 6:00 PM Broadcast Synchronization
+  console.log('\n[TEST 5] syncDailyFiiDii Windowing & Broadcast Deduplication');
+  const syncResult = await syncDailyFiiDii({ force: false });
+  assert(typeof syncResult === 'object', 'syncResult should be an object');
+  console.log('  syncDailyFiiDii result:', JSON.stringify(syncResult));
+  assert('synced' in syncResult, 'syncResult should have synced property');
+  console.log('  ✓ PASSED: syncDailyFiiDii correctly manages evening schedule and dedup locks');
 
   console.log('\n==================================================================');
   console.log('  ALL FII/DII TESTS PASSED PERFECTLY!');

@@ -66,7 +66,7 @@ export default function FiiDiiWidget({ data, loading, error, onRefresh, refreshi
         <Landmark className="w-8 h-8 text-textMuted mx-auto mb-2 opacity-60" />
         <p className="text-sm font-semibold text-textPrimary">Institutional Flow Unavailable</p>
         <p className="text-xs text-textMuted mt-1">
-          FII/DII cash market reports are updated every trading evening after 17:30 IST.
+          FII/DII cash market reports are updated every trading evening after 17:45 IST.
         </p>
       </div>
     );

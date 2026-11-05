@@ -25,6 +25,7 @@ const REGISTRAR_CADENCE_MS = 5 * 60 * 1000; // 5 minutes during the 7 PM - 2 AM 
 let _lastFirestoreMetaUpdateTime = 0;
 const FIRESTORE_META_IDLE_THROTTLE_MS = 15 * 60 * 1000; // 15-minute heartbeat when idle (saves ~1300 redundant writes/day)
 let _lastFiiDiiSyncedDate = '';
+let _lastFiiDiiNotifiedDate = '';
 let _lastPlanLifecycleCheckTime = 0;
 const PLAN_LIFECYCLE_INTERVAL_MS = 6 * 60 * 60 * 1000; // Throttled to once every 6 hours
 
@@ -88,6 +89,8 @@ async function performMidnightWipeIfNeeded() {
       setAnnouncementsMemoryCache([]);
       clearKnownBseAnnouncementIds();
       _lastRegistrarCheckTime = 0;
+      _lastFiiDiiSyncedDate = '';
+      _lastFiiDiiNotifiedDate = '';
 
       await metaRef.set({
         lastWipeDate: todayDateStr,
@@ -383,17 +386,20 @@ async function runGlobalCronTick(options = {}) {
     }
   }
 
-  // 7c. Daily FII / DII Institutional Flow Sync (Mon-Fri between 17:30 and 23:45 IST)
+  // 7c. Daily FII / DII Institutional Flow Ingestion (5:45 PM IST) & Broadcast Notification (6:00 PM IST)
   const istTimeNow = getISTDateTime();
   const isWeekday = istTimeNow.istDay >= 1 && istTimeNow.istDay <= 5;
-  const isEvening = (istTimeNow.istHour > 17 || (istTimeNow.istHour === 17 && istTimeNow.istMinute >= 30)) && istTimeNow.istHour < 24;
+  const isFiiDiiWindow = (istTimeNow.istHour > 17 || (istTimeNow.istHour === 17 && istTimeNow.istMinute >= 45)) && istTimeNow.istHour < 24;
 
-  if (isWeekday && isEvening && _lastFiiDiiSyncedDate !== istTimeNow.dateIST) {
+  if (isWeekday && isFiiDiiWindow && (_lastFiiDiiSyncedDate !== istTimeNow.dateIST || _lastFiiDiiNotifiedDate !== istTimeNow.dateIST)) {
     try {
       const { syncDailyFiiDii } = require('./fiiDiiService');
       const fiiResult = await syncDailyFiiDii();
-      if (fiiResult && fiiResult.synced) {
+      if (fiiResult && fiiResult.hasTodayData) {
         _lastFiiDiiSyncedDate = istTimeNow.dateIST;
+      }
+      if (fiiResult && fiiResult.broadcastSent) {
+        _lastFiiDiiNotifiedDate = istTimeNow.dateIST;
       }
     } catch (fiiErr) {
       console.warn('[Global Cron] FII/DII sync warning:', fiiErr.message);
