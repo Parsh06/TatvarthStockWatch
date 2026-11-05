@@ -33,8 +33,10 @@ function getISTDateTime(date = new Date()) {
   const dateIST = `${year}-${month}-${day}`; // YYYY-MM-DD
   const istHour = parseInt(parts.hour, 10);
   const istMinute = parseInt(parts.minute, 10);
+  const istDateObj = new Date(`${year}-${month}-${day}T12:00:00Z`);
+  const istDay = istDateObj.getUTCDay(); // 0 = Sun, 1 = Mon, ..., 5 = Fri, 6 = Sat
 
-  return { year, month, day, dateIST, istHour, istMinute };
+  return { year, month, day, dateIST, istHour, istMinute, istDay };
 }
 
 /**

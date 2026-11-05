@@ -385,8 +385,7 @@ async function runGlobalCronTick(options = {}) {
 
   // 7c. Daily FII / DII Institutional Flow Sync (Mon-Fri between 17:30 and 23:45 IST)
   const istTimeNow = getISTDateTime();
-  const dayOfWeek = new Date().getDay(); // 0 is Sun, 6 is Sat
-  const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+  const isWeekday = istTimeNow.istDay >= 1 && istTimeNow.istDay <= 5;
   const isEvening = (istTimeNow.istHour > 17 || (istTimeNow.istHour === 17 && istTimeNow.istMinute >= 30)) && istTimeNow.istHour < 24;
 
   if (isWeekday && isEvening && _lastFiiDiiSyncedDate !== istTimeNow.dateIST) {

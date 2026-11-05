@@ -2,6 +2,7 @@
 
 const axios = require('axios');
 const cheerio = require('cheerio');
+const { getDb } = require('./mongoClient');
 
 // In-memory live cache & snapshot
 let _ofsListCache = { data: null, fetchedAt: 0, stale: false, consecutiveFailures: 0 };
@@ -247,18 +248,68 @@ async function fetchOfsDetail(slug, options = {}) {
       scrapedAt: new Date().toISOString(),
       summary: {
         cutoffPrice: cutoffPrice !== 'N/A' ? cutoffPrice : 'At Market/Floor',
-        floorPrice: floorPrice !== 'N/A' ? floorPrice : 'N/A'
+        floorPrice: floorPrice !== 'N/A' ? floorPrice : 'N/A',
+        totalBids: bidBook.reduce((acc, row) => acc + parseNumber(row.totalQty), 0),
+        bseBids: bidBook.reduce((acc, row) => acc + parseNumber(row.bseQty), 0),
+        nseBids: bidBook.reduce((acc, row) => acc + parseNumber(row.nseQty), 0),
       },
       bidBook
     };
 
     _ofsDetailCache.set(slug, { data: detailPayload, fetchedAt: now });
+
+    // Persist to MongoDB for resilient offline/cloud failover
+    try {
+      const db = await getDb();
+      await db.collection('ofs_details').updateOne(
+        { _id: slug },
+        { $set: { ...detailPayload, _id: slug, savedAt: new Date() } },
+        { upsert: true }
+      );
+    } catch (dbErr) {
+      console.warn('[OFS Scraper] MongoDB detail save warning:', dbErr.message);
+    }
+
     return detailPayload;
 
   } catch (err) {
     console.error(`[OFS Detail Scraper Error for ${slug}]`, err.message);
-    if (cached) return cached.data;
-    throw new Error(`Failed to scrape OFS detail for ${slug}: ${err.message}`);
+    if (cached) return { ...cached.data, stale: true };
+
+    // Try loading snapshot from MongoDB
+    try {
+      const db = await getDb();
+      const stored = await db.collection('ofs_details').findOne({ _id: slug });
+      if (stored) {
+        console.log(`[OFS Detail Scraper] Serving MongoDB snapshot for ${slug}`);
+        delete stored._id;
+        const payload = { ...stored, stale: true };
+        _ofsDetailCache.set(slug, { data: payload, fetchedAt: now });
+        return payload;
+      }
+    } catch (dbErr) {
+      console.warn('[OFS Detail Scraper] MongoDB read warning:', dbErr.message);
+    }
+
+    // Graceful fallback from list snapshot metadata — never crash with 500
+    const listSnapshot = getLatestOfs() || {};
+    const issueMatch = (listSnapshot.data || []).find(i => i.slug === slug || i.id === slug);
+
+    return {
+      slug,
+      pageTitle: issueMatch?.companyName || issueMatch?.scriptName || 'OFS Detail',
+      scrapedAt: new Date().toISOString(),
+      stale: true,
+      summary: {
+        cutoffPrice: issueMatch?.cutoffPrice && issueMatch.cutoffPrice !== 'N/A' ? issueMatch.cutoffPrice : 'At Market/Floor',
+        floorPrice: issueMatch?.floorPrice && issueMatch.floorPrice !== 'N/A' ? issueMatch.floorPrice : 'N/A',
+        totalBids: 0,
+        bseBids: 0,
+        nseBids: 0,
+      },
+      bidBook: [],
+      isArchived: true,
+    };
   }
 }
 

@@ -13,7 +13,7 @@ module.exports = function marketRoutes(verifyToken) {
   // Returns Foreign & Domestic Institutional Investors cash market net activity & rolling trend
   router.get('/fii-dii', verifyToken, async (req, res) => {
     try {
-      const force = req.query.force === 'true';
+      const force = req.query.force === 'true' || req.query.refresh === 'true';
       const data = await getLatestFiiDiiData(force);
       res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
       res.json(data);
@@ -104,15 +104,23 @@ module.exports = function marketRoutes(verifyToken) {
   });
 
   // GET /api/market/ofs/:slug
-  // Fetches cutoff price and bid book for a specific OFS
+  // Fetches cutoff price and bid book for a specific OFS with fail-safe response
   router.get('/ofs/:slug', verifyToken, async (req, res) => {
     try {
       const { slug } = req.params;
       const detail = await fetchOfsDetail(slug);
       res.json(detail);
     } catch (err) {
-      console.error(`Failed to fetch OFS detail for ${req.params.slug}:`, err.message);
-      res.status(500).json({ error: 'Failed to fetch OFS detail', details: err.message });
+      console.warn(`[OFS Route] Fallback for ${req.params.slug}:`, err.message);
+      res.json({
+        slug: req.params.slug,
+        pageTitle: 'OFS Issue',
+        scrapedAt: new Date().toISOString(),
+        stale: true,
+        summary: { cutoffPrice: 'At Market/Floor', floorPrice: 'N/A' },
+        bidBook: [],
+        error: err.message
+      });
     }
   });
 

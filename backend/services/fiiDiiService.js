@@ -408,8 +408,7 @@ async function syncDailyFiiDii(options = {}) {
 
   const nowIST = getISTDateTime();
   const todayIST = nowIST.dateIST;
-  const dayOfWeek = new Date().getDay(); // 0 = Sun, 6 = Sat
-  const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+  const isWeekday = nowIST.istDay >= 1 && nowIST.istDay <= 5;
   const isEvening = (nowIST.istHour > 17 || (nowIST.istHour === 17 && nowIST.istMinute >= 30)) && nowIST.istHour < 24;
 
   if (!force && !isWeekday) {
@@ -468,5 +467,6 @@ module.exports = {
   dispatchFiiDiiBroadcast,
   fetchFromNse,
   normalizeCategoryData,
+  normalizeFiiDiiData: normalizeCategoryData,
   parseNseDate,
 };
