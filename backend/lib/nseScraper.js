@@ -250,16 +250,31 @@ function normalizeNSEItem(item, meta = {}) {
   };
 }
 
+function getISTDateFormatted(d = new Date()) {
+  const options = {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  };
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', options).formatToParts(d).map(p => [p.type, p.value]));
+  return `${parts.day}-${parts.month}-${parts.year}`;
+}
+
 /**
  * Makes the authenticated API call to fetch NSE corporate announcements
  */
-async function callNSEAPI() {
+async function callNSEAPI(fromDate, toDate) {
   if (!_nseCookies || !_nseInitialised) {
     throw new Error('No valid NSE session available');
   }
 
+  const fDate = fromDate || getISTDateFormatted();
+  const tDate = toDate || getISTDateFormatted();
+  const urlWithDates = `${NSE_API}&from_date=${fDate}&to_date=${tDate}`;
+
   const profile = getActiveProfile();
-  const response = await axios.get(NSE_API, {
+  let response = await axios.get(urlWithDates, {
     headers: {
       'User-Agent': profile.ua,
       ...profile.apiHeaders,
@@ -269,6 +284,20 @@ async function callNSEAPI() {
     timeout: 15000,
     validateStatus: () => true,
   });
+
+  // If date-based query didn't return 200, fallback to general endpoint
+  if (response.status !== 200) {
+    response = await axios.get(NSE_API, {
+      headers: {
+        'User-Agent': profile.ua,
+        ...profile.apiHeaders,
+        Referer: NSE_FILINGS,
+        Cookie:  _nseCookies,
+      },
+      timeout: 15000,
+      validateStatus: () => true,
+    });
+  }
 
   if (response.status !== 200) {
     throw new Error(`Non-200 status: ${response.status}`);
@@ -283,7 +312,7 @@ async function callNSEAPI() {
 /**
  * Fetches all live NSE corporate announcements with multi-profile auto-healing.
  */
-async function fetchAllNSEAnnouncements(watchedMap = new Map()) {
+async function fetchAllNSEAnnouncements(watchedMap = new Map(), fromDate, toDate) {
   let ok = await initNSESession();
   if (!ok) {
     if (_cloudWafChallenged) {
@@ -302,7 +331,7 @@ async function fetchAllNSEAnnouncements(watchedMap = new Map()) {
 
   let raw = [];
   try {
-    raw = await callNSEAPI();
+    raw = await callNSEAPI(fromDate, toDate);
   } catch (e) {
     console.warn(`[NSE] First API call attempt failed (${e.message}) — rotating profile and retrying...`);
     rotateProfile();
@@ -311,7 +340,7 @@ async function fetchAllNSEAnnouncements(watchedMap = new Map()) {
 
     await new Promise((resolve) => setTimeout(resolve, 800));
     try {
-      raw = await callNSEAPI();
+      raw = await callNSEAPI(fromDate, toDate);
     } catch (e2) {
       console.error(`[NSE] Retry also failed: ${e2.message}`);
       return [];
