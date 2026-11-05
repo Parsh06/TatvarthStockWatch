@@ -122,13 +122,138 @@ function isIpoAllotmentCheckWindow(date = new Date()) {
   return isEveningWindow || isPostMidnightWindow;
 }
 
+// ── Official Indian Stock Market Trading Holidays (NSE & BSE) ──────────────────
+// Initial bootstrap seeds for 2026 and 2027 statutory calendar.
+// Can be dynamically expanded, updated, or deleted by platform administrators.
+const DEFAULT_MARKET_HOLIDAYS = [
+  { date: '2026-01-26', name: 'Republic Day', description: 'National Holiday' },
+  { date: '2026-03-03', name: 'Holi', description: 'Trading Holiday' },
+  { date: '2026-03-20', name: 'Id-Ul-Fitr (Ramzan Id)', description: 'Trading Holiday' },
+  { date: '2026-04-03', name: 'Good Friday', description: 'Trading Holiday' },
+  { date: '2026-04-14', name: 'Dr. Baba Saheb Ambedkar Jayanti', description: 'Statutory Holiday' },
+  { date: '2026-05-01', name: 'Maharashtra Day', description: 'State Holiday' },
+  { date: '2026-05-27', name: 'Bakri Id (Id-Ul-Zuha)', description: 'Trading Holiday' },
+  { date: '2026-06-26', name: 'Muharram', description: 'Trading Holiday' },
+  { date: '2026-08-15', name: 'Independence Day', description: 'National Holiday' },
+  { date: '2026-10-02', name: 'Mahatma Gandhi Jayanti', description: 'National Holiday' },
+  { date: '2026-10-20', name: 'Dussehra', description: 'Trading Holiday' },
+  { date: '2026-11-08', name: 'Diwali Laxmi Pujan', description: 'Muhurat Trading Evening' },
+  { date: '2026-11-10', name: 'Diwali Balipratipada', description: 'Trading Holiday' },
+  { date: '2026-11-24', name: 'Gurunanak Jayanti', description: 'Trading Holiday' },
+  { date: '2026-12-25', name: 'Christmas', description: 'National Holiday' },
+  { date: '2027-01-26', name: 'Republic Day', description: 'National Holiday' },
+  { date: '2027-03-22', name: 'Holi', description: 'Trading Holiday' },
+  { date: '2027-03-26', name: 'Good Friday', description: 'Trading Holiday' },
+  { date: '2027-04-14', name: 'Dr. Ambedkar Jayanti', description: 'Statutory Holiday' },
+  { date: '2027-05-01', name: 'Maharashtra Day', description: 'State Holiday' },
+  { date: '2027-08-15', name: 'Independence Day', description: 'National Holiday' },
+  { date: '2027-10-02', name: 'Mahatma Gandhi Jayanti', description: 'National Holiday' },
+  { date: '2027-12-25', name: 'Christmas', description: 'National Holiday' },
+];
+
+const _holidaysMap = new Map();
+DEFAULT_MARKET_HOLIDAYS.forEach(h => _holidaysMap.set(h.date, { ...h, isClosed: true }));
+
+let _lastFirestoreHolidayFetch = 0;
+const HOLIDAY_CACHE_TTL_MS = 60 * 60 * 1000; // 1-hour in-memory cache to guarantee 0 Firestore read overages
+
+/**
+ * Syncs custom and persistent holidays from Firestore system_meta/market_holidays
+ */
+async function syncMarketHolidaysFromFirestore(force = false) {
+  const now = Date.now();
+  if (!force && now - _lastFirestoreHolidayFetch < HOLIDAY_CACHE_TTL_MS) {
+    return Array.from(_holidaysMap.values());
+  }
+
+  try {
+    const admin = require('firebase-admin');
+    const db = admin.firestore();
+    const docSnap = await db.collection('system_meta').doc('market_holidays').get();
+
+    if (docSnap.exists) {
+      const data = docSnap.data();
+      if (Array.isArray(data?.holidays)) {
+        _holidaysMap.clear();
+        // Populate default baseline first, then overlay Firestore
+        DEFAULT_MARKET_HOLIDAYS.forEach(h => _holidaysMap.set(h.date, { ...h, isClosed: true }));
+        data.holidays.forEach(h => {
+          if (h.date) {
+            _holidaysMap.set(h.date, {
+              date: h.date,
+              name: h.name || 'Market Holiday',
+              description: h.description || '',
+              isClosed: h.isClosed !== false,
+            });
+          }
+        });
+      }
+    }
+    _lastFirestoreHolidayFetch = now;
+  } catch (err) {
+    // Gracefully preserve default bootstrap map on Firestore error
+  }
+  return Array.from(_holidaysMap.values());
+}
+
+// Background initial sync
+setTimeout(() => {
+  syncMarketHolidaysFromFirestore().catch(() => {});
+}, 3000);
+
+/**
+ * Checks if a given date is an official Indian Market Holiday (BSE/NSE)
+ */
+function isMarketHoliday(date = new Date()) {
+  const dateStr = typeof date === 'string' ? date : getISTDateString(date);
+  const holiday = _holidaysMap.get(dateStr);
+  return Boolean(holiday && holiday.isClosed);
+}
+
+/**
+ * Returns holiday details if date is a market holiday, or null
+ */
+function getHolidayInfo(date = new Date()) {
+  const dateStr = typeof date === 'string' ? date : getISTDateString(date);
+  return _holidaysMap.get(dateStr) || null;
+}
+
+/**
+ * Returns all configured holidays sorted chronologically
+ */
+function getAllMarketHolidays() {
+  return Array.from(_holidaysMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Registers a new holiday in memory and returns map
+ */
+function setMarketHolidayInMemory(holiday) {
+  if (!holiday || !holiday.date) return;
+  _holidaysMap.set(holiday.date, {
+    date: holiday.date,
+    name: holiday.name || 'Market Holiday',
+    description: holiday.description || '',
+    isClosed: holiday.isClosed !== false,
+  });
+}
+
+/**
+ * Deletes a holiday from memory
+ */
+function deleteMarketHolidayFromMemory(dateStr) {
+  if (!dateStr) return false;
+  return _holidaysMap.delete(dateStr);
+}
+
 /**
  * Evaluates Indian Market Cadence based on IST day and hour:
  * - Unrestricted Mode: if DISABLE_CADENCE_GUARD=true, always 0 min (runs every tick)
- * - Active Weekday Filings (Mon-Fri 08:00 - 22:00 IST): 0 min (runs on every tick, zero delay)
- * - Saturday Board Outcomes (Sat 09:00 - 20:00 IST): 0 min (runs on every tick, zero delay)
- * - Late Evening (Mon-Fri 22:00 - 23:00 IST): 5 min minimum interval
- * - Deep Night (23:00 - 08:00 IST) & Sunday: 30 min minimum interval
+ * - Market Holiday (BSE/NSE Closed): 30 min idle cadence, skips high-frequency 30s scraper
+ * - Active Weekday Filings (Mon-Fri 08:30 - 16:00 IST): 0 min (30-second polling)
+ * - Evening Results (Mon-Fri 16:00 - 23:45 IST): 2 min cadence
+ * - Saturday Board Outcomes (Sat 09:00 - 23:45 IST): 5 min cadence
+ * - Deep Night (23:46 - 07:29 IST) & Sunday: 30 min minimum interval
  */
 function getMarketCadence(date = new Date()) {
   if (process.env.DISABLE_CADENCE_GUARD === 'true') {
@@ -140,7 +265,7 @@ function getMarketCadence(date = new Date()) {
     };
   }
 
-  const { istHour, istMinute } = getISTDateTime(date);
+  const { istHour, istMinute, dateIST } = getISTDateTime(date);
   const dayOfWeek = getISTDayOfWeek(date); // 0 = Sun, 6 = Sat
   const isSunday = dayOfWeek === 0;
   const isSaturday = dayOfWeek === 6;
@@ -152,6 +277,29 @@ function getMarketCadence(date = new Date()) {
   const t1600 = 16 * 60;       // 16:00 IST (4:00 PM)
   const t2345 = 23 * 60 + 45;  // 23:45 IST (11:45 PM)
   const t0900 = 9 * 60;        // 09:00 IST
+
+  // 0a. Deep Night (23:46 to 07:29 IST): 30-minute cadence across all calendar days
+  if (currentMinutes < t0730 || currentMinutes > t2345) {
+    return {
+      window: 'DEEP_NIGHT',
+      isWeekend: isSaturday || isSunday,
+      minIntervalMinutes: 30,
+      description: 'Deep Night (23:46 - 07:29 IST): 30-minute cadence',
+    };
+  }
+
+  // 0b. Official Trading Holiday Check (NSE/BSE Closed during market hours)
+  // If an official holiday falls on a weekday, treat as off-market: 30m idle cadence
+  const holiday = getHolidayInfo(dateIST);
+  if (holiday && holiday.isClosed && isWeekday) {
+    return {
+      window: 'MARKET_HOLIDAY',
+      isWeekend: true,
+      minIntervalMinutes: 30, // 30-min idle cadence, conserving 100% bandwidth & CPU
+      holidayName: holiday.name,
+      description: `Market Holiday (${holiday.name}): 30-minute off-market cadence`,
+    };
+  }
 
   // 1. Weekdays Core Trading (Mon-Fri 08:30 to 16:00 IST): 30-second ultra-high-frequency polling
   // Runs on dynamic 30-second worker loop for zero-delay live statutory filing ingestion
@@ -222,4 +370,11 @@ module.exports = {
   parseToISTDateString,
   isWithinIpoDispatchWindow,
   isIpoAllotmentCheckWindow,
+  isMarketHoliday,
+  getHolidayInfo,
+  getAllMarketHolidays,
+  setMarketHolidayInMemory,
+  deleteMarketHolidayFromMemory,
+  syncMarketHolidaysFromFirestore,
+  DEFAULT_MARKET_HOLIDAYS,
 };

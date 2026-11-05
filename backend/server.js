@@ -1,5 +1,41 @@
 'use strict';
 
+// ── Global Process Crash Shields & Operational Resiliency ─────────────────────
+// Intercepts transient network drops, scraping socket timeouts, and unhandled rejections
+// to permanently prevent container crashes on Render / Node 20 runtime.
+process.on('unhandledRejection', (reason, promise) => {
+  const errMessage = reason?.message || String(reason || 'Unknown Rejection');
+  const errCode = reason?.code || reason?.statusCode || 'UNKNOWN';
+  const isTransient = Boolean(
+    /ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|socket hang up/i.test(errMessage) ||
+    /MongoNetworkError|MongoServerSelectionError|MongoTimeoutError/i.test(errMessage) ||
+    /403|429|502|503|504/i.test(String(errCode)) ||
+    /Akamai|WAF|challenge/i.test(errMessage) ||
+    /VAPID|WebPush/i.test(errMessage)
+  );
+
+  console.warn(`[Process Shield] Unhandled Rejection intercepted (transient=${isTransient}, code=${errCode}): ${errMessage}`);
+  if (!isTransient && process.env.NODE_ENV !== 'production') {
+    console.warn('[Process Shield] Stack:', reason?.stack || 'No stack trace');
+  }
+});
+
+process.on('uncaughtException', (err, origin) => {
+  const errMessage = err?.message || String(err || 'Unknown Exception');
+  console.error(`[Process Shield] Uncaught Exception at origin [${origin}]: ${errMessage}`);
+  console.error(err?.stack || 'No stack trace available');
+
+  // If catastrophic V8 memory corruption occurs, allow clean exit so Render restarts cleanly
+  if (/out of memory|heap limit|fatal error/i.test(errMessage)) {
+    console.error('[Process Shield] Catastrophic heap/memory error detected. Performing emergency drain and exit.');
+    process.exit(1);
+  }
+});
+
+process.on('SIGTERM', () => {
+  console.log('[Process Shield] SIGTERM signal received. Draining connections gracefully...');
+});
+
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');

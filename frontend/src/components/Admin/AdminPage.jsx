@@ -6,7 +6,7 @@ import {
   Database, Clock, Activity, Sparkles, TrendingUp,
   Zap, Send, Trash2, Server, Globe, Bot, Terminal,
   AlertTriangle, Layers, ArrowUpRight, Check, Megaphone,
-  Search, Eye, Star, Bell
+  Search, Eye, Star, Bell, Calendar
 } from 'lucide-react'
 
 import {
@@ -25,10 +25,12 @@ import RoleEditModal from './RoleEditModal'
 import PlanEditModal from './PlanEditModal'
 import DisableUserModal from './DisableUserModal'
 import AdminAuditTable from './AdminAuditTable'
+import MarketHolidaysTab from './MarketHolidaysTab'
 
 const TABS = [
   { id: 'system',    label: 'Mission Control & Services', icon: Cpu },
   { id: 'users',     label: 'Users & Access',             icon: Users },
+  { id: 'holidays',  label: 'Market Holidays',            icon: Calendar },
   { id: 'analytics', label: 'Platform Analytics',         icon: BarChart3 },
   { id: 'audit',     label: 'Audit Trail',                icon: History },
 ]
@@ -1657,6 +1659,11 @@ export default function AdminPage() {
           loading={loading}
           onRefresh={fetchAuditLogs}
         />
+      )}
+
+      {/* ── Tab 5: Market Holidays ─────────────────────────────────────────── */}
+      {activeTab === 'holidays' && (
+        <MarketHolidaysTab canWrite={canWrite} />
       )}
 
       {/* ── Slide-over User Detail Drawer ───────────────────────────────────── */}

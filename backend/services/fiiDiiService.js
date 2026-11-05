@@ -22,7 +22,7 @@
 const axios = require('axios');
 const { getNSECookies, getNSEHeaders } = require('../lib/nseScraper');
 const { getDb } = require('../lib/mongoClient');
-const { getISTDateTime, getISTDateString } = require('../lib/time/istTime');
+const { getISTDateTime, getISTDateString, isMarketHoliday, getHolidayInfo } = require('../lib/time/istTime');
 const { broadcastWebPushToAll } = require('../lib/webPushNotifier');
 const { sendMessage, isConfigured: isTelegramConfigured } = require('../lib/telegramNotifier');
 
@@ -421,6 +421,12 @@ async function syncDailyFiiDii(options = {}) {
 
   if (!force && !isWeekday) {
     return { synced: false, reason: 'weekend' };
+  }
+
+  if (!force && isMarketHoliday(todayIST)) {
+    const holiday = getHolidayInfo(todayIST);
+    console.log(`[FiiDiiService] Indian Market closed today for "${holiday?.name || 'Trading Holiday'}" (${todayIST}) — skipping evening sync.`);
+    return { synced: false, reason: 'market_holiday', date: todayIST, holidayName: holiday?.name };
   }
 
   if (!force && !isFetchWindow) {

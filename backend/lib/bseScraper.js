@@ -40,9 +40,21 @@ const PAGE_CONCURRENCY = 5;
 
 let _sessionCookies = '';
 let _sessionInitialised = false;
+let _sessionInitializedAt = 0;
+const BSE_SESSION_TTL_MS = 60 * 60 * 1000; // 1-hour proactive session renewal
 
-async function initSession() {
-  if (_sessionInitialised) return;
+function invalidateBseSession() {
+  _sessionInitialised = false;
+  _sessionCookies = '';
+  _sessionInitializedAt = 0;
+  console.log('[BSE] Session invalidated — will re-fetch homepage cookies on demand');
+}
+
+async function initSession(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && _sessionInitialised && (now - _sessionInitializedAt < BSE_SESSION_TTL_MS)) {
+    return;
+  }
   try {
     const resp = await axios.get(BSE_HOMEPAGE, {
       headers:              BSE_HOMEPAGE_HEADERS,
@@ -64,6 +76,7 @@ async function initSession() {
     console.warn(`[BSE] Homepage visit failed (${e.message}) — proceeding without cookies`);
   }
   _sessionInitialised = true;
+  _sessionInitializedAt = now;
 }
 
 function getApiHeaders() {
@@ -170,7 +183,7 @@ function extractBody(body) {
 
 // ── Single page fetch ─────────────────────────────────────────────────────────
 
-async function fetchBSEPage(strPrevDate, strToDate, strScrip, pageNo) {
+async function fetchBSEPage(strPrevDate, strToDate, strScrip, pageNo, isRetry = false) {
   const params = {
     pageno:      pageNo,
     strCat:      -1,
@@ -190,9 +203,15 @@ async function fetchBSEPage(strPrevDate, strToDate, strScrip, pageNo) {
       insecureHTTPParser: true,  // BSE server sends headers with trailing whitespace
     });
 
-    // Detect empty body — happens when Akamai blocks the request
-    if (!response.data || (typeof response.data === 'string' && response.data.trim() === '')) {
-      console.warn(`[BSE] Page ${pageNo}: empty response — session may need re-init`);
+    // Detect empty body or 403 challenge — happens when Akamai blocks or expires the session
+    const isBodyEmpty = !response.data || (typeof response.data === 'string' && response.data.trim() === '');
+    if (isBodyEmpty || response.status === 403) {
+      console.warn(`[BSE] Page ${pageNo}: empty or challenged response (status=${response.status}) — auto-healing session...`);
+      invalidateBseSession();
+      if (!isRetry) {
+        await initSession(true);
+        return await fetchBSEPage(strPrevDate, strToDate, strScrip, pageNo, true);
+      }
       return null;
     }
 
@@ -200,6 +219,12 @@ async function fetchBSEPage(strPrevDate, strToDate, strScrip, pageNo) {
   } catch (error) {
     const status = error.response ? error.response.status : 'N/A';
     console.error(`[BSE] Page ${pageNo} error (${status}): ${error.message}`);
+    if ((status === 403 || status === 401) && !isRetry) {
+      console.warn(`[BSE] Session challenged (${status}) — auto-healing and retrying once...`);
+      invalidateBseSession();
+      await initSession(true);
+      return await fetchBSEPage(strPrevDate, strToDate, strScrip, pageNo, true);
+    }
     return null;
   }
 }
@@ -344,4 +369,5 @@ module.exports = {
   fetchAllBSEAnnouncements,
   clearKnownBseAnnouncementIds,
   getKnownBseIdsCount,
+  invalidateBseSession,
 };

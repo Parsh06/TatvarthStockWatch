@@ -1676,5 +1676,190 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
     }
   });
 
+  // ── GET /api/admin/system/holidays ─────────────────────────────────────────
+  // Lists all configured Indian Market Holidays (NSE & BSE)
+  router.get('/system/holidays', verifyToken, requireAdmin('read'), async (req, res) => {
+    try {
+      const {
+        syncMarketHolidaysFromFirestore,
+        getISTDateString,
+      } = require('../lib/time/istTime');
+
+      const holidays = await syncMarketHolidaysFromFirestore(true);
+      const todayIST = getISTDateString();
+
+      // Calculate relative countdowns & categorize
+      const enriched = holidays.map(h => {
+        let status = 'upcoming';
+        let daysUntil = null;
+        if (h.date === todayIST) {
+          status = 'today';
+          daysUntil = 0;
+        } else if (h.date < todayIST) {
+          status = 'past';
+        } else {
+          status = 'upcoming';
+          const msDiff = new Date(h.date).getTime() - new Date(todayIST).getTime();
+          daysUntil = Math.ceil(msDiff / (1000 * 60 * 60 * 24));
+        }
+        return { ...h, status, daysUntil };
+      }).sort((a, b) => a.date.localeCompare(b.date));
+
+      const nextHoliday = enriched.find(h => h.status === 'upcoming') || null;
+
+      res.json({
+        success: true,
+        holidays: enriched,
+        total: enriched.length,
+        todayIST,
+        nextHoliday,
+      });
+    } catch (err) {
+      console.error('[Admin] /system/holidays fetch error:', err.message);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // ── POST /api/admin/system/holidays ────────────────────────────────────────
+  // Adds or updates an Indian Market Holiday
+  router.post('/system/holidays', verifyToken, requireAdmin('write'), async (req, res) => {
+    try {
+      const { date, name, description, isClosed } = req.body || {};
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(String(date).trim())) {
+        return res.status(400).json({ success: false, error: 'Valid date (YYYY-MM-DD) is required' });
+      }
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ success: false, error: 'Holiday name is required' });
+      }
+
+      const cleanDate = String(date).trim();
+      const cleanName = String(name).trim();
+      const cleanDesc = description ? String(description).trim() : '';
+
+      const {
+        setMarketHolidayInMemory,
+        getAllMarketHolidays,
+      } = require('../lib/time/istTime');
+
+      const holidayObj = {
+        date: cleanDate,
+        name: cleanName,
+        description: cleanDesc,
+        isClosed: isClosed !== false,
+        updatedAt: new Date().toISOString(),
+        updatedBy: req.user?.email || req.uid,
+      };
+
+      // 1. Update in memory immediately
+      setMarketHolidayInMemory(holidayObj);
+
+      // 2. Persist full list to Firestore
+      const allHolidays = getAllMarketHolidays();
+      await db.collection('system_meta').doc('market_holidays').set({
+        holidays: allHolidays,
+        lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdatedBy: req.user?.email || req.uid,
+      }, { merge: true });
+
+      // 3. Log audit event
+      await writeAuditLog({
+        actorUid: req.uid,
+        actorEmail: req.user?.email,
+        action: 'MARKET_HOLIDAY_CONFIGURED',
+        targetUid: 'system',
+        payload: { holiday: holidayObj, totalHolidays: allHolidays.length },
+      });
+
+      res.json({
+        success: true,
+        message: `Market holiday "${cleanName}" (${cleanDate}) saved successfully`,
+        holiday: holidayObj,
+      });
+    } catch (err) {
+      console.error('[Admin] /system/holidays save error:', err.message);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // ── DELETE /api/admin/system/holidays/:date ────────────────────────────────
+  // Removes a market holiday date
+  router.delete('/system/holidays/:date', verifyToken, requireAdmin('write'), async (req, res) => {
+    try {
+      const rawDate = req.params.date;
+      if (!rawDate || !/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+        return res.status(400).json({ success: false, error: 'Valid date (YYYY-MM-DD) is required' });
+      }
+
+      const {
+        deleteMarketHolidayFromMemory,
+        getAllMarketHolidays,
+      } = require('../lib/time/istTime');
+
+      deleteMarketHolidayFromMemory(rawDate);
+      const allHolidays = getAllMarketHolidays();
+
+      await db.collection('system_meta').doc('market_holidays').set({
+        holidays: allHolidays,
+        lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdatedBy: req.user?.email || req.uid,
+      }, { merge: true });
+
+      await writeAuditLog({
+        actorUid: req.uid,
+        actorEmail: req.user?.email,
+        action: 'MARKET_HOLIDAY_REMOVED',
+        targetUid: 'system',
+        payload: { removedDate: rawDate, remainingHolidays: allHolidays.length },
+      });
+
+      res.json({
+        success: true,
+        message: `Market holiday for ${rawDate} removed successfully`,
+        remaining: allHolidays.length,
+      });
+    } catch (err) {
+      console.error('[Admin] /system/holidays delete error:', err.message);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // ── POST /api/admin/system/holidays/bootstrap ──────────────────────────────
+  // 1-Click reset to official statutory NSE/BSE trading holidays
+  router.post('/system/holidays/bootstrap', verifyToken, requireAdmin('write'), async (req, res) => {
+    try {
+      const {
+        DEFAULT_MARKET_HOLIDAYS,
+        setMarketHolidayInMemory,
+        getAllMarketHolidays,
+      } = require('../lib/time/istTime');
+
+      DEFAULT_MARKET_HOLIDAYS.forEach(h => setMarketHolidayInMemory(h));
+      const allHolidays = getAllMarketHolidays();
+
+      await db.collection('system_meta').doc('market_holidays').set({
+        holidays: allHolidays,
+        lastBootstrappedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdatedBy: req.user?.email || req.uid,
+      }, { merge: true });
+
+      await writeAuditLog({
+        actorUid: req.uid,
+        actorEmail: req.user?.email,
+        action: 'MARKET_HOLIDAYS_BOOTSTRAPPED',
+        targetUid: 'system',
+        payload: { count: allHolidays.length },
+      });
+
+      res.json({
+        success: true,
+        message: 'Official NSE/BSE 2026/2027 statutory holiday calendar synchronized',
+        total: allHolidays.length,
+      });
+    } catch (err) {
+      console.error('[Admin] /system/holidays bootstrap error:', err.message);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   return router;
 };

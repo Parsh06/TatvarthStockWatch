@@ -109,6 +109,8 @@ let _nseInitialised    = false;
 let _nseSessionAt      = 0;
 const SESSION_TTL_MS   = 45 * 60 * 1000; // 45 minutes keep-alive
 let _cloudWafChallenged = false;
+let _cloudWafCooldownUntil = 0;
+const CLOUD_WAF_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes backoff before retry
 let _lastCloudWafLogTime = 0;
 
 /**
@@ -139,7 +141,9 @@ function getActiveProfile() {
 function rotateProfile() {
   _currentProfileIdx = (_currentProfileIdx + 1) % BROWSER_PROFILES.length;
   resetNSESession();
-  console.log(`[NSE] Rotated to browser profile: ${getActiveProfile().name}`);
+  const active = getActiveProfile();
+  console.log(`[NSE] Rotated to browser profile: ${active.name}`);
+  return active;
 }
 
 /**
@@ -313,17 +317,28 @@ async function callNSEAPI(fromDate, toDate) {
  * Fetches all live NSE corporate announcements with multi-profile auto-healing.
  */
 async function fetchAllNSEAnnouncements(watchedMap = new Map(), fromDate, toDate) {
-  let ok = await initNSESession();
-  if (!ok) {
-    if (_cloudWafChallenged) {
-      // Cloud WAF active on hosting IP; do not thrash multiple profiles, BSE handles dual-exchange feed
-      return [];
-    }
+  const now = Date.now();
+  if (_cloudWafChallenged && now < _cloudWafCooldownUntil) {
+    // Under cooldown from consecutive full-cascade blocks; BSE Dual-Exchange Gateway handles market stream
+    return [];
+  }
+  if (_cloudWafChallenged && now >= _cloudWafCooldownUntil) {
+    _cloudWafChallenged = false;
+    _currentProfileIdx = 2; // Probe starting directly with Mobile Safari (highest success rate on cloud IPs)
+    console.log('[NSE] Cloud WAF cooldown concluded — probing live NSE session with Mobile Safari profile');
+  }
+
+  let ok = false;
+  // Try up to BROWSER_PROFILES.length attempts across distinct profiles
+  for (let attempt = 0; attempt < BROWSER_PROFILES.length; attempt++) {
+    ok = await initNSESession(attempt > 0);
+    if (ok) break;
     rotateProfile();
-    ok = await initNSESession(true);
   }
 
   if (!ok) {
+    _cloudWafChallenged = true;
+    _cloudWafCooldownUntil = Date.now() + CLOUD_WAF_COOLDOWN_MS;
     return [];
   }
 
@@ -384,6 +399,17 @@ function getNSESessionInfo() {
     cookiesCount: _nseCookieMap.size,
     profileName: profile.name,
     userAgent: profile.ua,
+  };
+}
+
+function _getNseScraperStatus() {
+  const profile = getActiveProfile();
+  return {
+    activeProfileIndex: _currentProfileIdx,
+    activeProfileName: profile.name,
+    cloudWafChallenged: _cloudWafChallenged,
+    cloudWafCooldownUntil: _cloudWafCooldownUntil,
+    sessionInitialised: _nseInitialised,
   };
 }
 
@@ -474,4 +500,6 @@ module.exports = {
   getNSEHeaders,
   getNSESessionInfo,
   testNSEConnectivity,
+  rotateProfile,
+  _getNseScraperStatus,
 };

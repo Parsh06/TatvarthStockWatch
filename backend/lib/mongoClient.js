@@ -8,24 +8,57 @@ if (!process.env.MONGODB_URI) {
 }
 
 const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-const options = {};
 
-let client;
-let clientPromise;
+const MONGO_OPTIONS = {
+  maxPoolSize: 20,                // Stays safely below MongoDB Atlas M0 500-connection limit
+  minPoolSize: 2,                 // Maintains warm standby connections
+  serverSelectionTimeoutMS: 5000, // Fail fast in 5s instead of hanging worker for 30s
+  connectTimeoutMS: 10000,        // 10s connection establishment timeout
+  socketTimeoutMS: 45000,         // 45s socket inactivity timeout
+  retryWrites: true,
+  retryReads: true,
+};
 
-if (process.env.NODE_ENV === 'development') {
-  // In development mode, use a global variable so that the value
-  // is preserved across module reloads caused by HMR (Hot Module Replacement).
-  if (!global._mongoClientPromise) {
-    client = new MongoClient(uri, options);
-    global._mongoClientPromise = client.connect();
+let client = null;
+let clientPromise = null;
+
+/**
+ * Reconnect factory: ensures client connects with retry backoff
+ * and recovers gracefully if initial startup connection blips.
+ */
+async function getConnectedClient() {
+  if (client) {
+    try {
+      if (client.topology && client.topology.isConnected()) {
+        return client;
+      }
+    } catch {}
   }
-  clientPromise = global._mongoClientPromise;
-} else {
-  // In production mode, it's best to not use a global variable.
-  client = new MongoClient(uri, options);
-  clientPromise = client.connect();
+
+  if (!clientPromise) {
+    client = new MongoClient(uri, MONGO_OPTIONS);
+    clientPromise = client.connect().catch((err) => {
+      clientPromise = null; // Reset so next operation retries instead of caching failure
+      client = null;
+      throw err;
+    });
+  }
+
+  try {
+    const connected = await clientPromise;
+    return connected;
+  } catch (err) {
+    clientPromise = null;
+    client = null;
+    console.warn('[MongoDB] Connection attempt failed — will retry on next operation:', err.message);
+    throw err;
+  }
 }
+
+// Immediate eager connection attempt on module load
+getConnectedClient().catch((err) => {
+  console.warn('[MongoDB] Initial boot connection pending:', err.message);
+});
 
 let indexesInitialized = false;
 
@@ -56,14 +89,32 @@ async function ensureIndexes(db) {
  * @returns {Promise<import('mongodb').Db>}
  */
 async function getDb() {
-  const connectedClient = await clientPromise;
-  // Default to the database name inside the connection string, or a default 'stockwatch'
+  const connectedClient = await getConnectedClient();
   const db = connectedClient.db('stockwatch');
   ensureIndexes(db).catch(() => {});
   return db;
 }
 
+/**
+ * Health check ping for runtime diagnostics
+ */
+async function checkMongoHealth() {
+  const startMs = Date.now();
+  try {
+    const db = await getDb();
+    await db.command({ ping: 1 });
+    return { status: 'ok', latencyMs: Date.now() - startMs, connected: true };
+  } catch (err) {
+    return { status: 'error', error: err.message, latencyMs: Date.now() - startMs, connected: false };
+  }
+}
+
 module.exports = {
   getDb,
-  clientPromise
+  getConnectedClient,
+  checkMongoHealth,
+  MONGO_OPTIONS,
+  get clientPromise() {
+    return getConnectedClient();
+  }
 };
