@@ -149,28 +149,28 @@ function getMarketCadence(date = new Date()) {
   const currentMinutes = istHour * 60 + istMinute;
   const t0730 = 7 * 60 + 30;   // 07:30 IST
   const t0830 = 8 * 60 + 30;   // 08:30 IST
-  const t1630 = 16 * 60 + 30;  // 16:30 IST (4:30 PM)
+  const t1600 = 16 * 60;       // 16:00 IST (4:00 PM)
   const t2345 = 23 * 60 + 45;  // 23:45 IST (11:45 PM)
   const t0900 = 9 * 60;        // 09:00 IST
 
-  // 1. Weekdays Core Trading & Pre-Open (Mon-Fri 08:30 to 16:30 IST): 25-second ultra-high-frequency polling
-  // Runs on dynamic ~25-second worker loop for zero-delay live statutory filing ingestion
-  if (isWeekday && currentMinutes >= t0830 && currentMinutes <= t1630) {
+  // 1. Weekdays Core Trading (Mon-Fri 08:30 to 16:00 IST): 30-second ultra-high-frequency polling
+  // Runs on dynamic 30-second worker loop for zero-delay live statutory filing ingestion
+  if (isWeekday && currentMinutes >= t0830 && currentMinutes <= t1600) {
     return {
       window: 'CORE_TRADING_HOURS',
       isWeekend: false,
-      minIntervalMinutes: 0, // 0-min delay: executes on every worker tick
-      description: 'Weekday Core Trading (08:30 - 16:30 IST): 25-second ultra-high-frequency polling',
+      minIntervalMinutes: 0, // 0-min delay: executes on every 30s worker tick
+      description: 'Weekday Core Trading (08:30 - 16:00 IST): 30-second ultra-high-frequency polling',
     };
   }
 
-  // 2. Weekdays Evening Post-Market Results & Board Outcomes (Mon-Fri 16:30 to 23:45 IST): 2-minute cadence
-  if (isWeekday && currentMinutes > t1630 && currentMinutes <= t2345) {
+  // 2. Weekdays Evening Post-Market Results & Board Outcomes (Mon-Fri 16:00 to 23:45 IST): 2-minute cadence
+  if (isWeekday && currentMinutes > t1600 && currentMinutes <= t2345) {
     return {
       window: 'EVENING_RESULTS_HOURS',
       isWeekend: false,
       minIntervalMinutes: 2, // 2-minute cadence
-      description: 'Weekday Evening Results (16:30 - 23:45 IST): 2-minute cadence',
+      description: 'Weekday Evening Results (16:00 - 23:45 IST): 2-minute cadence',
     };
   }
 

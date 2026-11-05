@@ -405,12 +405,12 @@ if (require.main === module) {
     // Autonomous background worker if enabled (Render / standalone container)
     // On Vercel serverless, background intervals are suppressed; background duties are handled exclusively by Render
     if (!IS_VERCEL && (process.env.ENABLE_BACKGROUND_WORKER === 'true' || process.env.RUN_CRON_WORKER === 'true')) {
-      console.log('  Alert cron:    ACTIVE (Dynamic Ultra-Low-Latency Worker: 25s Core Market | 60s Evening | Keep-Alive Active)');
+      console.log('  Alert cron:    ACTIVE (Dynamic Ultra-Low-Latency Worker: 30s Core Market 08:30-16:00 IST | 60s Evening | Keep-Alive Active)');
       const { runGlobalCronTick } = require('./services/cronService');
       const { getMarketCadence } = require('./lib/time/istTime');
 
       // Dynamic Market Cadence Worker Loop:
-      // Ensures zero overlapping runs and dynamically increases polling to 25s during trading hours.
+      // Ensures zero overlapping runs and dynamically sets polling to 30s during trading hours (Mon-Fri 08:30 to 16:00 IST).
       async function scheduleNextWorkerTick() {
         try {
           await runGlobalCronTick();
@@ -422,7 +422,7 @@ if (require.main === module) {
         const cadence = getMarketCadence(new Date());
         let nextIntervalMs = 60 * 1000; // default 60s
         if (cadence.window === 'CORE_TRADING_HOURS') {
-          nextIntervalMs = 25 * 1000; // 25-second ultra-low-latency polling during market hours!
+          nextIntervalMs = 30 * 1000; // 30-second ultra-high-frequency polling during market hours (08:30 - 16:00 IST)
         } else if (cadence.window === 'EVENING_RESULTS_HOURS') {
           nextIntervalMs = 60 * 1000; // 60s during evening corporate disclosures
         } else if (cadence.window === 'SATURDAY_BOARD_MEETINGS') {
