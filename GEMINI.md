@@ -203,6 +203,7 @@ stockwatch/
 │   │
 │   └── tests/                         ← Backend test files
 │       ├── test_zero_failure_and_holiday_hardening.js ← ★ 13-suite zero-failure crash shield, scraper rotation & market holiday engine test
+│       ├── test_dynamic_holiday_and_admin_e2e.js      ← ★ 8-suite dynamic holiday Express CRUD, Firestore persistence & cadence E2E test
 │       ├── test_nse_ofs_and_dedup_hardening.js        ← ★ 4-suite NSE gainers fallback, OFS snapshot recovery, push endpoint dedup & alert_dedup_locks test
 │       ├── test_allotment_odds_and_probability_logic.js ← ★ 11-suite exhaustive SEBI IPO lot sizing, draw of lots probability, Binomial family PAN & advisor edge-case test suite
 │       ├── test_ipo_auto_verification_and_notifications_e2e.js ← ★ 10-suite two-stage IPO allotment engine, 5-min scheduler & notifications E2E test
