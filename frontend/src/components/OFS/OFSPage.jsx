@@ -80,7 +80,8 @@ export default function OFSPage() {
     if (!isBackground) setLoading(true);
     setError(null);
     try {
-      const res = await apiClient('/api/market/ofs');
+      const url = isBackground ? '/api/market/ofs' : '/api/market/ofs?refresh=true';
+      const res = await apiClient(url);
       if (res && Array.isArray(res.data)) {
         setOfsList(res.data);
         setLastFetched(new Date(res.scrapedAt || Date.now()));

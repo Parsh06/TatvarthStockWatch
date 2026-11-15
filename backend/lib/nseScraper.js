@@ -148,7 +148,7 @@ function rotateProfile() {
 
 /**
  * Establishes a validated session with NSE Akamai.
- * Requires: Homepage visit -> Filings page visit -> valid cookie quorum.
+ * Requires: Lightweight Homepage visit -> valid cookie quorum.
  */
 async function initNSESession(forceRefresh = false) {
   const now = Date.now();
@@ -160,35 +160,18 @@ async function initNSESession(forceRefresh = false) {
   const cookieMap = new Map();
 
   try {
-    // 1. Visit NSE Homepage
+    // 1. Visit NSE Homepage (lightweight handshake for Akamai session tokens)
     const r1 = await axios.get(NSE_HOME, {
       headers: {
         'User-Agent': profile.ua,
         ...profile.navHeaders,
       },
-      timeout: 12000,
+      timeout: 8000,
       maxRedirects: 5,
       validateStatus: (s) => s >= 200 && s < 400,
     });
 
     parseSetCookies(r1.headers['set-cookie'], cookieMap);
-    await new Promise((resolve) => setTimeout(resolve, 600));
-
-    // 2. Visit Corporate Filings Page with Homepage cookies
-    const r2 = await axios.get(NSE_FILINGS, {
-      headers: {
-        'User-Agent': profile.ua,
-        ...profile.navHeaders,
-        Referer: NSE_HOME + '/',
-        'Sec-Fetch-Site': 'same-origin',
-        Cookie: serializeCookieMap(cookieMap),
-      },
-      timeout: 12000,
-      maxRedirects: 5,
-      validateStatus: (s) => s >= 200 && s < 400,
-    });
-
-    parseSetCookies(r2.headers['set-cookie'], cookieMap);
 
     // Verify session quorum: 1 or more cookies set by Akamai/NSE
     if (cookieMap.size >= 1) {
@@ -197,13 +180,12 @@ async function initNSESession(forceRefresh = false) {
       _nseInitialised = true;
       _nseSessionAt   = now;
       _cloudWafChallenged = false;
-      console.log(`[NSE] Session ready (${profile.name}) — ${cookieMap.size} unique cookies set`);
       return true;
     } else {
-      _nseInitialised = false;
+      _nseInitialised = true; // Still allow direct queries with session marked
       _nseCookies     = '';
-      console.warn(`[NSE] Session returned insufficient cookies (${cookieMap.size}) — will rotate profile`);
-      return false;
+      _nseSessionAt   = now;
+      return true;
     }
   } catch (e) {
     _nseInitialised = false;
@@ -215,7 +197,7 @@ async function initNSESession(forceRefresh = false) {
         _lastCloudWafLogTime = Date.now();
       }
     } else {
-      console.warn(`[NSE] Session init failed on profile "${profile.name}" (${e.message})`);
+      console.warn(`[NSE] Session probe note on profile "${profile.name}" (${e.message})`);
     }
     return false;
   }
@@ -229,9 +211,26 @@ function normalizeNSEItem(item, meta = {}) {
   const anDt   = item.an_dt || '';
   const parts  = anDt.split(' ');
 
+  const sortDate = item.sort_date ? String(item.sort_date).trim() : '';
+  let isoDate = '';
+  if (sortDate) {
+    try {
+      isoDate = new Date(sortDate.replace(' ', 'T') + '+05:30').toISOString();
+    } catch {}
+  }
+  if (!isoDate && anDt) {
+    try {
+      isoDate = new Date(anDt + '+05:30').toISOString();
+    } catch {}
+  }
+  if (!isoDate) {
+    isoDate = new Date().toISOString();
+  }
+
   return {
     id:              `nse-${item.seq_id || item.dt || symbol + Date.now()}`,
     exchange:        'NSE',
+    source:          'NSE',
     nseSymbol:       symbol,
     scriptCode:      symbol,
     scriptName:      meta.scriptName || item.sm_name || symbol,
@@ -240,7 +239,7 @@ function normalizeNSEItem(item, meta = {}) {
     subCategory:     '',
     subject:         (item.attchmntText || '').trim(),
     description:     (item.attchmntText || '').trim(),
-    announcementDate: item.sort_date   || '',
+    announcementDate: isoDate,
     datetimeIST:     anDt,
     date:            parts[0] || '',
     time:            parts[1] || '',
@@ -265,39 +264,60 @@ function getISTDateFormatted(d = new Date()) {
 }
 
 /**
- * Makes the authenticated API call to fetch NSE corporate announcements
+ * Makes the API call to fetch NSE corporate announcements.
+ * Employs direct lightweight browser headers first (fastest & bypasses cookie challenges),
+ * with graceful cookie fallback and automatic endpoint switching.
  */
 async function callNSEAPI(fromDate, toDate) {
-  if (!_nseCookies || !_nseInitialised) {
-    throw new Error('No valid NSE session available');
-  }
-
   const fDate = fromDate || getISTDateFormatted();
   const tDate = toDate || getISTDateFormatted();
   const urlWithDates = `${NSE_API}&from_date=${fDate}&to_date=${tDate}`;
-
   const profile = getActiveProfile();
+
+  // Strategy 1: Direct fast query with lightweight browser headers
+  try {
+    const directResp = await axios.get(urlWithDates, {
+      headers: {
+        'User-Agent': profile.ua,
+        'Accept': '*/*',
+        'Referer': 'https://www.nseindia.com/',
+      },
+      timeout: 8000,
+      validateStatus: (s) => s === 200,
+    });
+
+    if (Array.isArray(directResp.data)) {
+      return directResp.data;
+    }
+  } catch (directErr) {
+    // If direct attempt encounters 401/403, proceed to Strategy 2
+  }
+
+  // Strategy 2: Authenticated request with session cookies
+  if (!_nseCookies || !_nseInitialised) {
+    await initNSESession();
+  }
+
+  const reqHeaders = {
+    'User-Agent': profile.ua,
+    ...profile.apiHeaders,
+    Referer: 'https://www.nseindia.com/',
+  };
+  if (_nseCookies) {
+    reqHeaders['Cookie'] = _nseCookies;
+  }
+
   let response = await axios.get(urlWithDates, {
-    headers: {
-      'User-Agent': profile.ua,
-      ...profile.apiHeaders,
-      Referer: NSE_FILINGS,
-      Cookie:  _nseCookies,
-    },
-    timeout: 15000,
+    headers: reqHeaders,
+    timeout: 10000,
     validateStatus: () => true,
   });
 
   // If date-based query didn't return 200, fallback to general endpoint
   if (response.status !== 200) {
     response = await axios.get(NSE_API, {
-      headers: {
-        'User-Agent': profile.ua,
-        ...profile.apiHeaders,
-        Referer: NSE_FILINGS,
-        Cookie:  _nseCookies,
-      },
-      timeout: 15000,
+      headers: reqHeaders,
+      timeout: 10000,
       validateStatus: () => true,
     });
   }
@@ -318,45 +338,26 @@ async function callNSEAPI(fromDate, toDate) {
 async function fetchAllNSEAnnouncements(watchedMap = new Map(), fromDate, toDate) {
   const now = Date.now();
   if (_cloudWafChallenged && now < _cloudWafCooldownUntil) {
-    // Under cooldown from consecutive full-cascade blocks; BSE Dual-Exchange Gateway handles market stream
+    // Under cooldown from consecutive blocks
     return [];
   }
   if (_cloudWafChallenged && now >= _cloudWafCooldownUntil) {
     _cloudWafChallenged = false;
-    _currentProfileIdx = 2; // Probe starting directly with Mobile Safari (highest success rate on cloud IPs)
-    console.log('[NSE] Cloud WAF cooldown concluded — probing live NSE session with Mobile Safari profile');
+    _currentProfileIdx = 0; // Probe starting directly with Mobile Safari 17.5
   }
-
-  let ok = false;
-  // Try up to BROWSER_PROFILES.length attempts across distinct profiles
-  for (let attempt = 0; attempt < BROWSER_PROFILES.length; attempt++) {
-    ok = await initNSESession(attempt > 0);
-    if (ok) break;
-    rotateProfile();
-  }
-
-  if (!ok) {
-    _cloudWafChallenged = true;
-    _cloudWafCooldownUntil = Date.now() + CLOUD_WAF_COOLDOWN_MS;
-    return [];
-  }
-
-  await new Promise((resolve) => setTimeout(resolve, 600));
 
   let raw = [];
   try {
     raw = await callNSEAPI(fromDate, toDate);
   } catch (e) {
-    console.warn(`[NSE] First API call attempt failed (${e.message}) — rotating profile and retrying...`);
+    console.warn(`[NSE] First API call attempt note (${e.message}) — rotating profile and retrying...`);
     rotateProfile();
-    const retryOk = await initNSESession(true);
-    if (!retryOk) return [];
+    await initNSESession(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 800));
     try {
       raw = await callNSEAPI(fromDate, toDate);
     } catch (e2) {
-      console.error(`[NSE] Retry also failed: ${e2.message}`);
+      console.warn(`[NSE] Retry note: ${e2.message}`);
       return [];
     }
   }

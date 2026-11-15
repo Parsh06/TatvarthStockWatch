@@ -38,7 +38,6 @@ export default function BoardMeetingsPage() {
   
   const [meetings, setMeetings]         = useState([])
   const [announcements, setAnnouncements] = useState([])
-  const [emailLogs, setEmailLogs]       = useState({})
   const [loading, setLoading]           = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError]               = useState(null)
@@ -223,7 +222,6 @@ export default function BoardMeetingsPage() {
         'Industry': m.Industry_name,
         'Result Out / Status': resultStatus,
         'PDF Link': match?.pdfUrl || '',
-        'Email Sent': emailLogs[m.scrip_code] ? 'Yes' : 'No'
       }
     })
     exportToXLSX(exportData, `Board_Meetings_${fromDate}_to_${toDate}`)
@@ -400,13 +398,12 @@ export default function BoardMeetingsPage() {
                   <th className="px-4 py-3 font-medium">Purpose</th>
                   <th className="px-4 py-3 font-medium">Meeting Date</th>
                   <th className="px-4 py-3 font-medium text-center">Result Out / Status</th>
-                  <th className="px-4 py-3 font-medium text-center">Email Sent?</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
                 {filteredMeetings.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-4 py-16 text-center text-textMuted">
+                    <td colSpan="5" className="px-4 py-16 text-center text-textMuted">
                       No board meetings found matching current filters.
                     </td>
                   </tr>
@@ -476,19 +473,6 @@ export default function BoardMeetingsPage() {
                           ) : (
                             <div className="flex items-center gap-1.5 text-xs font-medium text-textMuted bg-surface px-2.5 py-1 rounded-full border border-border">
                               <XCircle className="w-3.5 h-3.5 opacity-50" /> Pending
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex justify-center items-center gap-2">
-                          {emailLogs[m.scrip_code] ? (
-                            <div className="flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full border border-primary/20">
-                              <CheckCircle2 className="w-4 h-4" /> Yes
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 text-xs font-medium text-textMuted bg-white/5 px-2.5 py-1 rounded-full border border-white/10">
-                              <XCircle className="w-4 h-4" /> No
                             </div>
                           )}
                         </div>

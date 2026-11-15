@@ -212,15 +212,14 @@ export default function AllAnnouncementsPage() {
   const filtered = useMemo(() => {
     let list = allItems
     
-    // Date filtering (since DB returns latest N items, we must filter out older ones locally)
+    // Date filtering (calibrated to exact Indian Standard Time day boundaries)
     if (fromDate && toDate) {
-      const fromTs = new Date(fromDate).getTime()
-      // toDate is a date string like 2026-07-05, we add 1 day to make it inclusive
-      const toTs = new Date(toDate).getTime() + 86400000 
+      const fromTs = new Date(`${fromDate}T00:00:00+05:30`).getTime()
+      const toTs   = new Date(`${toDate}T23:59:59.999+05:30`).getTime()
       list = list.filter((a) => {
         if (!a.announcementDate) return true;
         const d = new Date(a.announcementDate).getTime();
-        return d >= fromTs && d < toTs;
+        return !isNaN(d) ? (d >= fromTs && d <= toTs) : true;
       })
     }
 

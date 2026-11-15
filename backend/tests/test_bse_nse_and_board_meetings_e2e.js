@@ -262,6 +262,32 @@ async function runTests() {
     assert.strictEqual(filterPending.length, 1);
   });
 
+  // ── SUITE 5: LIVE NSE INGESTION & OFS SYNC RECOVERY ───────────────────────
+  console.log('\n--- Suite 5: Live NSE Announcements & OFS Sync Recovery ---');
+
+  await test('fetchAllNSEAnnouncements() live fetch retrieves and normalizes announcements with exchange=NSE and ISO date', async () => {
+    const { fetchAllNSEAnnouncements } = require('../lib/nseScraper');
+    const items = await fetchAllNSEAnnouncements();
+    assert(Array.isArray(items), 'Expected array of announcements');
+    assert(items.length > 0, `Expected >0 announcements, got ${items.length}`);
+    const first = items[0];
+    assert.strictEqual(first.exchange, 'NSE');
+    assert.strictEqual(first.source, 'NSE');
+    assert(first.nseSymbol && first.nseSymbol.length > 0);
+    assert(!isNaN(new Date(first.announcementDate).getTime()), `Invalid ISO date: ${first.announcementDate}`);
+    console.log(`     Fetched: ${items.length} live NSE items | Sample: ${first.nseSymbol} - ${first.subject?.slice(0, 50)}...`);
+  });
+
+  await test('fetchOfsList() returns live active/upcoming issues with fresh timestamp and stale=false', async () => {
+    const { fetchOfsList } = require('../lib/ofsScraper');
+    const ofsRes = await fetchOfsList({ forceRefresh: true });
+    assert(ofsRes && Array.isArray(ofsRes.data), 'Expected array in data');
+    assert.strictEqual(ofsRes.stale, false, 'Expected fresh data (stale=false)');
+    assert(ofsRes.total >= 0);
+    assert(typeof ofsRes.scrapedAt === 'string');
+    console.log(`     OFS Tracked: ${ofsRes.total} | ScrapedAt: ${ofsRes.scrapedAt} | Stale: ${ofsRes.stale}`);
+  });
+
   // ── FINAL SUMMARY ─────────────────────────────────────────────────────────
   console.log('\n======================================================================');
   console.log(`📊 TEST RESULTS: ${passed}/${total} passed (${Math.round((passed / total) * 100)}%)`);

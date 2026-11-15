@@ -76,11 +76,8 @@ module.exports = function marketRoutes(verifyToken) {
   // Returns the latest in-memory OFS snapshot with resilient fallback.
   router.get('/ofs', verifyToken, async (req, res) => {
     try {
-      let snapshot = getLatestOfs();
-      if (!snapshot) {
-        // Fallback: fetch once if poller hasn't finished first tick
-        snapshot = await fetchOfsList();
-      }
+      const force = req.query.force === 'true' || req.query.refresh === 'true';
+      let snapshot = await fetchOfsList({ forceRefresh: force });
       if (!snapshot) {
         snapshot = {
           scrapedAt: new Date().toISOString(),
@@ -89,7 +86,7 @@ module.exports = function marketRoutes(verifyToken) {
           data: [],
         };
       }
-      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+      res.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
       res.json(snapshot);
     } catch (err) {
       console.error('Failed to fetch OFS data:', err.message);

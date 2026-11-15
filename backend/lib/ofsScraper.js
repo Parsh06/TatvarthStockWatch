@@ -36,7 +36,11 @@ function getISTDateString() {
  * Returns null if the poller has not completed its first successful fetch.
  */
 function getLatestOfs() {
-  return _ofsListCache.data;
+  const now = Date.now();
+  if (_ofsListCache.data && (now - _ofsListCache.fetchedAt) < CACHE_TTL_MS) {
+    return _ofsListCache.data;
+  }
+  return null;
 }
 
 /**
