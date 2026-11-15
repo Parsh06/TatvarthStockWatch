@@ -22,6 +22,7 @@ export default function MarketHolidaysTab({ canWrite }) {
   const [formDesc, setFormDesc] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [bootstrapping, setBootstrapping] = useState(false)
+  const [syncingBse, setSyncingBse] = useState(false)
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
@@ -136,6 +137,33 @@ export default function MarketHolidaysTab({ canWrite }) {
     }
   }
 
+  const handleSyncFromBse = async () => {
+    if (!canWrite) {
+      toast.error('Admin write entitlement required')
+      return
+    }
+    if (!window.confirm('Fetch and synchronize official trading holidays directly from BSE India exchange (listholi.aspx)?')) {
+      return
+    }
+
+    setSyncingBse(true)
+    try {
+      const res = await apiClient('/api/admin/system/holidays/sync-bse', {
+        method: 'POST',
+      })
+      if (res?.success) {
+        toast.success(res.message || `Successfully synced ${res.syncedCount || 17} holidays from BSE India`)
+        await fetchHolidays(true)
+      } else {
+        toast.error(res?.error || 'Failed to sync from BSE India')
+      }
+    } catch (err) {
+      toast.error(err.message || 'Failed to sync from BSE India official exchange')
+    } finally {
+      setSyncingBse(false)
+    }
+  }
+
   // Filtered holidays
   const filteredHolidays = useMemo(() => {
     return holidays.filter(h => {
@@ -213,14 +241,25 @@ export default function MarketHolidaysTab({ canWrite }) {
                 The autonomous scraping loop idles on 30m cadence and skips FII/DII sync on trading holidays.
               </p>
             </div>
-            <button
-              onClick={handleBootstrapCalendar}
-              disabled={bootstrapping || !canWrite}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-surface hover:bg-surfaceHover border border-border text-textPrimary transition-all disabled:opacity-50"
-            >
-              <RefreshCw className={clsx('w-3.5 h-3.5 text-primary', bootstrapping && 'animate-spin')} />
-              Sync NSE/BSE Defaults
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleSyncFromBse}
+                disabled={syncingBse || !canWrite}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 transition-all disabled:opacity-50 shadow-xs"
+                title="Scrape and synchronize live official trading holidays directly from BSE India exchange"
+              >
+                <Sparkles className={clsx('w-3.5 h-3.5 text-emerald-400', syncingBse && 'animate-spin')} />
+                {syncingBse ? 'Scraping BSE India...' : 'Sync from BSE Official Exchange'}
+              </button>
+              <button
+                onClick={handleBootstrapCalendar}
+                disabled={bootstrapping || !canWrite}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-surface hover:bg-surfaceHover border border-border text-textPrimary transition-all disabled:opacity-50"
+              >
+                <RefreshCw className={clsx('w-3.5 h-3.5 text-primary', bootstrapping && 'animate-spin')} />
+                Reset Defaults
+              </button>
+            </div>
           </div>
 
           <form onSubmit={handleAddHoliday} className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
@@ -377,7 +416,19 @@ export default function MarketHolidaysTab({ canWrite }) {
                         </div>
                       </td>
                       <td className="py-3 px-4 font-semibold text-textPrimary">
-                        {h.name}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{h.name}</span>
+                          {h.source === 'BSE_OFFICIAL_EXCHANGE' && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                              BSE Official
+                            </span>
+                          )}
+                          {h.isMuhurat && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                              Muhurat 1-Hr
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-textMuted">
                         {h.description || 'Indian Market Trading Holiday'}

@@ -92,6 +92,11 @@ async function performMidnightWipeIfNeeded() {
       _lastFiiDiiSyncedDate = '';
       _lastFiiDiiNotifiedDate = '';
 
+      // Auto-sync official statutory holidays from BSE on New Year's Day (Jan 1st) or if year is missing
+      syncAnnualMarketHolidaysIfNeeded(todayDateStr).catch((hErr) => {
+        console.error('[Midnight Wipe] Annual holiday auto-sync failed:', hErr.message);
+      });
+
       await metaRef.set({
         lastWipeDate: todayDateStr,
         lastWipedAt: new Date().toISOString(),
@@ -106,6 +111,74 @@ async function performMidnightWipeIfNeeded() {
     console.error('[Midnight Wipe] Error executing midnight wipe:', err.message);
     return { wiped: false, error: err.message };
   }
+}
+
+/**
+ * Automatically synchronizes official statutory trading holidays from BSE India:
+ * 1. On New Year's Day (January 1st in IST, e.g. "*-01-01").
+ * 2. If the current calendar year has 0 holidays configured in Firestore.
+ */
+async function syncAnnualMarketHolidaysIfNeeded(todayDateStr, force = false) {
+  try {
+    const currentYear = todayDateStr ? todayDateStr.split('-')[0] : String(new Date().getFullYear());
+    const isNewYearsDay = todayDateStr && todayDateStr.endsWith('-01-01');
+
+    const admin = require('firebase-admin');
+    const dbAdmin = admin.firestore();
+    const holidaysRef = dbAdmin.collection('system_meta').doc('market_holidays');
+    const docSnap = await holidaysRef.get();
+
+    let needsSync = force || isNewYearsDay;
+    if (!needsSync) {
+      if (!docSnap.exists) {
+        needsSync = true;
+      } else {
+        const data = docSnap.data();
+        const holidays = Array.isArray(data?.holidays) ? data.holidays : [];
+        const hasCurrentYear = holidays.some(h => h.date && h.date.startsWith(currentYear));
+        if (!hasCurrentYear) {
+          needsSync = true;
+        }
+      }
+    }
+
+    if (needsSync) {
+      console.log(`[Annual Holiday Sync] Triggering automatic BSE holiday scraper for calendar year ${currentYear}...`);
+      const { scrapeOfficialBseHolidays } = require('../lib/bseHolidayScraper');
+      const { setMarketHolidayInMemory, getAllMarketHolidays } = require('../lib/time/istTime');
+
+      const scrapeResult = await scrapeOfficialBseHolidays(currentYear);
+      if (scrapeResult?.success && Array.isArray(scrapeResult.holidays) && scrapeResult.holidays.length > 0) {
+        scrapeResult.holidays.forEach(h => {
+          setMarketHolidayInMemory({
+            date: h.date,
+            name: h.name,
+            description: h.description,
+            isClosed: h.isClosed,
+            isMuhurat: Boolean(h.isMuhurat),
+            source: h.source || 'BSE_OFFICIAL_EXCHANGE',
+            updatedAt: new Date().toISOString(),
+            updatedBy: 'system_annual_cron',
+          });
+        });
+
+        const allHolidays = getAllMarketHolidays();
+        await holidaysRef.set({
+          holidays: allHolidays,
+          lastAutoSyncedYear: currentYear,
+          lastSyncedFromBseAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastSyncedSourceUrl: scrapeResult.sourceUrl,
+          lastUpdatedBy: 'system_annual_cron',
+        }, { merge: true });
+
+        console.log(`[Annual Holiday Sync] Successfully auto-synced ${scrapeResult.total} trading holidays from BSE for ${currentYear}`);
+        return { synced: true, count: scrapeResult.total, year: currentYear };
+      }
+    }
+  } catch (err) {
+    console.error('[Annual Holiday Sync] Error auto-syncing holidays from BSE:', err.message);
+  }
+  return { synced: false };
 }
 
 /**
@@ -538,6 +611,7 @@ async function runManualIpoClosingTick(force = true) {
 
 module.exports = {
   performMidnightWipeIfNeeded,
+  syncAnnualMarketHolidaysIfNeeded,
   runGlobalCronTick,
   runUserManualTrigger,
   runManualIpoClosingTick,

@@ -1854,5 +1854,84 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
     }
   });
 
+  // ── POST /api/admin/system/holidays/sync-bse ───────────────────────────────
+  // Scrapes live official statutory trading holidays directly from BSE India
+  router.post('/system/holidays/sync-bse', verifyToken, requireAdmin('write'), async (req, res) => {
+    try {
+      const { scrapeOfficialBseHolidays } = require('../lib/bseHolidayScraper');
+      const {
+        setMarketHolidayInMemory,
+        getAllMarketHolidays,
+        syncMarketHolidaysFromFirestore,
+      } = require('../lib/time/istTime');
+
+      const targetYear = req.body?.year || null;
+      console.log(`[Admin] Initiating live BSE trading holiday sync${targetYear ? ` for year ${targetYear}` : ''}...`);
+
+      const scrapeResult = await scrapeOfficialBseHolidays(targetYear);
+      if (!scrapeResult?.success || !Array.isArray(scrapeResult.holidays)) {
+        return res.status(502).json({
+          success: false,
+          error: 'Failed to extract trading holidays from BSE India official publication',
+        });
+      }
+
+      // Ensure local memory is fresh before merging
+      await syncMarketHolidaysFromFirestore(true).catch(() => {});
+
+      // Merge into in-memory map
+      scrapeResult.holidays.forEach(h => {
+        setMarketHolidayInMemory({
+          date: h.date,
+          name: h.name,
+          description: h.description,
+          isClosed: h.isClosed,
+          isMuhurat: Boolean(h.isMuhurat),
+          source: h.source || 'BSE_OFFICIAL_EXCHANGE',
+          updatedAt: new Date().toISOString(),
+          updatedBy: req.user?.email || req.uid,
+        });
+      });
+
+      const allHolidays = getAllMarketHolidays();
+
+      // Persist to Firestore
+      await db.collection('system_meta').doc('market_holidays').set({
+        holidays: allHolidays,
+        lastSyncedFromBseAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastSyncedSourceUrl: scrapeResult.sourceUrl,
+        lastUpdatedBy: req.user?.email || req.uid,
+      }, { merge: true });
+
+      // Immutable audit log
+      await writeAuditLog({
+        actorUid: req.uid,
+        actorEmail: req.user?.email,
+        action: 'MARKET_HOLIDAYS_SYNCED_BSE',
+        targetUid: 'system',
+        payload: {
+          syncedCount: scrapeResult.total,
+          sourceUrl: scrapeResult.sourceUrl,
+          totalHolidays: allHolidays.length,
+          year: targetYear,
+        },
+      });
+
+      console.log(`[Admin] Successfully synced ${scrapeResult.total} holidays from BSE India (Total in catalog: ${allHolidays.length})`);
+
+      res.json({
+        success: true,
+        message: `Successfully synchronized ${scrapeResult.total} official trading holidays directly from BSE India exchange`,
+        syncedCount: scrapeResult.total,
+        total: allHolidays.length,
+        sourceUrl: scrapeResult.sourceUrl,
+        holidays: allHolidays,
+      });
+    } catch (err) {
+      console.error('[Admin] /system/holidays/sync-bse error:', err.message);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   return router;
 };
