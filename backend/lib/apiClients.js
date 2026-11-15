@@ -35,7 +35,7 @@ async function _refreshBseCookies() {
         'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
       },
-      timeout: 8000,
+      timeout: 15000,
       insecureHTTPParser: true,
     });
     const raw = resp.headers['set-cookie'] || [];
@@ -44,7 +44,7 @@ async function _refreshBseCookies() {
     _bseCookieExpiry = Date.now() + 25 * 60 * 1000;
     return str;
   } catch (e) {
-    console.error('[BSE Cookies] fetch failed:', e.message);
+    console.warn('[BSE Cookies] Homepage session probe skipped/timed out:', e.message, '— proceeding with direct API headers');
     return '';
   }
 }

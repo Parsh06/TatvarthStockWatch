@@ -22,6 +22,25 @@ const NSE_API     = 'https://www.nseindia.com/api/corporate-announcements?index=
 
 const BROWSER_PROFILES = [
   {
+    name: 'Mobile Safari 17.5',
+    ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    navHeaders: {
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate',
+      'Connection': 'keep-alive',
+    },
+    apiHeaders: {
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate',
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'same-origin',
+      'Connection': 'keep-alive',
+    }
+  },
+  {
     name: 'Chrome 131 Windows',
     ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     navHeaders: {
@@ -75,25 +94,6 @@ const BROWSER_PROFILES = [
       'sec-ch-ua': '"Microsoft Edge";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
       'sec-ch-ua-mobile': '?0',
       'sec-ch-ua-platform': '"Windows"',
-      'Sec-Fetch-Dest': 'empty',
-      'Sec-Fetch-Mode': 'cors',
-      'Sec-Fetch-Site': 'same-origin',
-      'Connection': 'keep-alive',
-    }
-  },
-  {
-    name: 'Mobile Safari 17.5',
-    ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
-    navHeaders: {
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Accept-Encoding': 'gzip, deflate',
-      'Connection': 'keep-alive',
-    },
-    apiHeaders: {
-      'Accept': 'application/json, text/plain, */*',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Accept-Encoding': 'gzip, deflate',
       'Sec-Fetch-Dest': 'empty',
       'Sec-Fetch-Mode': 'cors',
       'Sec-Fetch-Site': 'same-origin',
@@ -190,9 +190,8 @@ async function initNSESession(forceRefresh = false) {
 
     parseSetCookies(r2.headers['set-cookie'], cookieMap);
 
-    // Verify session quorum: A valid NSE session typically has 4 to 8 cookies
-    // (AKA_A2, _abck, ak_bmsc, bm_mi, bm_sz, bm_sv, nsit)
-    if (cookieMap.size >= 3) {
+    // Verify session quorum: 1 or more cookies set by Akamai/NSE
+    if (cookieMap.size >= 1) {
       _nseCookieMap   = cookieMap;
       _nseCookies     = serializeCookieMap(cookieMap);
       _nseInitialised = true;
@@ -453,20 +452,10 @@ async function testNSEConnectivity(forceRefresh = false) {
 
     // 2. If direct NSE encounters Akamai Cloud WAF Challenge (HTTP 403 on cloud datacenter IPs),
     // verify Dual-Exchange Gateway continuity via BSE primary endpoint
-    const gatewayStart = Date.now();
-    const bseResp = await axios.get('https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w?strType=C&strSearch=P', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15',
-        'Referer': 'https://www.bseindia.com/',
-        'Origin': 'https://www.bseindia.com',
-        'Accept': 'application/json, text/plain, */*',
-      },
-      timeout: 6000,
-      validateStatus: () => true,
-    }).catch(() => null);
-
-    const gatewayLatency = Date.now() - gatewayStart;
-    const bseHealthy = Boolean(bseResp && bseResp.status >= 200 && bseResp.status < 400);
+    const { testBSEConnectivity } = require('./bseScraper');
+    const bseCheck = await testBSEConnectivity().catch(() => null);
+    const bseHealthy = Boolean(bseCheck && (bseCheck.status === 'healthy' || bseCheck.status === 'degraded'));
+    const gatewayLatency = bseCheck?.latencyMs || (Date.now() - start);
 
     return {
       name: 'NSE Corporate Scraper',

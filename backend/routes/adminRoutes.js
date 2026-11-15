@@ -985,29 +985,8 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
 
     // 4. BSE Scraper API
     try {
-      const start = Date.now();
-      const bseResp = await axios.get('https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w?strType=C&strSearch=P', {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15',
-          'Referer': 'https://www.bseindia.com/',
-          'Origin': 'https://www.bseindia.com',
-          'Accept': 'application/json, text/plain, */*',
-        },
-        timeout: 5000,
-        validateStatus: () => true,
-      });
-      const latencyMs = Date.now() - start;
-      const ok = bseResp.status >= 200 && bseResp.status < 400;
-      checks.bse = {
-        name: 'BSE Corporate Scraper',
-        status: ok ? (latencyMs < 1200 ? 'healthy' : 'degraded') : (bseResp.status === 403 ? 'blocked' : 'down'),
-        statusCode: bseResp.status,
-        latencyMs,
-        details: {
-          endpoint: 'api.bseindia.com',
-          cookieStatus: 'active',
-        },
-      };
+      const { testBSEConnectivity } = require('../lib/bseScraper');
+      checks.bse = await testBSEConnectivity();
     } catch (err) {
       checks.bse = {
         name: 'BSE Corporate Scraper',
@@ -1176,23 +1155,26 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
 
     try {
       if (serviceName === 'bse') {
-        const resp = await axios.get('https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w?strType=C&strSearch=P', {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15',
-            'Referer': 'https://www.bseindia.com/',
-            'Origin': 'https://www.bseindia.com',
-            'Accept': 'application/json, text/plain, */*',
-          },
-          timeout: 6000,
-          validateStatus: () => true,
+        const { testBSEConnectivity } = require('../lib/bseScraper');
+        const bseCheck = await testBSEConnectivity();
+        const latencyMs = bseCheck.latencyMs || (Date.now() - start);
+
+        console.log(`[Admin Test Ping] Service: bse, Status: ${bseCheck.status}, Code: ${bseCheck.statusCode}, Latency: ${latencyMs}ms, Sample: ${bseCheck.sample}`);
+
+        await writeAuditLog({
+          actorUid: req.uid,
+          actorEmail: req.user?.email,
+          action: 'MARKET_SERVICE_TESTED',
+          targetUid: 'system',
+          payload: { service: 'bse', status: bseCheck.status, statusCode: bseCheck.statusCode, latencyMs },
         });
-        const latencyMs = Date.now() - start;
+
         return res.json({
-          success: resp.status >= 200 && resp.status < 400,
-          service: 'BSE API',
-          statusCode: resp.status,
+          success: bseCheck.status === 'healthy' || bseCheck.status === 'degraded',
+          service: 'BSE Corporate Scraper',
+          statusCode: bseCheck.statusCode,
           latencyMs,
-          sample: Array.isArray(resp.data) ? `Received ${resp.data.length} categories` : 'OK response',
+          sample: bseCheck.sample || 'Operational',
         });
       }
 
@@ -1202,12 +1184,23 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
         const sampleText = nseCheck.mode === 'dual-exchange-gateway'
           ? 'Dual-Exchange Gateway Active (100% Filings Coverage via BSE)'
           : (nseCheck.details?.profile ? `Profile: ${nseCheck.details.profile} (${nseCheck.details.sessionActive ? 'Active Session' : 'Connected'})` : 'Connected');
+        const latencyMs = nseCheck.latencyMs || (Date.now() - start);
+
+        console.log(`[Admin Test Ping] Service: nse, Status: ${nseCheck.status}, Code: ${nseCheck.statusCode}, Latency: ${latencyMs}ms, Mode: ${nseCheck.mode || 'direct'}`);
+
+        await writeAuditLog({
+          actorUid: req.uid,
+          actorEmail: req.user?.email,
+          action: 'MARKET_SERVICE_TESTED',
+          targetUid: 'system',
+          payload: { service: 'nse', status: nseCheck.status, statusCode: nseCheck.statusCode, latencyMs, mode: nseCheck.mode },
+        });
 
         return res.json({
           success: nseCheck.status === 'healthy' || nseCheck.status === 'degraded',
           service: 'NSE Corporate Scraper',
           statusCode: nseCheck.statusCode,
-          latencyMs: nseCheck.latencyMs,
+          latencyMs,
           mode: nseCheck.mode || 'direct',
           sample: sampleText,
         });

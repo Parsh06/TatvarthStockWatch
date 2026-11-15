@@ -364,10 +364,63 @@ async function fetchBSEAnnouncements(scripCode, fromDate, toDate) {
   return normalized;
 }
 
+/**
+ * Diagnostic health check ping for BSE scraper endpoint.
+ * Dispatches a lightweight single-page query with all required parameters.
+ */
+async function testBSEConnectivity() {
+  const start = Date.now();
+  try {
+    await initSession();
+    const strPrevDate = formatBSEDate(new Date());
+    const strToDate = formatBSEDate(new Date());
+    const result = await fetchBSEPage(strPrevDate, strToDate, '', 1);
+    const latencyMs = Date.now() - start;
+
+    if (result && Array.isArray(result.items)) {
+      return {
+        name: 'BSE Corporate Scraper',
+        status: latencyMs < 2500 ? 'healthy' : 'degraded',
+        statusCode: 200,
+        latencyMs,
+        sample: `Received ${result.items.length} announcements from BSE`,
+        details: {
+          endpoint: 'api.bseindia.com',
+          cookieStatus: _sessionCookies ? 'active' : 'anonymous',
+          rowCount: result.rowCount || result.items.length,
+        },
+      };
+    }
+
+    return {
+      name: 'BSE Corporate Scraper',
+      status: 'degraded',
+      statusCode: 200,
+      latencyMs,
+      sample: 'BSE endpoint reachable (0 filings returned for probe)',
+      details: {
+        endpoint: 'api.bseindia.com',
+        cookieStatus: _sessionCookies ? 'active' : 'anonymous',
+      },
+    };
+  } catch (err) {
+    const latencyMs = Date.now() - start;
+    const statusCode = err.response ? err.response.status : 500;
+    return {
+      name: 'BSE Corporate Scraper',
+      status: statusCode === 403 ? 'blocked' : 'down',
+      statusCode,
+      latencyMs,
+      error: err.message,
+    };
+  }
+}
+
 module.exports = {
   fetchBSEAnnouncements,
   fetchAllBSEAnnouncements,
   clearKnownBseAnnouncementIds,
   getKnownBseIdsCount,
   invalidateBseSession,
+  testBSEConnectivity,
 };

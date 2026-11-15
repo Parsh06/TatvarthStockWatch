@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { RefreshCw, Search, Download, CheckCircle2, XCircle, Calendar, FileText, Bell, BellOff } from 'lucide-react'
+import { RefreshCw, Search, Download, CheckCircle2, XCircle, Calendar, FileText, Bell, BellOff, Clock, Filter } from 'lucide-react'
 import clsx from 'clsx'
 import { apiClient } from '../../services/apiClient'
 import { getAnnouncementsFromDB } from '../../services/announcementService'
@@ -34,6 +34,7 @@ export default function BoardMeetingsPage() {
   const [fromDate, setFromDate] = useState(today())
   const [toDate, setToDate] = useState(today())
   const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL') // ALL | YES | POSTPONED | NO
   
   const [meetings, setMeetings]         = useState([])
   const [announcements, setAnnouncements] = useState([])
@@ -92,25 +93,88 @@ export default function BoardMeetingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromDate, toDate])
 
-  // Map announcements by script code for O(1) lookup
+  // Map announcements by script code with granular outcome/postponement classification
   const outcomeByScript = useMemo(() => {
     const map = {}
     for (const ann of announcements) {
+      const code = String(ann.scriptCode || ann.bseCode || ann.ltdCode || '').trim()
+      if (!code) continue
+
       const cat = (ann.category || '').toLowerCase()
-      // We look for Outcome, Financial Results, or Board Meeting updates
-      if (
+      const subCat = (ann.subCategory || '').toLowerCase()
+      const subject = (ann.subject || '').toLowerCase()
+      const desc = (ann.description || '').toLowerCase()
+      const fullText = `${cat} ${subCat} ${subject} ${desc}`
+
+      // Check for postponement / rescheduling / cancellation
+      const isPostponed = Boolean(
+        subCat.includes('reschedul') ||
+        subCat.includes('postpon') ||
+        subject.includes('postpon') ||
+        subject.includes('reschedul') ||
+        desc.includes('postpon') ||
+        desc.includes('reschedul') ||
+        fullText.includes('postponement of board meeting') ||
+        fullText.includes('board meeting rescheduled') ||
+        fullText.includes('deferred') ||
+        fullText.includes('cancellation of board meeting')
+      )
+
+      // Try to extract new meeting date if postponed (e.g. "scheduled on 19/11/2026")
+      let rescheduledDate = null
+      if (isPostponed) {
+        const dateMatch = (ann.subject || ann.description || '').match(/(?:scheduled on|held on|to be held on|on)\s*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{4})/i)
+        if (dateMatch && dateMatch[1]) {
+          rescheduledDate = dateMatch[1]
+        }
+      }
+
+      // Check for outcome / financial results (only if not an explicit postponement)
+      const isOutcome = !isPostponed && Boolean(
         cat.includes('outcome') || 
         cat.includes('result') || 
-        cat.includes('board meeting')
-      ) {
-        const code = String(ann.scriptCode || ann.bseCode || ann.ltdCode || '').trim()
-        if (code) {
-          map[code] = ann.pdfUrl || ann.sourceUrl || true
+        subCat.includes('outcome') ||
+        subCat.includes('financial result') ||
+        subject.includes('outcome of board meeting') ||
+        subject.includes('financial results') ||
+        subject.includes('unaudited results') ||
+        subject.includes('audited results') ||
+        desc.includes('outcome of board meeting') ||
+        desc.includes('financial results')
+      )
+
+      if (isOutcome || isPostponed) {
+        const existing = map[code]
+        // Prioritize OUTCOME over POSTPONED if both exist
+        if (!existing || (!existing.isOutcome && isOutcome)) {
+          map[code] = {
+            status: isOutcome ? 'OUTCOME' : 'POSTPONED',
+            isOutcome,
+            isPostponed,
+            rescheduledDate,
+            pdfUrl: ann.pdfUrl || ann.sourceUrl || null,
+            title: ann.subject || ann.description || '',
+            datetimeIST: ann.datetimeIST || ann.storedTime || '',
+          }
         }
       }
     }
     return map
   }, [announcements])
+
+  // Count metrics for tabs and stat cards
+  const { resultsOutCount, postponedCount, pendingCount } = useMemo(() => {
+    let out = 0
+    let postponed = 0
+    let pending = 0
+    for (const m of meetings) {
+      const match = outcomeByScript[m.scrip_code]
+      if (match?.status === 'OUTCOME') out++
+      else if (match?.status === 'POSTPONED') postponed++
+      else pending++
+    }
+    return { resultsOutCount: out, postponedCount: postponed, pendingCount: pending }
+  }, [meetings, outcomeByScript])
 
   // Filter and sort meetings locally
   const filteredMeetings = useMemo(() => {
@@ -123,26 +187,45 @@ export default function BoardMeetingsPage() {
         (m.PURPOSE_NAME || '').toLowerCase().includes(q)
       )
     }
+
+    if (statusFilter !== 'ALL') {
+      result = result.filter(m => {
+        const match = outcomeByScript[m.scrip_code]
+        if (statusFilter === 'YES') return match?.status === 'OUTCOME'
+        if (statusFilter === 'POSTPONED') return match?.status === 'POSTPONED'
+        if (statusFilter === 'NO') return !match || match.status === 'PENDING'
+        return true
+      })
+    }
+
     // Sort alphabetically by Company Name
     return [...result].sort((a, b) => {
       const nameA = (a.Long_Name || '').toLowerCase()
       const nameB = (b.Long_Name || '').toLowerCase()
       return nameA.localeCompare(nameB)
     })
-  }, [meetings, searchQuery])
+  }, [meetings, searchQuery, statusFilter, outcomeByScript])
 
   // Export to Excel
   const handleExport = () => {
     if (!filteredMeetings.length) return
-    const exportData = filteredMeetings.map(m => ({
-      'BSE Code': m.scrip_code,
-      'Company Name': m.Long_Name,
-      'Purpose': m.PURPOSE_NAME,
-      'Meeting Date': m.MEETING_DATE,
-      'Industry': m.Industry_name,
-      'Result Out': outcomeByScript[m.scrip_code] ? 'Yes' : 'No',
-      'Email Sent': emailLogs[m.scrip_code] ? 'Yes' : 'No'
-    }))
+    const exportData = filteredMeetings.map(m => {
+      const match = outcomeByScript[m.scrip_code]
+      let resultStatus = 'Pending (No)'
+      if (match?.status === 'OUTCOME') resultStatus = 'Result Out (Yes)'
+      else if (match?.status === 'POSTPONED') resultStatus = match.rescheduledDate ? `Postponed to ${match.rescheduledDate}` : 'Postponed'
+
+      return {
+        'BSE Code': m.scrip_code,
+        'Company Name': m.Long_Name,
+        'Purpose': m.PURPOSE_NAME,
+        'Meeting Date': m.MEETING_DATE,
+        'Industry': m.Industry_name,
+        'Result Out / Status': resultStatus,
+        'PDF Link': match?.pdfUrl || '',
+        'Email Sent': emailLogs[m.scrip_code] ? 'Yes' : 'No'
+      }
+    })
     exportToXLSX(exportData, `Board_Meetings_${fromDate}_to_${toDate}`)
   }
 
@@ -234,9 +317,60 @@ export default function BoardMeetingsPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Total Meetings" value={meetings.length} icon={Calendar} />
-        <StatCard label="Filtered" value={filteredMeetings.length} icon={Search} />
-        <StatCard label="Results Out" value={filteredMeetings.filter(m => outcomeByScript[m.scrip_code]).length} color="text-green-500" icon={CheckCircle2} />
-        <StatCard label="Pending" value={filteredMeetings.filter(m => !outcomeByScript[m.scrip_code]).length} color="text-red-500" icon={XCircle} />
+        <StatCard label="Results Out" value={resultsOutCount} color="text-emerald-500" icon={CheckCircle2} />
+        <StatCard label="Postponed" value={postponedCount} color="text-amber-500" icon={Clock} />
+        <StatCard label="Pending" value={pendingCount} color="text-rose-500" icon={XCircle} />
+      </div>
+
+      {/* Interactive Status Filter Tabs */}
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <button
+          onClick={() => setStatusFilter('ALL')}
+          className={clsx(
+            'px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5',
+            statusFilter === 'ALL'
+              ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+              : 'bg-surface hover:bg-surfaceHover text-textMuted border-border'
+          )}
+        >
+          All Meetings ({meetings.length})
+        </button>
+        <button
+          onClick={() => setStatusFilter('YES')}
+          className={clsx(
+            'px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5',
+            statusFilter === 'YES'
+              ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+              : 'bg-surface hover:bg-surfaceHover text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+          )}
+        >
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Results Out ({resultsOutCount})
+        </button>
+        <button
+          onClick={() => setStatusFilter('POSTPONED')}
+          className={clsx(
+            'px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5',
+            statusFilter === 'POSTPONED'
+              ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+              : 'bg-surface hover:bg-surfaceHover text-amber-600 dark:text-amber-400 border-amber-500/30'
+          )}
+        >
+          <Clock className="w-3.5 h-3.5" />
+          Postponed ({postponedCount})
+        </button>
+        <button
+          onClick={() => setStatusFilter('NO')}
+          className={clsx(
+            'px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5',
+            statusFilter === 'NO'
+              ? 'bg-slate-700 text-white border-slate-700 shadow-sm'
+              : 'bg-surface hover:bg-surfaceHover text-textMuted border-border'
+          )}
+        >
+          <XCircle className="w-3.5 h-3.5" />
+          Pending ({pendingCount})
+        </button>
       </div>
 
       {/* Error state */}
@@ -265,7 +399,7 @@ export default function BoardMeetingsPage() {
                   <th className="px-4 py-3 font-medium">Company Name</th>
                   <th className="px-4 py-3 font-medium">Purpose</th>
                   <th className="px-4 py-3 font-medium">Meeting Date</th>
-                  <th className="px-4 py-3 font-medium text-center">Result Out?</th>
+                  <th className="px-4 py-3 font-medium text-center">Result Out / Status</th>
                   <th className="px-4 py-3 font-medium text-center">Email Sent?</th>
                 </tr>
               </thead>
@@ -273,12 +407,12 @@ export default function BoardMeetingsPage() {
                 {filteredMeetings.length === 0 ? (
                   <tr>
                     <td colSpan="6" className="px-4 py-16 text-center text-textMuted">
-                      No board meetings found for this date range.
+                      No board meetings found matching current filters.
                     </td>
                   </tr>
                 ) : (
                 filteredMeetings.map((m, idx) => {
-                  const hasResult = !!outcomeByScript[m.scrip_code]
+                  const match = outcomeByScript[m.scrip_code]
                   return (
                     <tr key={`${m.scrip_code}-${idx}`} className="hover:bg-white/5 transition-colors group">
                       <td className="px-4 py-3 font-medium">{m.scrip_code}</td>
@@ -301,26 +435,47 @@ export default function BoardMeetingsPage() {
                       <td className="px-4 py-3">{m.MEETING_DATE}</td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex justify-center items-center gap-2">
-                          {hasResult ? (
+                          {match?.status === 'OUTCOME' ? (
                             <>
-                              <div className="flex items-center gap-1.5 text-xs font-medium text-green-500 bg-green-500/10 px-2.5 py-1 rounded-full border border-green-500/20">
-                                <CheckCircle2 className="w-4 h-4" /> Yes
+                              <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Yes
                               </div>
-                              {typeof outcomeByScript[m.scrip_code] === 'string' && (
+                              {match.pdfUrl && (
                                 <a 
-                                  href={outcomeByScript[m.scrip_code]} 
+                                  href={match.pdfUrl} 
                                   target="_blank" 
                                   rel="noreferrer"
                                   className="text-primary hover:text-primary/80 transition-colors"
                                   title="View Result PDF"
                                 >
-                                  <FileText className="w-5 h-5" />
+                                  <FileText className="w-4 h-4" />
+                                </a>
+                              )}
+                            </>
+                          ) : match?.status === 'POSTPONED' ? (
+                            <>
+                              <div 
+                                className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20"
+                                title={match.title}
+                              >
+                                <Clock className="w-3.5 h-3.5" />
+                                {match.rescheduledDate ? `Postponed to ${match.rescheduledDate}` : 'Postponed'}
+                              </div>
+                              {match.pdfUrl && (
+                                <a 
+                                  href={match.pdfUrl} 
+                                  target="_blank" 
+                                  rel="noreferrer"
+                                  className="text-amber-500 hover:text-amber-400 transition-colors"
+                                  title="View Postponement Notice PDF"
+                                >
+                                  <FileText className="w-4 h-4" />
                                 </a>
                               )}
                             </>
                           ) : (
-                            <div className="flex items-center gap-1.5 text-xs font-medium text-red-500 bg-red-500/10 px-2.5 py-1 rounded-full border border-red-500/20">
-                              <XCircle className="w-4 h-4" /> No
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-textMuted bg-surface px-2.5 py-1 rounded-full border border-border">
+                              <XCircle className="w-3.5 h-3.5 opacity-50" /> Pending
                             </div>
                           )}
                         </div>
