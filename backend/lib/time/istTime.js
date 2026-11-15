@@ -122,37 +122,31 @@ function isIpoAllotmentCheckWindow(date = new Date()) {
   return isEveningWindow || isPostMidnightWindow;
 }
 
-// ── Official Indian Stock Market Trading Holidays (NSE & BSE) ──────────────────
-// Initial bootstrap seeds for 2026 and 2027 statutory calendar.
-// Can be dynamically expanded, updated, or deleted by platform administrators.
+// ── Official Indian Stock Market Trading Holidays (BSE Official Exchange) ────
+// Baseline statutory trading holidays sourced directly from BSE India (listholi.aspx)
+// for the official active calendar year. Can be dynamically refreshed from BSE at any time.
 const DEFAULT_MARKET_HOLIDAYS = [
-  { date: '2026-01-26', name: 'Republic Day', description: 'National Holiday' },
-  { date: '2026-03-03', name: 'Holi', description: 'Trading Holiday' },
-  { date: '2026-03-20', name: 'Id-Ul-Fitr (Ramzan Id)', description: 'Trading Holiday' },
-  { date: '2026-04-03', name: 'Good Friday', description: 'Trading Holiday' },
-  { date: '2026-04-14', name: 'Dr. Baba Saheb Ambedkar Jayanti', description: 'Statutory Holiday' },
-  { date: '2026-05-01', name: 'Maharashtra Day', description: 'State Holiday' },
-  { date: '2026-05-27', name: 'Bakri Id (Id-Ul-Zuha)', description: 'Trading Holiday' },
-  { date: '2026-06-26', name: 'Muharram', description: 'Trading Holiday' },
-  { date: '2026-08-15', name: 'Independence Day', description: 'National Holiday' },
-  { date: '2026-10-02', name: 'Mahatma Gandhi Jayanti', description: 'National Holiday' },
-  { date: '2026-10-20', name: 'Dussehra', description: 'Trading Holiday' },
-  { date: '2026-11-08', name: 'Diwali Laxmi Pujan', description: 'Muhurat Trading Evening' },
-  { date: '2026-11-10', name: 'Diwali Balipratipada', description: 'Trading Holiday' },
-  { date: '2026-11-24', name: 'Gurunanak Jayanti', description: 'Trading Holiday' },
-  { date: '2026-12-25', name: 'Christmas', description: 'National Holiday' },
-  { date: '2027-01-26', name: 'Republic Day', description: 'National Holiday' },
-  { date: '2027-03-22', name: 'Holi', description: 'Trading Holiday' },
-  { date: '2027-03-26', name: 'Good Friday', description: 'Trading Holiday' },
-  { date: '2027-04-14', name: 'Dr. Ambedkar Jayanti', description: 'Statutory Holiday' },
-  { date: '2027-05-01', name: 'Maharashtra Day', description: 'State Holiday' },
-  { date: '2027-08-15', name: 'Independence Day', description: 'National Holiday' },
-  { date: '2027-10-02', name: 'Mahatma Gandhi Jayanti', description: 'National Holiday' },
-  { date: '2027-12-25', name: 'Christmas', description: 'National Holiday' },
+  { date: '2026-01-15', name: 'MCGM Election day', day: 'Thursday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-01-26', name: 'Republic Day', day: 'Monday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-03-03', name: 'Holi', day: 'Tuesday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-03-26', name: 'Shri Ram Navami', day: 'Thursday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-03-31', name: 'Shri Mahavir Jayanti', day: 'Tuesday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-04-03', name: 'Good Friday', day: 'Friday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-04-14', name: 'Dr.Baba Saheb Ambedkar Jayanti', day: 'Tuesday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-05-01', name: 'Maharashtra Day', day: 'Friday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-05-28', name: 'Bakri Id', day: 'Thursday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-06-26', name: 'Muharram', day: 'Friday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-09-14', name: 'Ganesh Chaturthi', day: 'Monday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-10-02', name: 'Mahatma Gandhi Jayanti', day: 'Friday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-10-20', name: 'Dussehra', day: 'Tuesday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-11-08', name: 'Diwali Laxmi Pujan (Muhurat Trading)', day: 'Sunday', description: 'Special 1-Hour Muhurat Trading Evening Session (Timings notified by exchange)', isClosed: false, isMuhurat: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-11-10', name: 'Diwali Balipratipada', day: 'Tuesday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-11-24', name: 'Prakash Gurpurb Sri Guru Nanak Dev', day: 'Tuesday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
+  { date: '2026-12-25', name: 'Christmas', day: 'Friday', description: 'Official BSE Statutory Trading Holiday (Equity Segment)', isClosed: true, source: 'BSE_OFFICIAL_EXCHANGE' },
 ];
 
 const _holidaysMap = new Map();
-DEFAULT_MARKET_HOLIDAYS.forEach(h => _holidaysMap.set(h.date, { ...h, isClosed: true }));
+DEFAULT_MARKET_HOLIDAYS.forEach(h => _holidaysMap.set(h.date, { ...h, isClosed: h.isClosed !== false }));
 
 let _lastFirestoreHolidayFetch = 0;
 const HOLIDAY_CACHE_TTL_MS = 60 * 60 * 1000; // 1-hour in-memory cache to guarantee 0 Firestore read overages
@@ -173,22 +167,29 @@ async function syncMarketHolidaysFromFirestore(force = false) {
 
     if (docSnap.exists) {
       const data = docSnap.data();
-      if (Array.isArray(data?.holidays)) {
+      if (Array.isArray(data?.holidays) && data.holidays.length > 0) {
         _holidaysMap.clear();
-        // Populate default baseline first, then overlay Firestore
-        DEFAULT_MARKET_HOLIDAYS.forEach(h => _holidaysMap.set(h.date, { ...h, isClosed: true }));
         data.holidays.forEach(h => {
           if (h.date) {
             _holidaysMap.set(h.date, {
               date: h.date,
               name: h.name || 'Market Holiday',
+              day: h.day || '',
               description: h.description || '',
               isClosed: h.isClosed !== false,
+              isMuhurat: Boolean(h.isMuhurat),
+              source: h.source || 'BSE_OFFICIAL_EXCHANGE',
             });
           }
         });
+        _lastFirestoreHolidayFetch = now;
+        return Array.from(_holidaysMap.values());
       }
     }
+
+    // Fallback: populate default BSE statutory baseline if Firestore is empty
+    _holidaysMap.clear();
+    DEFAULT_MARKET_HOLIDAYS.forEach(h => _holidaysMap.set(h.date, { ...h, isClosed: h.isClosed !== false }));
     _lastFirestoreHolidayFetch = now;
   } catch (err) {
     // Gracefully preserve default bootstrap map on Firestore error
@@ -233,8 +234,11 @@ function setMarketHolidayInMemory(holiday) {
   _holidaysMap.set(holiday.date, {
     date: holiday.date,
     name: holiday.name || 'Market Holiday',
+    day: holiday.day || '',
     description: holiday.description || '',
     isClosed: holiday.isClosed !== false,
+    isMuhurat: Boolean(holiday.isMuhurat),
+    source: holiday.source || 'BSE_OFFICIAL_EXCHANGE',
   });
 }
 
@@ -244,6 +248,13 @@ function setMarketHolidayInMemory(holiday) {
 function deleteMarketHolidayFromMemory(dateStr) {
   if (!dateStr) return false;
   return _holidaysMap.delete(dateStr);
+}
+
+/**
+ * Clears all holidays from memory map
+ */
+function clearMarketHolidaysInMemory() {
+  _holidaysMap.clear();
 }
 
 /**
@@ -375,6 +386,7 @@ module.exports = {
   getAllMarketHolidays,
   setMarketHolidayInMemory,
   deleteMarketHolidayFromMemory,
+  clearMarketHolidaysInMemory,
   syncMarketHolidaysFromFirestore,
   DEFAULT_MARKET_HOLIDAYS,
 };

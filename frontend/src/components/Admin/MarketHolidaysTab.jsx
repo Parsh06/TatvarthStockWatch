@@ -27,6 +27,7 @@ export default function MarketHolidaysTab({ canWrite }) {
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL') // ALL | UPCOMING | PAST | TODAY
+  const [selectedYear, setSelectedYear] = useState('ALL') // ALL | 2026 | ...
 
   const fetchHolidays = useCallback(async (isSilent = false) => {
     if (!isSilent) setRefreshing(true)
@@ -164,6 +165,13 @@ export default function MarketHolidaysTab({ canWrite }) {
     }
   }
 
+  // Available distinct years in catalog
+  const availableYears = useMemo(() => {
+    const years = new Set(holidays.map(h => (h.date ? h.date.split('-')[0] : '')))
+    years.delete('')
+    return Array.from(years).sort()
+  }, [holidays])
+
   // Filtered holidays
   const filteredHolidays = useMemo(() => {
     return holidays.filter(h => {
@@ -178,9 +186,14 @@ export default function MarketHolidaysTab({ canWrite }) {
       else if (statusFilter === 'TODAY') matchesStatus = h.status === 'today'
       else if (statusFilter === 'PAST') matchesStatus = h.status === 'past'
 
-      return matchesSearch && matchesStatus
+      let matchesYear = true
+      if (selectedYear !== 'ALL') {
+        matchesYear = Boolean(h.date && h.date.startsWith(selectedYear))
+      }
+
+      return matchesSearch && matchesStatus && matchesYear
     })
-  }, [holidays, searchQuery, statusFilter])
+  }, [holidays, searchQuery, statusFilter, selectedYear])
 
   // Relative format helper
   const formatDateDisplay = (dateStr) => {
@@ -345,7 +358,25 @@ export default function MarketHolidaysTab({ canWrite }) {
             />
           </div>
 
-          <div className="flex items-center gap-1 w-full sm:w-auto justify-end">
+          <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-end">
+            {availableYears.length > 1 && (
+              <div className="flex items-center gap-1 border-r border-border pr-2 mr-1">
+                {['ALL', ...availableYears].map(yr => (
+                  <button
+                    key={yr}
+                    onClick={() => setSelectedYear(yr)}
+                    className={clsx(
+                      'px-2 py-0.5 text-xs font-mono font-semibold rounded-md transition-all',
+                      selectedYear === yr
+                        ? 'bg-surfaceHover text-textPrimary border border-border shadow-2xs'
+                        : 'text-textMuted hover:text-textPrimary'
+                    )}
+                  >
+                    {yr === 'ALL' ? 'All Years' : yr}
+                  </button>
+                ))}
+              </div>
+            )}
             {['ALL', 'UPCOMING', 'TODAY', 'PAST'].map(tab => (
               <button
                 key={tab}

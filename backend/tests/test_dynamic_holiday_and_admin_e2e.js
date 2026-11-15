@@ -235,7 +235,7 @@ async function runE2ETests() {
 
       // Verify statutory holidays are present
       assert.strictEqual(isMarketHoliday('2026-01-26'), true, 'Republic Day must exist');
-      assert.strictEqual(isMarketHoliday('2026-08-15'), true, 'Independence Day must exist');
+      assert.strictEqual(isMarketHoliday('2026-04-03'), true, 'Good Friday must exist');
       assert.strictEqual(isMarketHoliday('2026-10-02'), true, 'Gandhi Jayanti must exist');
       assert.strictEqual(isMarketHoliday('2026-12-25'), true, 'Christmas must exist');
 

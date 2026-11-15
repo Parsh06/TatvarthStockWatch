@@ -1824,8 +1824,10 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
         DEFAULT_MARKET_HOLIDAYS,
         setMarketHolidayInMemory,
         getAllMarketHolidays,
+        clearMarketHolidaysInMemory,
       } = require('../lib/time/istTime');
 
+      clearMarketHolidaysInMemory();
       DEFAULT_MARKET_HOLIDAYS.forEach(h => setMarketHolidayInMemory(h));
       const allHolidays = getAllMarketHolidays();
 
@@ -1833,7 +1835,7 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
         holidays: allHolidays,
         lastBootstrappedAt: admin.firestore.FieldValue.serverTimestamp(),
         lastUpdatedBy: req.user?.email || req.uid,
-      }, { merge: true });
+      });
 
       await writeAuditLog({
         actorUid: req.uid,
@@ -1845,7 +1847,7 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
 
       res.json({
         success: true,
-        message: 'Official NSE/BSE 2026/2027 statutory holiday calendar synchronized',
+        message: 'Official BSE statutory holiday calendar synchronized',
         total: allHolidays.length,
       });
     } catch (err) {
@@ -1862,7 +1864,7 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
       const {
         setMarketHolidayInMemory,
         getAllMarketHolidays,
-        syncMarketHolidaysFromFirestore,
+        clearMarketHolidaysInMemory,
       } = require('../lib/time/istTime');
 
       const targetYear = req.body?.year || null;
@@ -1876,18 +1878,17 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
         });
       }
 
-      // Ensure local memory is fresh before merging
-      await syncMarketHolidaysFromFirestore(true).catch(() => {});
-
-      // Merge into in-memory map
+      // Purge old seeds and populate memory exclusively with official BSE exchange holidays
+      clearMarketHolidaysInMemory();
       scrapeResult.holidays.forEach(h => {
         setMarketHolidayInMemory({
           date: h.date,
           name: h.name,
+          day: h.day || '',
           description: h.description,
           isClosed: h.isClosed,
           isMuhurat: Boolean(h.isMuhurat),
-          source: h.source || 'BSE_OFFICIAL_EXCHANGE',
+          source: 'BSE_OFFICIAL_EXCHANGE',
           updatedAt: new Date().toISOString(),
           updatedBy: req.user?.email || req.uid,
         });
@@ -1895,13 +1896,13 @@ module.exports = function adminRoutes(verifyToken, requireAdmin) {
 
       const allHolidays = getAllMarketHolidays();
 
-      // Persist to Firestore
+      // Persist directly to Firestore (purging legacy un-published future year seeds)
       await db.collection('system_meta').doc('market_holidays').set({
         holidays: allHolidays,
         lastSyncedFromBseAt: admin.firestore.FieldValue.serverTimestamp(),
         lastSyncedSourceUrl: scrapeResult.sourceUrl,
         lastUpdatedBy: req.user?.email || req.uid,
-      }, { merge: true });
+      });
 
       // Immutable audit log
       await writeAuditLog({
