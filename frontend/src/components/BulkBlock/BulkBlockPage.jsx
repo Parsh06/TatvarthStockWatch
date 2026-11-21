@@ -58,7 +58,7 @@ export default function BulkBlockPage() {
   // When switching exchange, reset dealType to a sensible default
   useEffect(() => {
     if (exchange === 'BSE' && !['both', '1', '2'].includes(dealType)) setDealType('both')
-    if (exchange === 'NSE' && !['bulk_deals', 'block_deals', 'short_deals'].includes(dealType)) setDealType('bulk_deals')
+    if (exchange === 'NSE' && !['both', 'bulk_deals', 'block_deals', 'short_deals'].includes(dealType)) setDealType('both')
   }, [exchange])
 
   function applyQuickRange(r) {
@@ -100,21 +100,24 @@ export default function BulkBlockPage() {
             const price = parseFloat(d.BD_TP_WATP) || 0
             const qty = parseFloat(d.BD_QTY_TRD) || 0
             const valueCr = (price * qty) / 10000000
-            
+            const isBuy = d.BD_BUY_SELL === 'BUY' || d.BD_BUY_SELL === 'P' || d.BD_BUY_SELL === 'B'
+            const rawType = d.dealType || (dealType === 'block_deals' ? 'Block' : dealType === 'short_deals' ? 'Short' : 'Bulk')
+
             return {
               dealDate: d.BD_DT_DATE,
-              dealType: dealType === 'bulk_deals' ? 'Bulk' : dealType === 'block_deals' ? 'Block' : 'Short',
-              bseCode: d.BD_SYMBOL, // Using this field for symbol
-              scripname: d.BD_SCRIP_NAME,
-              clientName: d.BD_CLIENT_NAME,
-              transactionCode: d.BD_BUY_SELL === 'BUY' ? 'P' : 'S',
+              dealType: rawType,
+              bseCode: d.BD_SYMBOL || '', // Using this field for symbol
+              scripname: d.BD_SCRIP_NAME || d.BD_SYMBOL || 'Securities',
+              clientName: d.BD_CLIENT_NAME || 'Market Participant',
+              transactionType: isBuy ? 'Buy' : 'Sell',
+              transactionCode: isBuy ? 'P' : 'S',
               quantity: qty,
               price: price,
               valueCr: valueCr,
             }
           })
         }
-        setResult({ deals })
+        setResult({ deals, asOf: data.asOf, notice: data.notice, source: data.source })
       }
     } catch (e) { setError(e.message) }
     finally { 
@@ -127,7 +130,7 @@ export default function BulkBlockPage() {
   useEffect(() => {
     // Only fetch if dealType is valid for the current exchange
     if (exchange === 'BSE' && !['both', '1', '2'].includes(dealType)) return;
-    if (exchange === 'NSE' && !['bulk_deals', 'block_deals', 'short_deals'].includes(dealType)) return;
+    if (exchange === 'NSE' && !['both', 'bulk_deals', 'block_deals', 'short_deals'].includes(dealType)) return;
     fetchDeals()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exchange, dealType])
@@ -136,13 +139,19 @@ export default function BulkBlockPage() {
 
   const filtered = useMemo(() => {
     let list = deals
-    if (codeFilter) list = list.filter((d) => d.bseCode === codeFilter)
+    if (codeFilter) {
+      const cf = codeFilter.toLowerCase();
+      list = list.filter((d) => 
+        String(d.bseCode || '').toLowerCase() === cf || 
+        String(d.scripname || '').toLowerCase().includes(cf)
+      )
+    }
     if (search) {
       const q = search.toLowerCase()
       list = list.filter((d) =>
         d.scripname?.toLowerCase().includes(q) ||
         d.clientName?.toLowerCase().includes(q) ||
-        d.bseCode?.includes(q)
+        d.bseCode?.toLowerCase().includes(q)
       )
     }
     return [...list].sort((a, b) => {
@@ -241,6 +250,7 @@ export default function BulkBlockPage() {
                 </>
               ) : (
                 <>
+                  <option value="both">Bulk + Block</option>
                   <option value="bulk_deals">Bulk Deals</option>
                   <option value="block_deals">Block Deals</option>
                   <option value="short_deals">Short Deals</option>
@@ -252,7 +262,10 @@ export default function BulkBlockPage() {
             <label className="block text-[11px] font-semibold text-textMuted uppercase tracking-wider mb-2">Filter by Script</label>
             <ScriptSearchInput
               placeholder="Search company…"
-              onSelect={(item) => setCodeFilter(item ? item.bseCode : '')}
+              onSelect={(item) => {
+                if (!item) { setCodeFilter(''); return; }
+                setCodeFilter(exchange === 'NSE' ? (item.scripCode || item.nseSymbol || item.bseCode) : item.bseCode)
+              }}
               onClear={() => setCodeFilter('')}
             />
           </div>
@@ -310,6 +323,14 @@ export default function BulkBlockPage() {
       {/* ── Results ── */}
       {result && (
         <div className="space-y-4">
+          {/* As-Of / Session Badge */}
+          {result?.asOf && (
+            <div className="flex items-center gap-2 px-3.5 py-2 bg-primary/10 border border-primary/20 rounded-xl text-xs font-medium text-primary">
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              <span>Verified Market Session: <strong>{result.asOf}</strong> {result?.notice ? `• ${result.notice}` : ''}</span>
+            </div>
+          )}
+
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <StatCard label="Total Deals"  value={filtered.length.toLocaleString()} />
@@ -337,7 +358,7 @@ export default function BulkBlockPage() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted pointer-events-none" />
             <input value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Filter by company name, client, or BSE code…"
+              placeholder={exchange === 'NSE' ? "Filter by company name, client, or symbol…" : "Filter by company name, client, or BSE code…"}
               className="w-full pl-9 pr-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-textPrimary placeholder-textMuted focus:outline-none focus:border-primary/60" />
             {search && (
               <button onClick={() => setSearch('')}

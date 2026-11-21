@@ -53,90 +53,199 @@ module.exports = function (verifyToken) {
   });
 
   // ── PROTECTED: NSE Bulk/Block/Short Deals ─────────────────────────────────
-  router.get('/deals', verifyToken, async (req, res) => {
-    const { from, to, dealType = 'bulk_deals' } = req.query; // dealType: bulk_deals, block_deals, short_deals
-    try {
-      const d = new Date();
-      const todayStr = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
-      
-      // 1. Snapshot Attempt (Fastest for single-day/today queries)
-      if (from === to || from === todayStr) {
-        try {
-          const cookies = await getNSECookies();
-          const dynamicHeaders = typeof getNSEHeaders === 'function' ? getNSEHeaders('api') : {};
+  const NSE_DEALS_PROFILES = [
+    {
+      name: 'Chrome 131 Desktop',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.nseindia.com/market-data/bulk-block-deals',
+        'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+      },
+    },
+    {
+      name: 'Edge 131 Desktop',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.nseindia.com/market-data/bulk-block-deals',
+        'sec-ch-ua': '"Microsoft Edge";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+      },
+    },
+  ];
 
+  function toNSEDateFormat(dStr) {
+    if (!dStr) return '';
+    const s = String(dStr).trim();
+    if (s.includes('-')) {
+      const parts = s.split('-');
+      if (parts[0].length === 4) {
+        return `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+      return s;
+    }
+    return s;
+  }
+
+  function getTodayISTStr() {
+    const options = { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' };
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', options).formatToParts(new Date()).map(p => [p.type, p.value]));
+    return `${parts.day}-${parts.month}-${parts.year}`;
+  }
+
+  router.get('/deals', verifyToken, async (req, res) => {
+    const { from, to, dealType = 'both' } = req.query; // dealType: both, bulk_deals, block_deals, short_deals
+    try {
+      const todayStr = getTodayISTStr();
+      const fromNSE = toNSEDateFormat(from) || todayStr;
+      const toNSE = toNSEDateFormat(to) || todayStr;
+      const isSingleDay = fromNSE === toNSE;
+      const profile = NSE_DEALS_PROFILES[0];
+
+      // 1. Single-day / Today query -> Query Snapshot API first (contains latest verified session: bulk + block)
+      if (isSingleDay) {
+        try {
           const snapRes = await axios.get(
-            `https://www.nseindia.com/api/snapshot-capital-market-largedeal`,
+            'https://www.nseindia.com/api/snapshot-capital-market-largedeal',
             {
-              headers: {
-                ...dynamicHeaders,
-                'Referer': 'https://www.nseindia.com/market-data/bulk-block-deals',
-                'Cookie': cookies || ''
-              },
-              timeout: 15000,
-              validateStatus: (s) => s === 200
+              headers: profile.headers,
+              timeout: 6000,
+              validateStatus: (s) => s === 200,
             }
           );
-          
+
           if (snapRes?.data) {
             let rawArray = [];
-            if (dealType === 'bulk_deals') rawArray = snapRes.data.BULK_DEALS_DATA || [];
-            else if (dealType === 'block_deals') rawArray = snapRes.data.BLOCK_DEALS_DATA || [];
-            else if (dealType === 'short_deals') rawArray = snapRes.data.SHORT_DEALS_DATA || [];
-            
+            if (dealType === 'both') {
+              const bulk = (snapRes.data.BULK_DEALS_DATA || []).map(i => ({ ...i, dealType: 'Bulk' }));
+              const block = (snapRes.data.BLOCK_DEALS_DATA || []).map(i => ({ ...i, dealType: 'Block' }));
+              rawArray = [...bulk, ...block];
+            } else if (dealType === 'bulk_deals' || dealType === '1') {
+              rawArray = (snapRes.data.BULK_DEALS_DATA || []).map(i => ({ ...i, dealType: 'Bulk' }));
+            } else if (dealType === 'block_deals' || dealType === '2') {
+              rawArray = (snapRes.data.BLOCK_DEALS_DATA || []).map(i => ({ ...i, dealType: 'Block' }));
+            } else if (dealType === 'short_deals') {
+              rawArray = (snapRes.data.SHORT_DEALS_DATA || []).map(i => ({ ...i, dealType: 'Short' }));
+            }
+
             if (rawArray.length > 0) {
               const mappedData = rawArray.map(item => ({
-                BD_BUY_SELL: item.buySell || 'BUY',
-                BD_CLIENT_NAME: item.clientName || 'Market Participant',
-                BD_DT_DATE: item.date || snapRes.data.as_on_date || todayStr,
-                BD_SCRIP_NAME: item.name || item.symbol || 'Securities',
-                BD_QTY_TRD: item.qty || '0',
-                BD_REMARKS: item.remarks || '',
-                BD_SYMBOL: item.symbol || '',
-                BD_TP_WATP: item.watp || '0'
+                BD_BUY_SELL: item.buySell || item.BD_BUY_SELL || 'BUY',
+                BD_CLIENT_NAME: item.clientName || item.BD_CLIENT_NAME || 'Market Participant',
+                BD_DT_DATE: item.date || item.BD_DT_DATE || snapRes.data.as_on_date || fromNSE,
+                BD_SCRIP_NAME: item.name || item.BD_SCRIP_NAME || item.symbol || 'Securities',
+                BD_QTY_TRD: item.qty != null ? String(item.qty) : (item.BD_QTY_TRD != null ? String(item.BD_QTY_TRD) : '0'),
+                BD_REMARKS: item.remarks || item.BD_REMARKS || '',
+                BD_SYMBOL: item.symbol || item.BD_SYMBOL || '',
+                BD_TP_WATP: item.watp != null ? String(item.watp) : (item.BD_TP_WATP != null ? String(item.BD_TP_WATP) : '0'),
+                dealType: item.dealType || 'Bulk',
               }));
-              
-              return res.json({ data: mappedData });
+
+              return res.json({
+                data: mappedData,
+                asOf: snapRes.data.as_on_date || fromNSE,
+                source: 'nse-snapshot',
+              });
             }
           }
-        } catch (err) {
-          console.warn('[NSE Snapshot warning]', err.message);
+        } catch (snapErr) {
+          console.warn('[NSE Deals Snapshot Warning]', snapErr.message);
         }
       }
 
-      // 2. Historical API Attempt (Authenticated with active browser cookies & headers)
+      // 2. Historical API Range Query (or single-day historical)
       try {
-        const cookies = await getNSECookies();
-        const dynamicHeaders = typeof getNSEHeaders === 'function' ? getNSEHeaders('api') : {};
+        let combinedItems = [];
+        if (dealType === 'both') {
+          const [bulkRes, blockRes] = await Promise.all([
+            axios.get(
+              `https://www.nseindia.com/api/historicalOR/bulk-block-short-deals?optionType=bulk_deals&from=${fromNSE}&to=${toNSE}`,
+              { headers: profile.headers, timeout: 7000, validateStatus: (s) => s === 200 }
+            ).catch(() => ({ data: { data: [] } })),
+            axios.get(
+              `https://www.nseindia.com/api/historicalOR/bulk-block-short-deals?optionType=block_deals&from=${fromNSE}&to=${toNSE}`,
+              { headers: profile.headers, timeout: 7000, validateStatus: (s) => s === 200 }
+            ).catch(() => ({ data: { data: [] } })),
+          ]);
 
-        const histRes = await axios.get(
-          `https://www.nseindia.com/api/historicalOR/bulk-block-short-deals?optionType=${dealType}&from=${from}&to=${to}`,
-          {
-            headers: {
-              ...dynamicHeaders,
-              'Referer': 'https://www.nseindia.com/market-data/bulk-block-deals',
-              'Cookie': cookies || '',
-            },
-            timeout: 15000,
-            validateStatus: (s) => s === 200
-          }
-        );
+          const bulkItems = (bulkRes.data?.data || []).map(i => ({ ...i, dealType: 'Bulk' }));
+          const blockItems = (blockRes.data?.data || []).map(i => ({ ...i, dealType: 'Block' }));
+          combinedItems = [...bulkItems, ...blockItems];
+        } else {
+          const opt = dealType === 'block_deals' || dealType === '2' ? 'block_deals' : dealType === 'short_deals' ? 'short_deals' : 'bulk_deals';
+          const histRes = await axios.get(
+            `https://www.nseindia.com/api/historicalOR/bulk-block-short-deals?optionType=${opt}&from=${fromNSE}&to=${toNSE}`,
+            { headers: profile.headers, timeout: 7000, validateStatus: (s) => s === 200 }
+          ).catch(() => ({ data: { data: [] } }));
 
-        if (histRes.data && Array.isArray(histRes.data.data) && histRes.data.data.length > 0) {
-          return res.json(histRes.data);
+          combinedItems = (histRes.data?.data || []).map(i => ({
+            ...i,
+            dealType: opt === 'block_deals' ? 'Block' : opt === 'short_deals' ? 'Short' : 'Bulk',
+          }));
+        }
+
+        if (combinedItems.length > 0) {
+          return res.json({ data: combinedItems, source: 'nse-historical' });
         }
       } catch (histErr) {
-        console.warn('[NSE Historical Deals warning]', histErr.message);
+        console.warn('[NSE Historical Deals Warning]', histErr.message);
       }
 
-      // 3. Resilient Dual-Exchange Gateway Failover (Seamlessly maps BSE deals on cloud WAF challenge)
-      console.log(`[NSE Deals] Direct NSE feed challenged or empty for ${from}..${to} — activating Dual-Exchange Gateway failover`);
-      const fallbackDeals = await fetchDualExchangeDealsFallback(from, to, dealType);
+      // 3. Fallback to Snapshot if historical range had 0 records (e.g. non-trading day)
+      try {
+        const snapRes = await axios.get(
+          'https://www.nseindia.com/api/snapshot-capital-market-largedeal',
+          { headers: profile.headers, timeout: 6000, validateStatus: (s) => s === 200 }
+        );
+        if (snapRes?.data) {
+          const bulk = (snapRes.data.BULK_DEALS_DATA || []).map(i => ({ ...i, dealType: 'Bulk' }));
+          const block = (snapRes.data.BLOCK_DEALS_DATA || []).map(i => ({ ...i, dealType: 'Block' }));
+          const combined = dealType === 'block_deals' ? block : dealType === 'both' ? [...bulk, ...block] : bulk;
+
+          if (combined.length > 0) {
+            const mappedData = combined.map(item => ({
+              BD_BUY_SELL: item.buySell || 'BUY',
+              BD_CLIENT_NAME: item.clientName || 'Market Participant',
+              BD_DT_DATE: item.date || snapRes.data.as_on_date || fromNSE,
+              BD_SCRIP_NAME: item.name || item.symbol || 'Securities',
+              BD_QTY_TRD: item.qty != null ? String(item.qty) : '0',
+              BD_REMARKS: item.remarks || '',
+              BD_SYMBOL: item.symbol || '',
+              BD_TP_WATP: item.watp != null ? String(item.watp) : '0',
+              dealType: item.dealType || 'Bulk',
+            }));
+
+            return res.json({
+              data: mappedData,
+              asOf: snapRes.data.as_on_date,
+              source: 'nse-snapshot-fallback',
+              notice: `Non-trading session requested. Serving verified deals from ${snapRes.data.as_on_date}.`,
+            });
+          }
+        }
+      } catch (snapFbErr) {
+        console.warn('[NSE Snapshot Fallback Warning]', snapFbErr.message);
+      }
+
+      // 4. Resilient Dual-Exchange Gateway Failover (BSE mapping)
+      console.log(`[NSE Deals] Direct NSE feed challenged or empty for ${fromNSE}..${toNSE} — activating Dual-Exchange Gateway failover`);
+      const fallbackDeals = await fetchDualExchangeDealsFallback(fromNSE, toNSE, dealType);
       return res.json({ data: fallbackDeals, gateway: 'dual-exchange-gateway' });
 
     } catch (e) {
       console.error('[NSE Deals Route Exception]', e.message);
-      // Fail-safe HTTP 200 return — never surface 500/403 errors to client
       return res.json({ data: [], error: e.message, gateway: 'fail-safe' });
     }
   });
@@ -147,16 +256,21 @@ module.exports = function (verifyToken) {
       const cookies = await getBseCookies();
       const sessionHdr = cookies ? { Cookie: cookies } : {};
 
-      const fmt = (dStr) => {
+      const normalizeToBseDate = (dStr) => {
         if (!dStr) return '';
-        const p = dStr.split('-');
-        return p.length === 3 ? `${p[0]}/${p[1]}/${p[2]}` : dStr;
+        const s = String(dStr).trim();
+        if (s.includes('-')) {
+          const p = s.split('-');
+          if (p[0].length === 4) return `${p[2]}/${p[1]}/${p[0]}`; // YYYY-MM-DD -> DD/MM/YYYY
+          return `${p[0]}/${p[1]}/${p[2]}`;                        // DD-MM-YYYY -> DD/MM/YYYY
+        }
+        return dStr;
       };
 
       const dt = dealType === 'block_deals' ? 2 : 1;
       const data = await bseGet(
         '/BulkDealData_ng/w',
-        { DealType: dt, sc_code: '', FDate: fmt(from), TDate: fmt(to) },
+        { DealType: dt, sc_code: '', FDate: normalizeToBseDate(from), TDate: normalizeToBseDate(to) },
         12000,
         sessionHdr
       ).catch(() => null);
@@ -170,7 +284,8 @@ module.exports = function (verifyToken) {
         BD_QTY_TRD: i.QUANTITY != null ? String(i.QUANTITY) : '0',
         BD_REMARKS: dt === 2 ? 'Block Deal (Dual-Exchange Failover)' : 'Bulk Deal (Dual-Exchange Failover)',
         BD_SYMBOL: String(i.scripname || i.SCRIP_CODE || '').trim(),
-        BD_TP_WATP: i.PRICE != null ? String(i.PRICE) : '0'
+        BD_TP_WATP: i.PRICE != null ? String(i.PRICE) : '0',
+        dealType: dt === 2 ? 'Block' : 'Bulk',
       }));
     } catch (err) {
       console.warn('[Dual-Exchange Deals Failover Error]', err.message);
