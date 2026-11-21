@@ -271,6 +271,45 @@ async function processPlanExpirationsAndReminders() {
 }
 
 /**
+ * Dedicated Evening FII/DII Institutional Flow Synchronizer.
+ * Runs independently of the heavy announcement scraper cadence guard.
+ * Between 17:30 and 23:59 IST on trading weekdays:
+ * 1. Checks if today's FII/DII data is ingested in MongoDB Atlas.
+ * 2. Checks if the once-daily 18:00+ IST Web Push & Telegram broadcast was dispatched today.
+ * 3. If either is pending, triggers syncDailyFiiDii() with atomic MongoDB dedup locking.
+ */
+async function runEveningFiiDiiTickIfNeeded(options = {}) {
+  const force = Boolean(options.force);
+  const istTimeNow = getISTDateTime();
+  const isWeekday = istTimeNow.istDay >= 1 && istTimeNow.istDay <= 5;
+  const isFiiDiiWindow = (istTimeNow.istHour > 17 || (istTimeNow.istHour === 17 && istTimeNow.istMinute >= 30)) && istTimeNow.istHour < 24;
+
+  if (!force && (!isWeekday || !isFiiDiiWindow)) {
+    return { skipped: true, reason: !isWeekday ? 'weekend' : 'outside_evening_window' };
+  }
+
+  // Check in-memory guard to prevent executing on consecutive 30s/60s ticks if both already completed
+  if (!force && _lastFiiDiiSyncedDate === istTimeNow.dateIST && _lastFiiDiiNotifiedDate === istTimeNow.dateIST) {
+    return { skipped: true, reason: 'already_completed_today', date: istTimeNow.dateIST };
+  }
+
+  try {
+    const { syncDailyFiiDii } = require('./fiiDiiService');
+    const fiiResult = await syncDailyFiiDii(options);
+    if (fiiResult && fiiResult.hasTodayData) {
+      _lastFiiDiiSyncedDate = istTimeNow.dateIST;
+    }
+    if (fiiResult && (fiiResult.broadcastSent || fiiResult.broadcastResult?.reason === 'already_sent_today')) {
+      _lastFiiDiiNotifiedDate = istTimeNow.dateIST;
+    }
+    return fiiResult;
+  } catch (fiiErr) {
+    console.warn('[Global Cron] Evening FII/DII sync warning:', fiiErr.message);
+    return { skipped: false, error: fiiErr.message };
+  }
+}
+
+/**
  * Full execution cycle of the global scheduled cron tick.
  * @param {{ force?: boolean }} [options={}]
  */
@@ -287,46 +326,54 @@ async function runGlobalCronTick(options = {}) {
     // 1. Midnight Wipe (IST) check - ALWAYS runs first regardless of cadence
     const wipeResult = await performMidnightWipeIfNeeded();
 
-  // 2. Market Hours Guard: evaluate trading cadence in IST
-  const now = new Date();
-  const cadence = getMarketCadence(now);
+    // 1b. Evening FII / DII Institutional Cash Flow Sync & Broadcast (17:30 - 23:59 IST)
+    // Runs independently of heavy announcement scraping cadence so evening drop & 18:00 notification NEVER get skipped
+    const fiiDiiResult = await runEveningFiiDiiTickIfNeeded(options).catch(err => {
+      console.warn('[Global Cron] Independent FII/DII tick error:', err.message);
+      return null;
+    });
 
-  if (!force && cadence.minIntervalMinutes > 0) {
-    let lastScrape = _lastHeavyScrapeTime;
-    if (!lastScrape) {
-      try {
-        const admin = require('firebase-admin');
-        const dbAdmin = admin.firestore();
-        const metaSnap = await dbAdmin.collection('system_meta').doc('cron_status').get();
-        if (metaSnap.exists && metaSnap.data().lastHeavyScrapeAt) {
-          lastScrape = new Date(metaSnap.data().lastHeavyScrapeAt).getTime();
-          _lastHeavyScrapeTime = lastScrape;
+    // 2. Market Hours Guard: evaluate trading cadence in IST
+    const now = new Date();
+    const cadence = getMarketCadence(now);
+
+    if (!force && cadence.minIntervalMinutes > 0) {
+      let lastScrape = _lastHeavyScrapeTime;
+      if (!lastScrape) {
+        try {
+          const admin = require('firebase-admin');
+          const dbAdmin = admin.firestore();
+          const metaSnap = await dbAdmin.collection('system_meta').doc('cron_status').get();
+          if (metaSnap.exists && metaSnap.data().lastHeavyScrapeAt) {
+            lastScrape = new Date(metaSnap.data().lastHeavyScrapeAt).getTime();
+            _lastHeavyScrapeTime = lastScrape;
+          }
+        } catch (e) {
+          // Silently proceed if Firestore check fails
         }
-      } catch (e) {
-        // Silently proceed if Firestore check fails
       }
-    }
 
-    if (lastScrape > 0) {
-      const elapsedSeconds = (Date.now() - lastScrape) / 1000;
-      const minIntervalSeconds = (cadence.minIntervalMinutes * 60) - 5; // 5-second timer jitter tolerance
-      if (elapsedSeconds < minIntervalSeconds) {
-        const elapsedMinutes = elapsedSeconds / 60;
-        const waitRemaining = Math.max(1, Math.ceil(cadence.minIntervalMinutes - elapsedMinutes));
-        console.log(`[Market Guard] ${cadence.description}. Throttled (${Math.floor(elapsedMinutes)}m elapsed < ${cadence.minIntervalMinutes}m). Skipping heavy scrape.`);
-        return {
-          started: false,
-          throttled: true,
-          window: cadence.window,
-          description: cadence.description,
-          waitRemainingMinutes: waitRemaining,
-          cadenceMinutes: cadence.minIntervalMinutes,
-          lastHeavyScrapeAt: new Date(lastScrape).toISOString(),
-          wipeResult,
-        };
+      if (lastScrape > 0) {
+        const elapsedSeconds = (Date.now() - lastScrape) / 1000;
+        const minIntervalSeconds = (cadence.minIntervalMinutes * 60) - 5; // 5-second timer jitter tolerance
+        if (elapsedSeconds < minIntervalSeconds) {
+          const elapsedMinutes = elapsedSeconds / 60;
+          const waitRemaining = Math.max(1, Math.ceil(cadence.minIntervalMinutes - elapsedMinutes));
+          console.log(`[Market Guard] ${cadence.description}. Throttled (${Math.floor(elapsedMinutes)}m elapsed < ${cadence.minIntervalMinutes}m). Skipping heavy scrape.`);
+          return {
+            started: false,
+            throttled: true,
+            window: cadence.window,
+            description: cadence.description,
+            waitRemainingMinutes: waitRemaining,
+            cadenceMinutes: cadence.minIntervalMinutes,
+            lastHeavyScrapeAt: new Date(lastScrape).toISOString(),
+            wipeResult,
+            fiiDiiResult,
+          };
+        }
       }
     }
-  }
 
   // Update last heavy scrape timestamp
   _lastHeavyScrapeTime = Date.now();
@@ -459,24 +506,11 @@ async function runGlobalCronTick(options = {}) {
     }
   }
 
-  // 7c. Daily FII / DII Institutional Flow Ingestion (5:45 PM IST) & Broadcast Notification (6:00 PM IST)
-  const istTimeNow = getISTDateTime();
-  const isWeekday = istTimeNow.istDay >= 1 && istTimeNow.istDay <= 5;
-  const isFiiDiiWindow = (istTimeNow.istHour > 17 || (istTimeNow.istHour === 17 && istTimeNow.istMinute >= 45)) && istTimeNow.istHour < 24;
-
-  if (isWeekday && isFiiDiiWindow && (_lastFiiDiiSyncedDate !== istTimeNow.dateIST || _lastFiiDiiNotifiedDate !== istTimeNow.dateIST)) {
-    try {
-      const { syncDailyFiiDii } = require('./fiiDiiService');
-      const fiiResult = await syncDailyFiiDii();
-      if (fiiResult && fiiResult.hasTodayData) {
-        _lastFiiDiiSyncedDate = istTimeNow.dateIST;
-      }
-      if (fiiResult && fiiResult.broadcastSent) {
-        _lastFiiDiiNotifiedDate = istTimeNow.dateIST;
-      }
-    } catch (fiiErr) {
-      console.warn('[Global Cron] FII/DII sync warning:', fiiErr.message);
-    }
+  // 7c. Daily FII / DII Institutional Flow Verification (Step 1b fallback check)
+  if (!fiiDiiResult || !fiiDiiResult.synced) {
+    await runEveningFiiDiiTickIfNeeded(options).catch((fiiErr) => {
+      console.warn('[Global Cron] FII/DII secondary sync warning:', fiiErr.message);
+    });
   }
 
   // 8. Write meta status to Firestore for real-time frontend status updates
@@ -613,6 +647,7 @@ module.exports = {
   performMidnightWipeIfNeeded,
   syncAnnualMarketHolidaysIfNeeded,
   runGlobalCronTick,
+  runEveningFiiDiiTickIfNeeded,
   runUserManualTrigger,
   runManualIpoClosingTick,
   processPlanExpirationsAndReminders,

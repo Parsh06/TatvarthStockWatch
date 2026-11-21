@@ -29,13 +29,52 @@ const { sendMessage, isConfigured: isTelegramConfigured } = require('../lib/tele
 const NSE_FII_DII_COMBINED_URL = 'https://www.nseindia.com/api/fiidiiTradeReact';
 const NSE_FII_DII_NSE_ONLY_URL = 'https://www.nseindia.com/api/fiidiiTradeNse';
 
-const HEADERS = {
-  'User-Agent':      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
-  'Accept':          '*/*',
-  'Accept-Language': 'en-US,en;q=0.9,en-IN;q=0.8',
-  'Referer':         'https://www.nseindia.com/reports/fii-dii',
-  'Connection':      'keep-alive',
-};
+const FII_PROFILES = [
+  {
+    name: 'Chrome 131 Windows',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://www.nseindia.com/reports/fii-dii',
+      'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'same-origin',
+      'Connection': 'keep-alive',
+    },
+  },
+  {
+    name: 'Edge 131 Windows',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://www.nseindia.com/reports/fii-dii',
+      'sec-ch-ua': '"Microsoft Edge";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'same-origin',
+      'Connection': 'keep-alive',
+    },
+  },
+  {
+    name: 'Safari macOS',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': 'https://www.nseindia.com/reports/fii-dii',
+      'Connection': 'keep-alive',
+    },
+  },
+];
 
 // In-memory cache
 let _cachedResult = null;
@@ -110,76 +149,110 @@ function normalizeCategoryData(rawArray) {
 }
 
 /**
- * Fetches both All-Exchanges and NSE-Only datasets in parallel using shared session cookies
+ * Fetches both All-Exchanges and NSE-Only datasets with multi-profile direct-first queries
+ * and graceful session fallback.
  */
 async function fetchFromNse() {
-  try {
-    const cookies = await getNSECookies();
-    const dynamicHeaders = typeof getNSEHeaders === 'function' ? getNSEHeaders('api') : {};
-    const requestHeaders = {
-      ...dynamicHeaders,
-      'Accept': '*/*',
-      'Referer': 'https://www.nseindia.com/reports/fii-dii',
-      'Cookie': cookies || '',
-    };
+  let combinedRaw = null;
+  let nseOnlyRaw = null;
+  let lastError = null;
 
-    const [resReact, resNse] = await Promise.all([
-      axios.get(NSE_FII_DII_COMBINED_URL, {
-        headers: requestHeaders,
-        timeout: 10000,
-        validateStatus: (s) => s === 200,
-      }).catch(err => {
-        if (err.response?.status === 403) {
-          console.log('[FiiDiiService] Combined endpoint cloud challenge (403) — relying on verified store.');
-        } else {
-          console.warn('[FiiDiiService] Combined endpoint warning:', err.message);
-        }
-        return { data: null };
-      }),
-      axios.get(NSE_FII_DII_NSE_ONLY_URL, {
-        headers: requestHeaders,
-        timeout: 10000,
-        validateStatus: (s) => s === 200,
-      }).catch(err => {
-        if (err.response?.status === 403) {
-          console.log('[FiiDiiService] NSE-only endpoint cloud challenge (403) — relying on verified store.');
-        } else {
-          console.warn('[FiiDiiService] NSE-only endpoint warning:', err.message);
-        }
-        return { data: null };
-      }),
-    ]);
+  // Strategy 1: Direct fast browser fetch across rotating desktop profiles (bypasses homepage Akamai barrier)
+  for (const profile of FII_PROFILES) {
+    try {
+      const [resReact, resNse] = await Promise.all([
+        axios.get(NSE_FII_DII_COMBINED_URL, {
+          headers: profile.headers,
+          timeout: 8000,
+          validateStatus: (s) => s === 200,
+        }).catch(err => {
+          lastError = err;
+          return { data: null };
+        }),
+        axios.get(NSE_FII_DII_NSE_ONLY_URL, {
+          headers: profile.headers,
+          timeout: 8000,
+          validateStatus: (s) => s === 200,
+        }).catch(() => ({ data: null })),
+      ]);
 
-    if (!resReact || !resReact.data) {
-      return null;
+      if (Array.isArray(resReact?.data) && resReact.data.length > 0) {
+        combinedRaw = resReact.data;
+        nseOnlyRaw = Array.isArray(resNse?.data) && resNse.data.length > 0 ? resNse.data : null;
+        break; // Successfully fetched!
+      }
+    } catch (err) {
+      lastError = err;
     }
+  }
 
-    const combined = normalizeCategoryData(resReact.data);
-    const nseOnly = resNse && resNse.data ? normalizeCategoryData(resNse.data) : null;
+  // Strategy 2: If direct requests failed, fallback to authenticated session cookies
+  if (!combinedRaw) {
+    try {
+      const cookies = await getNSECookies().catch(() => '');
+      if (cookies) {
+        const cookieHeaders = {
+          ...FII_PROFILES[0].headers,
+          'Cookie': cookies,
+        };
+        const resReact = await axios.get(NSE_FII_DII_COMBINED_URL, {
+          headers: cookieHeaders,
+          timeout: 10000,
+          validateStatus: (s) => s === 200,
+        }).catch(err => {
+          lastError = err;
+          return null;
+        });
+
+        if (Array.isArray(resReact?.data) && resReact.data.length > 0) {
+          combinedRaw = resReact.data;
+          const resNse = await axios.get(NSE_FII_DII_NSE_ONLY_URL, {
+            headers: cookieHeaders,
+            timeout: 10000,
+            validateStatus: (s) => s === 200,
+          }).catch(() => null);
+          nseOnlyRaw = Array.isArray(resNse?.data) && resNse.data.length > 0 ? resNse.data : null;
+        }
+      }
+    } catch (cookieErr) {
+      lastError = cookieErr;
+    }
+  }
+
+  if (!combinedRaw) {
+    if (lastError) {
+      console.warn('[FiiDiiService] fetchFromNse failed on all strategies:', lastError.message);
+    }
+    return null;
+  }
+
+  try {
+    const combined = normalizeCategoryData(combinedRaw);
+    const nseOnly = nseOnlyRaw ? normalizeCategoryData(nseOnlyRaw) : null;
 
     if (!combined) {
       return null;
     }
 
-  // Calculate other exchanges (BSE + MSEI contribution)
-  let otherExchanges = null;
-  if (combined && nseOnly) {
-    const diiBuy = Math.round((combined.dii.buyValue - nseOnly.dii.buyValue) * 100) / 100;
-    const diiSell = Math.round((combined.dii.sellValue - nseOnly.dii.sellValue) * 100) / 100;
-    const diiNet = Math.round((combined.dii.netValue - nseOnly.dii.netValue) * 100) / 100;
+    // Calculate other exchanges (BSE + MSEI contribution)
+    let otherExchanges = null;
+    if (combined && nseOnly) {
+      const diiBuy = Math.round((combined.dii.buyValue - nseOnly.dii.buyValue) * 100) / 100;
+      const diiSell = Math.round((combined.dii.sellValue - nseOnly.dii.sellValue) * 100) / 100;
+      const diiNet = Math.round((combined.dii.netValue - nseOnly.dii.netValue) * 100) / 100;
 
-    const fiiBuy = Math.round((combined.fii.buyValue - nseOnly.fii.buyValue) * 100) / 100;
-    const fiiSell = Math.round((combined.fii.sellValue - nseOnly.fii.sellValue) * 100) / 100;
-    const fiiNet = Math.round((combined.fii.netValue - nseOnly.fii.netValue) * 100) / 100;
+      const fiiBuy = Math.round((combined.fii.buyValue - nseOnly.fii.buyValue) * 100) / 100;
+      const fiiSell = Math.round((combined.fii.sellValue - nseOnly.fii.sellValue) * 100) / 100;
+      const fiiNet = Math.round((combined.fii.netValue - nseOnly.fii.netValue) * 100) / 100;
 
-    otherExchanges = {
-      dii: { buyValue: diiBuy, sellValue: diiSell, netValue: diiNet },
-      fii: { buyValue: fiiBuy, sellValue: fiiSell, netValue: fiiNet },
-      totalNet: Math.round((fiiNet + diiNet) * 100) / 100,
-      totalBuy: Math.round((fiiBuy + diiBuy) * 100) / 100,
-      totalSell: Math.round((fiiSell + diiSell) * 100) / 100,
-    };
-  }
+      otherExchanges = {
+        dii: { buyValue: diiBuy, sellValue: diiSell, netValue: diiNet },
+        fii: { buyValue: fiiBuy, sellValue: fiiSell, netValue: fiiNet },
+        totalNet: Math.round((fiiNet + diiNet) * 100) / 100,
+        totalBuy: Math.round((fiiBuy + diiBuy) * 100) / 100,
+        totalSell: Math.round((fiiSell + diiSell) * 100) / 100,
+      };
+    }
 
     return {
       date: combined.date,
@@ -197,7 +270,7 @@ async function fetchFromNse() {
       updatedAt: new Date().toISOString(),
     };
   } catch (err) {
-    console.warn('[FiiDiiService] fetchFromNse exception:', err.message);
+    console.warn('[FiiDiiService] normalizeCategoryData exception:', err.message);
     return null;
   }
 }
@@ -371,7 +444,7 @@ async function getLatestFiiDiiData(forceRefresh = false) {
     const nowIST = getISTDateTime();
     const todayIST = nowIST.dateIST;
     const isWeekday = nowIST.istDay >= 1 && nowIST.istDay <= 5;
-    const isEvening = (nowIST.istHour > 17 || (nowIST.istHour === 17 && nowIST.istMinute >= 45)) && nowIST.istHour < 24;
+    const isEvening = (nowIST.istHour > 17 || (nowIST.istHour === 17 && nowIST.istMinute >= 30)) && nowIST.istHour < 24;
     const isStaleForToday = Boolean(isWeekday && isEvening && latestRecord && latestRecord.date !== todayIST);
 
     if (!latestRecord || forceRefresh || isStaleForToday) {
@@ -413,10 +486,10 @@ async function syncDailyFiiDii(options = {}) {
   const todayIST = nowIST.dateIST;
   const isWeekday = nowIST.istDay >= 1 && nowIST.istDay <= 5;
 
-  // Ingestion starts automatically at 5:45 PM IST on trading weekdays
-  const isFetchWindow = (nowIST.istHour > 17 || (nowIST.istHour === 17 && nowIST.istMinute >= 45)) && nowIST.istHour < 24;
+  // Ingestion starts automatically at 5:30 PM IST on trading weekdays (as soon as provisional figures drop)
+  const isFetchWindow = (nowIST.istHour > 17 || (nowIST.istHour === 17 && nowIST.istMinute >= 30)) && nowIST.istHour < 24;
 
-  // Notification broadcast triggers at 6:00 PM IST onwards
+  // Notification broadcast triggers from 6:00 PM IST onwards as soon as today's numbers are verified
   const isNotificationWindow = (nowIST.istHour >= 18) && nowIST.istHour < 24;
 
   if (!force && !isWeekday) {

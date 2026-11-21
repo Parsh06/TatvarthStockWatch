@@ -47,4 +47,22 @@ router.all('/ipo-closing', verifyCronSecret, async (req, res) => {
   }
 });
 
+/**
+ * ALL /api/cron/fiidii-sync
+ * Dedicated trigger for evening FII/DII institutional cash flow sync and broadcast verification.
+ */
+router.all('/fiidii-sync', verifyCronSecret, async (req, res) => {
+  const t0 = Date.now();
+  try {
+    const force = req.query.force === 'true' || req.query.force === '1';
+    const forceNotify = req.query.forceNotify === 'true' || req.query.forceNotify === '1';
+    const { syncDailyFiiDii } = require('../services/fiiDiiService');
+    const result = await syncDailyFiiDii({ force, forceNotify });
+    res.json({ success: true, durationMs: Date.now() - t0, result });
+  } catch (err) {
+    console.error('[CronRoute /fiidii-sync] Error:', err);
+    res.status(500).json({ error: err.message, durationMs: Date.now() - t0 });
+  }
+});
+
 module.exports = router;
