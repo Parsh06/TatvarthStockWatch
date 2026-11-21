@@ -11,12 +11,58 @@ const _ofsDetailCache = new Map(); // slug -> { data, fetchedAt }
 const CACHE_TTL_MS = 60 * 1000; // 1 minute (60,000ms)
 let _pollerTimer = null;
 
-const AXIOS_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.5',
-  'Referer': 'https://www.ipoguru.in/'
-};
+const OFS_PROFILES = [
+  {
+    name: 'Chrome 131 Desktop',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': 'https://www.ipoguru.in/',
+      'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
+      'sec-fetch-dest': 'document',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-site': 'none',
+      'Upgrade-Insecure-Requests': '1',
+    },
+  },
+  {
+    name: 'Edge 131 Desktop',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': 'https://www.ipoguru.in/',
+      'sec-ch-ua': '"Microsoft Edge";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
+      'sec-fetch-dest': 'document',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-site': 'none',
+      'Upgrade-Insecure-Requests': '1',
+    },
+  },
+];
+
+async function requestWithProfiles(url, customTimeout = 10000) {
+  let lastError = null;
+  for (const profile of OFS_PROFILES) {
+    try {
+      const res = await axios.get(url, {
+        headers: profile.headers,
+        timeout: customTimeout,
+      });
+      if (res && res.data) {
+        return res;
+      }
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error(`Failed to fetch ${url} across all browser profiles`);
+}
 
 function parseNumber(str) {
   if (!str) return 0;
@@ -56,10 +102,7 @@ async function fetchOfsList(options = {}) {
   }
 
   try {
-    const res = await axios.get('https://www.ipoguru.in/ofs', {
-      headers: AXIOS_HEADERS,
-      timeout: 10000
-    });
+    const res = await requestWithProfiles('https://www.ipoguru.in/ofs', 10000);
 
     const $ = cheerio.load(res.data);
     const ofsItems = [];
@@ -204,10 +247,7 @@ async function fetchOfsDetail(slug, options = {}) {
   const url = `https://www.ipoguru.in/ofs/${slug}`;
 
   try {
-    const res = await axios.get(url, {
-      headers: AXIOS_HEADERS,
-      timeout: 10000
-    });
+    const res = await requestWithProfiles(url, 10000);
 
     const $ = cheerio.load(res.data);
     const pageTitle = $('title').text().trim();

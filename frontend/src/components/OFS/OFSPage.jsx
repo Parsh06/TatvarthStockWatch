@@ -45,12 +45,25 @@ function StatCard({ label, value, sub, color = 'text-textPrimary', icon: Icon, i
   );
 }
 
+function formatTimeAgo(seconds) {
+  if (isNaN(seconds) || seconds < 0) return 'just now';
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(seconds / 3600);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(seconds / 86400);
+  return `${days}d ago`;
+}
+
 export default function OFSPage() {
   const [ofsList, setOfsList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [lastFetched, setLastFetched] = useState(null);
+  const [lastClientSync, setLastClientSync] = useState(null);
+  const [snapshotDate, setSnapshotDate] = useState(null);
   const [nowTime, setNowTime] = useState(Date.now());
   const [consecutiveFailures, setConsecutiveFailures] = useState(0);
   const [isStaleData, setIsStaleData] = useState(false);
@@ -84,7 +97,10 @@ export default function OFSPage() {
       const res = await apiClient(url);
       if (res && Array.isArray(res.data)) {
         setOfsList(res.data);
-        setLastFetched(new Date(res.scrapedAt || Date.now()));
+        setLastClientSync(new Date());
+        if (res.scrapedAt) {
+          setSnapshotDate(new Date(res.scrapedAt));
+        }
         setIsStaleData(!!res.stale);
         setConsecutiveFailures(0);
       }
@@ -220,11 +236,19 @@ export default function OFSPage() {
     return [...ofsList].sort((a, b) => (parseFloat(b.subscription) || 0) - (parseFloat(a.subscription) || 0))[0];
   }, [ofsList]);
 
-  // Seconds ago computation
-  const secondsAgo = useMemo(() => {
-    if (!lastFetched) return 0;
-    return Math.max(0, Math.floor((nowTime - lastFetched.getTime()) / 1000));
-  }, [lastFetched, nowTime]);
+  // Humane Sync Elapsed Time computation
+  const clientSecondsAgo = useMemo(() => {
+    if (!lastClientSync) return 0;
+    return Math.max(0, Math.floor((nowTime - lastClientSync.getTime()) / 1000));
+  }, [lastClientSync, nowTime]);
+
+  const formattedSyncTime = useMemo(() => {
+    return formatTimeAgo(clientSecondsAgo);
+  }, [clientSecondsAgo]);
+
+  const hasOpenIssue = useMemo(() => {
+    return ofsList.some(item => item.status === 'OPEN');
+  }, [ofsList]);
 
   const maxTotalQtyInBook = useMemo(() => {
     if (!detailData?.bidBook?.length) return 1;
@@ -302,21 +326,31 @@ export default function OFSPage() {
 
             <div className="flex flex-wrap items-center gap-2 mb-3">
 
-              {consecutiveFailures > 0 || isStaleData ? (
+              {consecutiveFailures > 2 ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold text-amber-600 dark:text-amber-400">
                   <AlertTriangle className="w-3.5 h-3.5" />
                   Sync delayed
                 </span>
-              ) : (
+              ) : hasOpenIssue ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   Live Market Feed
+                </span>
+              ) : isStaleData ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-black/5 dark:bg-white/5 px-2.5 py-1 text-[10px] sm:text-[11px] font-semibold text-textMuted">
+                  <Layers className="w-3.5 h-3.5 text-primary" />
+                  Exchange Snapshot
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] sm:text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Market Synchronized
                 </span>
               )}
 
               <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-black/5 dark:bg-white/5 px-2.5 py-1 text-[10px] sm:text-[11px] font-semibold text-textMuted">
                 <Clock className="w-3.5 h-3.5 text-primary" />
-                Updated {secondsAgo}s ago
+                Updated {formattedSyncTime}
               </span>
 
               <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-border bg-black/5 dark:bg-white/5 px-2.5 py-1 text-[10px] font-semibold text-textMuted">
@@ -1479,7 +1513,7 @@ export default function OFSPage() {
             </div>
 
             <span className="text-[10px] font-mono text-textMuted">
-              {secondsAgo}s since last sync
+              Last sync: {formattedSyncTime}
             </span>
 
           </div>
