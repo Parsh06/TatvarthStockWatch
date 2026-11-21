@@ -560,12 +560,15 @@ async function fetchDeals() {
 // ── Shared Global Market Snapshot Engine with In-Flight Deduplication ──────────
 let _inFlightGlobalPromise = null;
 
-async function getGlobalMarketData() {
+async function getGlobalMarketData(options = {}) {
+  const force = Boolean(options.force);
   const GLOBAL_CACHE_KEY = 'dashboard:global_market';
-  const cached = fromCache(GLOBAL_CACHE_KEY, 45_000);
-  if (cached) return cached;
+  if (!force) {
+    const cached = fromCache(GLOBAL_CACHE_KEY, 45_000);
+    if (cached) return cached;
+  }
 
-  if (_inFlightGlobalPromise) {
+  if (!force && _inFlightGlobalPromise) {
     return _inFlightGlobalPromise;
   }
 
@@ -590,7 +593,7 @@ async function getGlobalMarketData() {
         safe('agms',             fetchAgms),
         safe('volumeSpurts',     fetchVolumeSpurts),
         safe('deals',            fetchDeals),
-        safe('fiiDii',           getLatestFiiDiiData),
+        safe('fiiDii',           () => getLatestFiiDiiData(force)),
       ]);
 
       const globalData = {
@@ -701,12 +704,12 @@ async function buildWatchlistSummary(uid, boardMeetingItems = [], spurtItems = [
 
 // ── Main Aggregator ────────────────────────────────────────────────────────────
 
-async function getDashboardOverview(uid) {
+async function getDashboardOverview(uid, options = {}) {
   const generatedAt = new Date().toISOString();
 
   // Run Global Market and User Watchlist in parallel
   const [globalData, watchlistSummaryResult] = await Promise.all([
-    getGlobalMarketData(),
+    getGlobalMarketData(options),
     (async () => {
       try {
         const summary = await buildWatchlistSummary(uid);

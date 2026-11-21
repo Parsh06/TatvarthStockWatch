@@ -39,7 +39,7 @@ export function useDashboardOverview() {
     return () => { isMounted.current = false }
   }, [])
 
-  const load = useCallback(async (isRefresh = false, isSilent = false) => {
+  const load = useCallback(async (isRefresh = false, isSilent = false, isForce = false) => {
     if (isRefresh && !isSilent) {
       setRefreshing(true)
     } else if (!hasDataRef.current && !isSilent) {
@@ -48,7 +48,7 @@ export function useDashboardOverview() {
     setError(null)
 
     try {
-      const overview = await fetchDashboardOverview()
+      const overview = await fetchDashboardOverview({ force: isForce || isRefresh })
       if (!isMounted.current) return
       setData(overview)
       hasDataRef.current = true
@@ -100,7 +100,7 @@ export function useDashboardOverview() {
     }
   }, [load])
 
-  const refresh = useCallback(() => load(true, false), [load])
+  const refresh = useCallback(() => load(true, false, true), [load])
 
   // Convenience: check if a specific source failed in the partial-failure model
   const sourceStatus = useCallback((key) => {

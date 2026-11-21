@@ -15,7 +15,11 @@ module.exports = function marketRoutes(verifyToken) {
     try {
       const force = req.query.force === 'true' || req.query.refresh === 'true';
       const data = await getLatestFiiDiiData(force);
-      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
+      if (force) {
+        res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+      } else {
+        res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
+      }
       res.json(data);
     } catch (err) {
       console.error('Failed to fetch FII/DII data:', err.message);

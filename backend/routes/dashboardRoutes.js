@@ -14,7 +14,8 @@ const { sanitizeDashboardOverview } = require('../utils/sanitizeResponse');
 router.get('/overview', verifyToken, async (req, res) => {
   res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
   try {
-    const rawOverview = await getDashboardOverview(req.uid);
+    const force = req.query.force === 'true' || req.query.refresh === 'true';
+    const rawOverview = await getDashboardOverview(req.uid, { force });
     const sanitized = sanitizeDashboardOverview(rawOverview);
     res.json(sanitized);
   } catch (err) {

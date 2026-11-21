@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Landmark,
@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts';
 import clsx from 'clsx';
+import toast from 'react-hot-toast';
+import { apiClient } from '../../services/apiClient';
 
 // Format numbers in ₹ Crores with sign
 function formatCrores(val) {
@@ -40,8 +42,54 @@ function formatNumber(val) {
 
 export default function FiiDiiWidget({ data, loading, error, onRefresh, refreshing }) {
   const [activeScope, setActiveScope] = useState('combined'); // 'combined' | 'nseOnly' | 'tables'
+  const [localData, setLocalData] = useState(null);
+  const [localRefreshing, setLocalRefreshing] = useState(false);
 
-  if (loading) {
+  // Sync prop changes when fresh data arrives
+  useEffect(() => {
+    if (data?.current) {
+      setLocalData(prev => {
+        if (!prev) return data;
+        const prevDate = prev.current?.date || '';
+        const nextDate = data.current?.date || '';
+        if (nextDate > prevDate) return data;
+        return prev;
+      });
+    }
+  }, [data]);
+
+  const handleWidgetRefresh = useCallback(async (e) => {
+    e?.stopPropagation?.();
+    if (localRefreshing || refreshing || loading) return;
+
+    setLocalRefreshing(true);
+    try {
+      const res = await apiClient(`/api/market/fii-dii?refresh=true&t=${Date.now()}`);
+      if (res && res.current) {
+        setLocalData(res);
+        toast.success(`FII/DII flow updated (${res.asOf || res.current?.displayDate || 'Latest'})`, {
+          id: 'fiidii-refresh-toast',
+        });
+      } else {
+        toast('FII/DII data is up to date', { id: 'fiidii-refresh-toast' });
+      }
+    } catch (err) {
+      console.warn('[FiiDiiWidget] Failed to refresh live FII/DII data:', err);
+      toast.error('Could not reach exchange, showing latest saved flow', {
+        id: 'fiidii-refresh-toast',
+      });
+    } finally {
+      setLocalRefreshing(false);
+      if (typeof onRefresh === 'function') {
+        try { onRefresh(); } catch {}
+      }
+    }
+  }, [localRefreshing, refreshing, loading, onRefresh]);
+
+  const isBusy = localRefreshing || refreshing || loading;
+  const activePayload = localData || data;
+
+  if (loading && !activePayload?.current) {
     return (
       <div className="bg-surface border border-border rounded-2xl p-6 shadow-sm animate-pulse space-y-4">
         <div className="flex items-center justify-between">
@@ -56,9 +104,9 @@ export default function FiiDiiWidget({ data, loading, error, onRefresh, refreshi
     );
   }
 
-  const current = data?.current;
-  const history = Array.isArray(data?.history) ? data.history : [];
-  const asOf = data?.asOf || current?.displayDate || 'Latest Session';
+  const current = activePayload?.current;
+  const history = Array.isArray(activePayload?.history) ? activePayload.history : [];
+  const asOf = activePayload?.asOf || current?.displayDate || 'Latest Session';
 
   if (!current || error) {
     return (
@@ -68,6 +116,15 @@ export default function FiiDiiWidget({ data, loading, error, onRefresh, refreshi
         <p className="text-xs text-textMuted mt-1">
           FII/DII cash market reports are updated every trading evening after 17:45 IST.
         </p>
+        <button
+          type="button"
+          onClick={handleWidgetRefresh}
+          disabled={isBusy}
+          className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-textPrimary transition-all disabled:opacity-50"
+        >
+          <RefreshCw className={clsx('w-3.5 h-3.5', isBusy && 'animate-spin text-primary')} />
+          {isBusy ? 'Checking Exchange...' : 'Check Live Exchange'}
+        </button>
       </div>
     );
   }
@@ -130,17 +187,15 @@ export default function FiiDiiWidget({ data, loading, error, onRefresh, refreshi
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/5 text-textMuted border border-border font-mono">
                 {asOf}
               </span>
-              {onRefresh && (
-                <button
-                  type="button"
-                  onClick={onRefresh}
-                  disabled={refreshing || loading}
-                  className="p-1 rounded-lg text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-white/5 transition-all disabled:opacity-50"
-                  title="Refresh FII/DII Data"
-                >
-                  <RefreshCw className={clsx('w-3.5 h-3.5', (refreshing || loading) && 'animate-spin text-primary')} />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleWidgetRefresh}
+                disabled={isBusy}
+                className="p-1 rounded-lg text-textMuted hover:text-textPrimary hover:bg-slate-100 dark:hover:bg-white/5 transition-all disabled:opacity-50"
+                title="Fetch latest live FII/DII flow from NSE"
+              >
+                <RefreshCw className={clsx('w-3.5 h-3.5', isBusy && 'animate-spin text-primary')} />
+              </button>
             </div>
             <p className="text-xs text-textMuted mt-0.5">
               Foreign & Domestic Institutional cash market turnover & daily net flow

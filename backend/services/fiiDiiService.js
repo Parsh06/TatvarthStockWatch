@@ -452,7 +452,12 @@ async function getLatestFiiDiiData(forceRefresh = false) {
       if (live && live.date) {
         latestRecord = live;
         await upsertFiiDiiRecord(live);
-        history = await getFiiDiiHistory(10);
+        const updatedHistory = await getFiiDiiHistory(10);
+        if (updatedHistory && updatedHistory.length > 0) {
+          history = updatedHistory;
+        } else if (!history.some(h => h.date === live.date)) {
+          history.push(live);
+        }
       }
     }
   } catch (err) {
