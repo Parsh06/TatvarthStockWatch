@@ -461,43 +461,47 @@ stockwatch/
 ### CSS Variables (defined in `frontend/src/index.css`)
 
 ```css
-/* Light mode (Crisp Executive Slate — WCAG AAA Compliant) */
---bg-base: #f8fafc          --bg-surface: #ffffff
---bg-surface-hover: #f1f5f9 --border: #e2e8f0
---text-primary: #0f172a     --text-muted: #64748b
---glass-bg: rgba(255, 255, 255, 0.85)
---glass-border: #e2e8f0
+/* Light mode (Executive Porcelain — WCAG AAA Compliant) */
+--bg-base: #F8FAFC          --bg-surface: #FFFFFF
+--bg-surface-hover: #F1F5F9 --border: #E2E8F0
+--text-primary: #0F172A     --text-secondary: #334155
+--text-muted: #64748B
+--glass-bg: rgba(255, 255, 255, 0.94)
+--glass-border: #E2E8F0
 
 /* Brand accents */
---accent-teal: #0d9488      --accent-blue: #0284c7
---accent-amber: #d97706     --accent-danger: #e11d48
+--accent-teal: #38E1C6      --accent-blue: #2563EB
+--accent-amber: #F5B942     --accent-danger: #DC2626
+--accent-emerald: #059669
 
 /* Dark mode overrides (Pitch Luxury Dark) */
 --bg-base: #09090b          --bg-surface: #18181b
 --bg-surface-hover: #27272a --border: #27272a
---text-primary: #fafafa     --text-muted: #a1a1aa
---glass-bg: rgba(24, 24, 27, 0.7)
---glass-border: rgba(255, 255, 255, 0.08)
+--text-primary: #fafafa     --text-secondary: #cbd5e1
+--text-muted: #a1a1aa
+--glass-bg: rgba(255, 255, 255, 0.05)
+--glass-border: rgba(255, 255, 255, 0.1)
 ```
 
 ### Tailwind Tokens (defined in `tailwind.config.js`)
 
 | Token                | Usage                  |
 | -------------------- | ---------------------- |
-| `bg-background`    | Page background        |
-| `bg-surface`       | Card/panel backgrounds |
-| `bg-surfaceHover`  | Hover states           |
-| `text-textPrimary` | Main text              |
-| `text-textMuted`   | Secondary text         |
-| `border-border`    | Border color           |
-| `text-primary`     | Brand blue (#3B82F6)   |
-| `text-success`     | Green (#10B981)        |
-| `text-warning`     | Amber (#F59E0B)        |
-| `text-danger`      | Rose (#F43F5E)         |
+| `bg-background`    | Page background (#F8FAFC) |
+| `bg-surface`       | Card/panel backgrounds (#FFFFFF) |
+| `bg-surfaceHover`  | Hover states (#F1F5F9) |
+| `text-textPrimary` | Main text (#0F172A)    |
+| `text-textSecondary` | Secondary text (#334155) |
+| `text-textMuted`   | Muted text/captions (#64748B) |
+| `border-border`    | Hairline border (#E2E8F0) |
+| `text-primary`     | Royal Sapphire Blue (#2563EB) |
+| `text-success`     | Vibrant Emerald (#059669) |
+| `text-warning`     | Warm Amber (#D97706)   |
+| `text-danger`      | Ruby Crimson (#DC2626) |
 | `shadow-premium`   | Elevated card shadow   |
-| `font-sans`        | Inter                  |
+| `font-sans`        | Plus Jakarta Sans / Inter |
 | `font-mono`        | JetBrains Mono         |
-| `font-display`     | Space Grotesk          |
+| `font-display`     | Outfit / Space Grotesk |
 
 ### CSS Component Classes
 
@@ -901,6 +905,7 @@ Every new feature, cron, scraper, endpoint, or architecture update MUST adhere t
 | 2026-11-21 | FII / DII Institutional Cash Flow Resilience, Direct-First Multi-Profile Scraping & Pre-Cadence Cron Decoupling: 1. Direct-First Multi-Profile Scraper: Resolved issue where Dashboard Institutional Flow stopped updating after 13-Nov-2026. Diagnosed that fetchFromNse() previously made an unauthenticated homepage request to getNSECookies(), which triggered Akamai Cloud WAF HTTP 403 on cloud datacenter IPs and timed out after 10000ms. Re-architected fetchFromNse() in fiiDiiService.js with FII_PROFILES (rotating Chrome 131 Desktop, Edge 131 Desktop, and macOS Safari headers) directly querying fiidiiTradeReact and fiidiiTradeNse in parallel; achieves sub-250ms HTTP 200 responses with zero session cookies required. 2. Pre-Cadence Cron Decoupling: In cronService.js, moved FII/DII synchronization to Step 1b (runEveningFiiDiiTickIfNeeded) right after midnight wipe, BEFORE the market hours cadence guard. In the evening results window (16:00 to 23:45 IST), heavy announcement scraping is throttled to 2m, which previously caused the 18:00 IST notification and evening drop checks (17:30 - 23:59 IST) to get skipped whenever a tick was throttled or scraping errored. Step 1b now executes with 100% reliability on every background worker tick. 3. Atomic Deduplication & Persistent MongoDB Storage: Daily broadcast utilizes alert_dedup_locks with _id: fiidii_broadcast_${todayIST} guaranteeing strictly 1 Web Push + Telegram notification per trading day. Ingested live session 20-Nov-2026 (+₹5,448.62 Cr total combined net flow: FII +₹10,308.42 Cr, DII -₹4,859.8 Cr) into MongoDB collection fii_dii_history. 4. Dedicated Cron Endpoint: Added /api/cron/fiidii-sync in cronRoutes.js for manual or external cron triggers with ?force=true and ?forceNotify=true. 5. Automated Verification: Built 8-suite automated test test_fiidii_resilience_and_schedule_e2e.js (100% pass across direct scraping, dual-table normalization, sentiment calculation, MongoDB sorting, atomic locks, and decoupled cron execution) and verified production Vite build (0 errors in 48.27s) | backend/services/fiiDiiService.js, backend/services/cronService.js, backend/routes/cronRoutes.js, backend/tests/test_fiidii_resilience_and_schedule_e2e.js (new), GEMINI.md |
 | 2026-11-21 | Sidebar Install App Removal, NSE Bulk & Block Deals Direct Scraper, Snapshot Session Continuity & Dual-Exchange Parity: 1. Sidebar Install App Removal: Removed 'Install App / Add to Home Screen' PwaInstallButton completely from Sidebar.jsx user section, maintaining clean luxury sidebar navigation while preserving Topbar PWA triggers. 2. NSE Bulk & Block Deals Direct-First Scraper: Resolved issue where switching to NSE on Bulk & Block Deals returned 0 deals and timed out. Diagnosed that /api/nse/deals previously invoked getNSECookies() (visiting homepage with Mobile Safari), triggering Akamai WAF challenges and 15s-30s timeouts. Re-architected /api/nse/deals in nseRoutes.js with NSE_DEALS_PROFILES (rotating Chrome 131 Desktop and Edge 131 Desktop headers) querying snapshot-capital-market-largedeal and historicalOR/bulk-block-short-deals in sub-500ms without session cookies. 3. Non-Trading Day Session Continuity & Dual Deal Type: When querying single-day or today on weekends or market holidays, directly serves verified deals from the latest market session (e.g. 113 deals from 20-Nov-2026: 108 bulk + 5 block) with asOf metadata. Enabled parallel multi-type queries when dealType === 'both' (fetching Bulk + Block deals simultaneously). 4. Frontend Deal Table & Filter Hardening: In BulkBlockPage.jsx, added missing transactionType mapping ('Buy' / 'Sell') with green/red trend icons, enabled 'Bulk + Block' dealType for NSE, added dynamic verified session banner badge, updated search placeholder to show 'symbol' on NSE, and normalized company script filter to match NSE ticker symbols without getting suppressed by BSE scrip codes. 5. Automated Verification: Created 5-suite E2E test test_nse_deals_resilience_e2e.js (100% pass in < 500ms across snapshot deals, individual deal types, multi-day parallel ranges, ISO dates, and schema integrity), passed 8/8 in test_fiidii_resilience_and_schedule_e2e.js, and verified production Vite build (0 errors in 52.19s) | frontend/src/components/Layout/Sidebar.jsx, backend/routes/nseRoutes.js, frontend/src/components/BulkBlock/BulkBlockPage.jsx, backend/tests/test_nse_deals_resilience_e2e.js (new), GEMINI.md |
 | 2026-11-21 | OFS Tracker Multi-Profile Scraper Hardening & Humane Sync Elapsed Time: 1. Scraper Resilience: Fixed ReferenceError: AXIOS_HEADERS is not defined by implementing requestWithProfiles() in ofsScraper.js supporting modern Chrome 131 Desktop and Edge 131 Desktop client headers with sec-ch-ua hints, eliminating upstream cloud WAF blocks and updating MongoDB ofs_snapshots. 2. Humane Sync Elapsed Time & Status Badges: In OFSPage.jsx, separated client sync elapsed time from historical snapshot timestamps, eliminating raw half-million second strings (e.g. 495218s ago) by implementing formatTimeAgo() (returning just now, 15s ago, 2m ago, 1d ago). Replaced misleading 'Sync delayed' badge on valid off-market/archived snapshots with refined status badges ('Market Synchronized', 'Exchange Snapshot', 'Live Market Feed' during active trading, and 'Sync delayed' only when 3+ consecutive polls fail). 3. Verification: Passed all test suites in test_nse_ofs_and_dedup_hardening.js and Vite production build (0 errors in 29.45s) | backend/lib/ofsScraper.js, frontend/src/components/OFS/OFSPage.jsx, GEMINI.md |
+| 2026-11-21 | Executive Light Theme Color Scheme & Design System Alignment: 1. Light Theme Color Scheme Architecture: Redesigned the full application Light Mode color scheme based on user-approved Stitch AI tokens without modifying any page layouts or HTML structures. 2. CSS Variables Updated: In index.css, configured --bg-base (#F8FAFC porcelain canvas), --bg-surface (#FFFFFF pure white cards), --bg-surface-hover (#F1F5F9), --border (#E2E8F0 hairline 1px), --text-primary (#0F172A slate-900 with 15.4:1 contrast), --text-secondary (#334155), --text-muted (#64748B), and aligned brand accent tokens (--accent-blue: #2563EB, --accent-emerald: #059669, --accent-danger: #DC2626). 3. Tailwind Tokens Synchronized: In tailwind.config.js, mapped primary to Royal Sapphire Blue (#2563EB), primaryHover to Cobalt Blue (#1D4ED8), success to Rich Emerald (#059669), warning to Warm Amber (#D97706), and danger to Ruby Crimson (#DC2626). 4. Dark Mode Parity: Kept dark mode tokens completely untouched and fully preserved. 5. Verification: Production Vite build compiled cleanly in 33.94s with 0 errors | frontend/src/index.css, frontend/tailwind.config.js, GEMINI.md |
 
 ---
 

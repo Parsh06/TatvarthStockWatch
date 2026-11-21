@@ -5,19 +5,20 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: '#3B82F6', // Blue 500
-        primaryHover: '#2563EB', // Blue 600
+        primary: '#2563EB', // Royal Sapphire Blue (upgraded from #3B82F6)
+        primaryHover: '#1D4ED8', // Cobalt Blue (upgraded from #2563EB)
         background: 'var(--bg-base)', 
         surface: 'var(--bg-surface)', 
         surfaceHover: 'var(--bg-surface-hover)', 
         border: 'var(--border)', 
         textPrimary: 'var(--text-primary)', 
+        textSecondary: 'var(--text-secondary, #334155)',
         textMuted: 'var(--text-muted)', 
-        success: '#10B981', // Neon Emerald
-        warning: '#F59E0B',
-        danger: '#F43F5E', // Vibrant Rose
+        success: '#059669', // Rich Emerald (upgraded from #10B981)
+        warning: '#D97706', // Warm Amber (upgraded from #F59E0B)
+        danger: '#DC2626', // Ruby Crimson (upgraded from #F43F5E)
         accentTeal: '#38E1C6',
-        accentBlue: '#0EA5E9',
+        accentBlue: '#2563EB',
         accentAmber: '#F5B942',
       },
       boxShadow: {
